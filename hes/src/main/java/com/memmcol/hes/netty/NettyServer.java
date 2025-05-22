@@ -16,7 +16,7 @@ import jakarta.annotation.PreDestroy;
 public class NettyServer {
 
     private final NettyInitializer serverInitializer;
-    @Value("${server.port}")
+    @Value("${nettyserver.port}")
     private int port;
     private EventLoopGroup bossGroup;
     private EventLoopGroup workerGroup;
