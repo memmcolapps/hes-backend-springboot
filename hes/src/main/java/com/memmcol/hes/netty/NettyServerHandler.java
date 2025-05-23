@@ -2,6 +2,8 @@ package com.memmcol.hes.netty;
 
 import com.memmcol.hes.service.MMXCRC16;
 import gurux.dlms.GXDLMSClient;
+import gurux.dlms.enums.Authentication;
+import gurux.dlms.enums.InterfaceType;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
@@ -61,6 +63,9 @@ public class NettyServerHandler extends SimpleChannelInboundHandler<ByteBuf> {
         ctx.writeAndFlush(Unpooled.wrappedBuffer(response));
 
         ReferenceCountUtil.release(Unpooled.wrappedBuffer(response));  //Release to prevent memory leakage
+
+        // Trigger DLMS initialization after login
+        initiateDLMSConnection(ctx, meterId);
     }
 
     private boolean isLoginMessage(byte[] msg) {
@@ -140,5 +145,40 @@ public class NettyServerHandler extends SimpleChannelInboundHandler<ByteBuf> {
 
         ReferenceCountUtil.release(Unpooled.wrappedBuffer(response));  //Release to prevent memory leakage
     }
+
+    private void initiateDLMSConnection(ChannelHandlerContext ctx, String meterId) {
+        try {
+            if (client == null) {
+                client = new GXDLMSClient(
+                        true,                        // Use Logical Name referencing
+                        16,                          // Client address (typically 16 for public client)
+                        1,                           // Server address (logical/short meter address)
+                        Authentication.LOW,          // Choose NONE, LOW, or HIGH based on your meter config
+                        "00000000",                  // Password for LOW authentication
+                        InterfaceType.WRAPPER        // WRAPPER for TCP/IP; HDLC for serial
+                );
+            }
+
+            log.info("🔌 Initiating DLMS handshake for Meter: {}", meterId);
+
+            // Step 1: Generate SNRM frame (used for HDLC; WRAPPER may not need it, but we'll include for safety)
+            byte[] snrm = client.snrmRequest();
+            log.info("TX (SNRM request): {}", formatHex(snrm));
+            ctx.writeAndFlush(Unpooled.wrappedBuffer(snrm));
+
+            // Step 2: Generate AARQ frame (Association Request)
+            byte[][] aarq = client.aarqRequest();
+            for (byte[] frame : aarq) {
+                log.info("TX (AARQ frame): {}", formatHex(frame));
+                ctx.writeAndFlush(Unpooled.wrappedBuffer(frame));
+            }
+
+            log.info("✅ DLMS initialization (SNRM + AARQ) sent to meter {}", meterId);
+
+        } catch (Exception e) {
+            log.error("❌ Failed to initiate DLMS connection for Meter {}: {}", meterId, e.getMessage(), e);
+        }
+    }
+
 
 }
