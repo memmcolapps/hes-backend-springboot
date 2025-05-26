@@ -1,9 +1,13 @@
 package com.memmcol.hes.netty;
 
+import com.memmcol.hes.service.DLMSClientService;
+import com.memmcol.hes.service.DLMSRequestTracker;
 import com.memmcol.hes.service.MMXCRC16;
+import com.memmcol.hes.service.MeterConnections;
 import gurux.dlms.GXDLMSClient;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
+import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.util.ReferenceCountUtil;
@@ -12,6 +16,8 @@ import lombok.extern.slf4j.Slf4j;
 import java.net.SocketException;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Slf4j
 public class NettyServerHandler extends SimpleChannelInboundHandler<ByteBuf> {
@@ -30,6 +36,21 @@ public class NettyServerHandler extends SimpleChannelInboundHandler<ByteBuf> {
             handleLoginRequest(ctx, msg);
         } else if (isHeartMessage(msg)) {
             handleHeartRequest(ctx, msg);
+        } else if (!isLoginMessage(msg) && !isHeartMessage(msg)){
+            // Assume it's a response to a previously sent command
+            // Use channel to find the meter serial
+            String serial = MeterConnections.getSerial(ctx.channel());
+            if (serial == null) {
+                log.warn("❌ Received DLMS response from unknown channel {}", ctx.channel().remoteAddress());
+                return;
+            }
+
+            String key = DLMSClientService.getLastRequestKey(serial);
+            if (key != null) {
+                DLMSRequestTracker.complete(key, msg);
+            } else {
+                log.warn("Received untracked DLMS response from serial: {}", serial);
+            }
         } else {
             log.warn("Unknown or unsupported message type.");
         }
@@ -40,6 +61,10 @@ public class NettyServerHandler extends SimpleChannelInboundHandler<ByteBuf> {
         MMXCRC16 mmxcrc16 = new MMXCRC16();
         byte[] meterIdBytes = Arrays.copyOfRange(msg, 11, 23); // 12 bytes
         String meterId = new String(meterIdBytes, StandardCharsets.US_ASCII);
+
+        //add meter to connection pool
+        Channel channel = ctx.channel();
+        MeterConnections.bind(channel, meterId);
 
         byte[] response = new byte[26];
         System.arraycopy(msg, 0, response, 0, 8); // Copy header
@@ -90,7 +115,10 @@ public class NettyServerHandler extends SimpleChannelInboundHandler<ByteBuf> {
 
     @Override
     public void channelInactive(ChannelHandlerContext ctx) {
-        log.info("Connection closed: {}", ctx.channel().remoteAddress());
+        MeterConnections.remove(ctx.channel());
+        log.info("🛑 Disconnected channel {}", ctx.channel().remoteAddress());
+        ctx.close();
+
         if (client != null) {
             log.info("DLMS client disconnected");
             client = null;
@@ -120,6 +148,12 @@ public class NettyServerHandler extends SimpleChannelInboundHandler<ByteBuf> {
         byte[] meterIdBytes = Arrays.copyOfRange(msg, 11, 23); // 12 bytes
         String meterId = new String(meterIdBytes, StandardCharsets.US_ASCII);
 
+
+        //add meter to connection pool
+        //add meter to connection pool
+        Channel channel = ctx.channel();
+        MeterConnections.bind(channel, meterId);
+
         byte[] response = new byte[25];
         System.arraycopy(msg, 0, response, 0, 8); // Copy header
         response[8] = (byte) 0xCC;
@@ -140,5 +174,7 @@ public class NettyServerHandler extends SimpleChannelInboundHandler<ByteBuf> {
 
         ReferenceCountUtil.release(Unpooled.wrappedBuffer(response));  //Release to prevent memory leakage
     }
+
+
 
 }
