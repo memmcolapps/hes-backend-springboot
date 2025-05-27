@@ -34,4 +34,17 @@ public final class MeterConnections {
         log.info("❌ Disconnected Meter and connection {}", serial);
     }
 
+    public static boolean isActive(String serial) {
+        Channel ch = getChannel(serial);
+        return ch != null && ch.isActive();
+    }
+
+    public static Set<String> getAllActiveSerials() {
+        return SERIAL_TO_CHANNEL_meterConnectionsPool.keySet();
+    }
+
+    public static int size() {
+        return SERIAL_TO_CHANNEL_meterConnectionsPool.size();
+    }
+
 }
