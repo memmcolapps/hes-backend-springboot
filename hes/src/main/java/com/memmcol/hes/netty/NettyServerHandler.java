@@ -1,6 +1,6 @@
 package com.memmcol.hes.netty;
 
-import com.memmcol.hes.service.DLMSClientService;
+import com.memmcol.hes.service.RequestResponseService;
 import com.memmcol.hes.service.DLMSRequestTracker;
 import com.memmcol.hes.service.MMXCRC16;
 import com.memmcol.hes.service.MeterConnections;
@@ -8,6 +8,7 @@ import gurux.dlms.GXDLMSClient;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.Channel;
+import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.util.ReferenceCountUtil;
@@ -16,8 +17,6 @@ import lombok.extern.slf4j.Slf4j;
 import java.net.SocketException;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ConcurrentHashMap;
 
 @Slf4j
 public class NettyServerHandler extends SimpleChannelInboundHandler<ByteBuf> {
@@ -45,7 +44,7 @@ public class NettyServerHandler extends SimpleChannelInboundHandler<ByteBuf> {
                 return;
             }
 
-            String key = DLMSClientService.getLastRequestKey(serial);
+            String key = RequestResponseService.getLastRequestKey(serial);
             if (key != null) {
                 DLMSRequestTracker.complete(key, msg);
             } else {
@@ -78,14 +77,25 @@ public class NettyServerHandler extends SimpleChannelInboundHandler<ByteBuf> {
         response[24] = (byte) ((calcCRCResponse >> 8) & 0xFF);
         response[25] = (byte) (calcCRCResponse & 0xFF);
 
+        log.info("About to send login response ");
         // Log using your specified format
         log.info("TX (Response to meter): {}", formatHex(response));
         log.info("Meter No: {}", meterId);
         log.info("Message type: LOGIN");
 
-        ctx.writeAndFlush(Unpooled.wrappedBuffer(response));
+//        ctx.writeAndFlush(Unpooled.wrappedBuffer(response));
+        ctx.writeAndFlush(Unpooled.wrappedBuffer(response))
+                .addListener((ChannelFutureListener) future -> {
+                    if (future.isSuccess()) {
+                        log.info("🟢 Write OK to {}", ctx.channel().remoteAddress());
+                    } else {
+                        log.info("🔴 Write failed: {}", future.cause().getMessage(), future.cause());
+                    }
+                });
 
         ReferenceCountUtil.release(Unpooled.wrappedBuffer(response));  //Release to prevent memory leakage
+
+        log.info("Login response sent!");
     }
 
     private boolean isLoginMessage(byte[] msg) {
