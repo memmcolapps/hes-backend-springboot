@@ -46,7 +46,7 @@ public final class RequestResponseService {
             channel.writeAndFlush(Unpooled.wrappedBuffer(command));
 
             try {
-                return DLMSRequestTracker.waitForResponse(reqKey, 3000); // 3s timeout
+                return DLMSRequestTracker.waitForResponse(reqKey, 10000); // 3s timeout
             } catch (TimeoutException e) {
                 log.warn("DLMS read timeout: {}", e.getMessage());
                 throw new IllegalStateException(e);

@@ -1,23 +1,20 @@
-package com.memmcol.hes.netty_v3;
+package com.memmcol.hes.netty;
 
 import com.memmcol.hes.service.MeterConnections;
 import io.netty.bootstrap.ServerBootstrap;
-import io.netty.channel.Channel;
-import io.netty.channel.ChannelFuture;
-import io.netty.channel.ChannelInitializer;
-import io.netty.channel.EventLoopGroup;
+import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.util.Set;
 
 @Component
+@Slf4j
 public class NettyServerHolder {
-    private static final Logger log = LoggerFactory.getLogger(NettyServerHolder.class);
+//    private static final Logger log = LoggerFactory.getLogger(NettyServerHolder.class);
     private EventLoopGroup bossGroup;
     private EventLoopGroup workerGroup;
     private static Channel channel;
@@ -28,12 +25,18 @@ public class NettyServerHolder {
 
         if (running) return;
 
-        bossGroup = new NioEventLoopGroup(1);
-        workerGroup = new NioEventLoopGroup();
+        // Use appropriate thread pool sizes based on your CPU cores
+        bossGroup = new NioEventLoopGroup(1); // Accepts connections
+        workerGroup = new NioEventLoopGroup(); // Handles I/O (default: #cores * 2)
 
         ServerBootstrap bootstrap = new ServerBootstrap();
         bootstrap.group(bossGroup, workerGroup)
                 .channel(NioServerSocketChannel.class)
+                //Set socket options for connection reliability:
+                .childOption(ChannelOption.SO_KEEPALIVE, true)
+                .childOption(ChannelOption.TCP_NODELAY, true)
+                .childOption(ChannelOption.SO_RCVBUF, 1024 * 1024)
+                .childOption(ChannelOption.SO_SNDBUF, 1024 * 1024)
                 .childHandler(initializer);
 
         ChannelFuture future = bootstrap.bind(port).sync();

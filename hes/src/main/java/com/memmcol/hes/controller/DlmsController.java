@@ -16,6 +16,8 @@ import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.security.SignatureException;
+import java.util.HashMap;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/dlms")
@@ -28,14 +30,24 @@ public class DlmsController {
     }
 
     @GetMapping("/readClock")
-    public String readMeter() throws InvalidAlgorithmParameterException, NoSuchPaddingException, IllegalBlockSizeException, NoSuchAlgorithmException, BadPaddingException, SignatureException, InvalidKeyException {
-        return dlmsService.readClock("");
+    public String readClock(@RequestParam String serial) throws InvalidAlgorithmParameterException, NoSuchPaddingException, IllegalBlockSizeException, NoSuchAlgorithmException, BadPaddingException, SignatureException, InvalidKeyException {
+        return dlmsService.readClock(serial);
+    }
+
+    @GetMapping("/obis")
+    public ResponseEntity<Map<String, Object>> readObisValue(
+            @RequestParam String serial,
+            @RequestParam String obis) {
+
+        return dlmsService.readObisValue(serial, obis);
     }
 
     @GetMapping("/greet")
     public ResponseEntity<?> greet(@RequestParam String name) {
         return ResponseEntity.ok(dlmsService.greet(name)) ;
     }
+
+
 
 
 }

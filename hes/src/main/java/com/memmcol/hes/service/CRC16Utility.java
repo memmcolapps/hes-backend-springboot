@@ -1,11 +1,10 @@
 package com.memmcol.hes.service;
 
-public class MMXCRC16 {
-    public MMXCRC16() {
+public class CRC16Utility {
 
-    }
+    public CRC16Utility() {}
 
-    private int[] fcs16Table = {0x0000, 0x1189, 0x2312, 0x329B, 0x4624,
+    private static final int[] fcs16Table = {0x0000, 0x1189, 0x2312, 0x329B, 0x4624,
             0x57AD, 0x6536, 0x74BF, 0x8C48, 0x9DC1, 0xAF5A, 0xBED3, 0xCA6C,
             0xDBE5, 0xE97E, 0xF8F7, 0x1081, 0x0108, 0x3393, 0x221A, 0x56A5,
             0x472C, 0x75B7, 0x643E, 0x9CC9, 0x8D40, 0xBFDB, 0xAE52, 0xDAED,
@@ -49,7 +48,7 @@ public class MMXCRC16 {
      * @param count
      * @return
      */
-    public final int countFCS16(final byte[] buff, final int offset,final int count) {
+    public static int countFCS16(final byte[] buff, final int offset, final int count) {
         int fcs16 = 0xFFFF;
         for (int pos = offset; pos < offset + count; ++pos) {
             fcs16 = (int) (((fcs16 >> 8)
@@ -59,4 +58,55 @@ public class MMXCRC16 {
         fcs16 = ((fcs16 >> 8) & 0xFF) | (fcs16 << 8);
         return (fcs16 & 0xFFFF);
     }
+
+    /*
+✅ 2. CRC-16-XMODEM (used in DLMS WRAPPER, Holley frames)
+📌 Specs:
+Polynomial: 0x1021
+Init: 0x0000
+No reflection 🔁
+
+🧪 Usage Example
+byte[] frame = ...; // your full message
+int crc = CRC16XModem.compute(frame, 9, 14); // or whatever range is correct
+frame[n - 2] = (byte) (crc >> 8);     // high byte
+frame[n - 1] = (byte) (crc & 0xFF);   // low byte
+ */
+
+    public static int compute(byte[] data, int offset, int len) {
+        int crc = 0x0000;
+
+        for (int i = offset; i < offset + len; i++) {
+            crc ^= (data[i] & 0xFF) << 8;
+            for (int j = 0; j < 8; j++) {
+                if ((crc & 0x8000) != 0) {
+                    crc = (crc << 1) ^ 0x1021;
+                } else {
+                    crc <<= 1;
+                }
+            }
+        }
+        return crc & 0xFFFF;
+    }
+
+    /*
+    Modbus, legacy DLMS HDLC, PLC
+     */
+
+    public static int compute3(byte[] data, int offset, int len) {
+        int crc = 0xFFFF;
+
+        for (int i = offset; i < offset + len; i++) {
+            crc ^= (data[i] & 0xFF);
+            for (int j = 0; j < 8; j++) {
+                if ((crc & 1) != 0) {
+                    crc = (crc >>> 1) ^ 0xA001;
+                } else {
+                    crc >>>= 1;
+                }
+            }
+        }
+        return crc & 0xFFFF;
+    }
+
 }

@@ -1,4 +1,4 @@
-package com.memmcol.hes.netty_v3;
+package com.memmcol.hes.netty;
 
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
@@ -14,9 +14,9 @@ public class NettyServerLauncher {
     private int port;
 
     private final NettyServerHolder holder;
-    private final NettyServerInitializer_v3 initializer;
+    private final NettyChannelInitializer initializer;
 
-    public NettyServerLauncher(NettyServerHolder holder, NettyServerInitializer_v3 initializer) {
+    public NettyServerLauncher(NettyServerHolder holder, NettyChannelInitializer initializer) {
         this.holder = holder;
         this.initializer = initializer;
     }
@@ -25,10 +25,9 @@ public class NettyServerLauncher {
     public void startNettyServer() {
         new Thread(() -> {
             try {
-//                new NettyServer_v3(port).start();
                 holder.startServer(port, initializer);
             } catch (Exception e) {
-                System.err.println("❌ Failed to start Netty: " + e.getMessage());
+                log.error("❌ Failed to start Netty: {}",  e.getMessage());
             }
         }).start();
     }

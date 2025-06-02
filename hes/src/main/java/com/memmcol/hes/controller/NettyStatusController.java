@@ -1,7 +1,7 @@
 package com.memmcol.hes.controller;
 
-import com.memmcol.hes.netty_v3.NettyServerHolder;
-import com.memmcol.hes.netty_v3.NettyServerInitializer_v3;
+import com.memmcol.hes.netty.NettyChannelInitializer;
+import com.memmcol.hes.netty.NettyServerHolder;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -20,9 +20,9 @@ public class NettyStatusController {
     private int port;
 
     private final NettyServerHolder holder;
-    private final NettyServerInitializer_v3 initializer;
+    private final NettyChannelInitializer initializer;
 
-    public NettyStatusController(NettyServerHolder holder, NettyServerInitializer_v3 initializer) {
+    public NettyStatusController(NettyServerHolder holder, NettyChannelInitializer initializer) {
         this.holder = holder;
         this.initializer = initializer;
     }
