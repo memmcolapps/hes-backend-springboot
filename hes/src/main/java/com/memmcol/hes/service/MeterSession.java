@@ -35,10 +35,8 @@ public class MeterSession {
         this.lastUsed = Instant.now();
         return client;
     }
-
     // Check if the session has expired based on a timeout duration
     public boolean isExpired(Duration timeout) {
         return Instant.now().isAfter(lastUsed.plus(timeout));
     }
-
 }
