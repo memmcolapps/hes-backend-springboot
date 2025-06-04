@@ -17,6 +17,10 @@ public final class MeterConnections {
     public static void bind(Channel channel, String serial) {
         CHANNEL_TO_SERIAL_meterConnectionsPool.put(channel, serial);
         SERIAL_TO_CHANNEL_meterConnectionsPool.put(serial, channel);
+        log.debug("🔗 Binding channel {} to serial {}", channel.id(), serial);
+
+        log.debug("🔍 Looking for serial '{}'", serial);
+        log.debug("🔍 Current serials: {}", SERIAL_TO_CHANNEL_meterConnectionsPool.keySet());
     }
 
     public static String getSerial(Channel channel) {
@@ -24,7 +28,20 @@ public final class MeterConnections {
     }
 
     public static Channel getChannel(String serial) {
-        return SERIAL_TO_CHANNEL_meterConnectionsPool.get(serial);
+//        Channel channel = SERIAL_TO_CHANNEL_meterConnectionsPool.get(serial);
+//        return channel;
+
+        log.debug("📡 Looking up channel for serial: '{}'", serial);
+        Channel ch = SERIAL_TO_CHANNEL_meterConnectionsPool.get(serial);
+
+        if (ch == null) {
+            log.warn("❌ No channel found for serial: '{}'", serial);
+            log.debug("🔍 Available serials: {}", SERIAL_TO_CHANNEL_meterConnectionsPool.keySet());
+        } else {
+            log.debug("✅ Found channel {} for serial {}", ch.id(), serial);
+        }
+
+        return ch;
     }
 
     public static void remove(Channel channel) {

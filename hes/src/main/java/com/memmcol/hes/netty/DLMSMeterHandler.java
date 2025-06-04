@@ -1,35 +1,32 @@
 package com.memmcol.hes.netty;
 
-import com.memmcol.hes.service.DLMSClientService;
+import com.memmcol.hes.service.CRC16Utility;
 import com.memmcol.hes.service.DLMSRequestTracker;
-import com.memmcol.hes.service.MMXCRC16;
 import com.memmcol.hes.service.MeterConnections;
-import gurux.dlms.GXDLMSClient;
-import io.netty.buffer.ByteBuf;
-import io.netty.buffer.Unpooled;
-import io.netty.channel.Channel;
-import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.SimpleChannelInboundHandler;
-import io.netty.util.ReferenceCountUtil;
+import com.memmcol.hes.service.RequestResponseService;
+import io.netty.channel.*;
 import lombok.extern.slf4j.Slf4j;
 
 import java.net.SocketException;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ConcurrentHashMap;
 
 @Slf4j
-public class NettyServerHandler extends SimpleChannelInboundHandler<ByteBuf> {
-
-    private GXDLMSClient client;
+public class DLMSMeterHandler extends SimpleChannelInboundHandler<byte[]> {
 
     @Override
-    protected void channelRead0(ChannelHandlerContext ctx, ByteBuf buf) {
-        byte[] msg = new byte[buf.readableBytes()];
-        buf.readBytes(msg);
-        buf.resetReaderIndex(); //Reset reader index for subsequent operation
+    public void channelActive(ChannelHandlerContext ctx) {
+        log.info("New connection established: {}", ctx.channel().remoteAddress());
+    }
 
+    @Override
+    public void channelInactive(ChannelHandlerContext ctx) {
+        MeterConnections.remove(ctx.channel());
+        log.info("🛑 Disconnected channel {}", ctx.channel().remoteAddress());
+        ctx.close();
+    }
+    @Override
+    protected void channelRead0(ChannelHandlerContext ctx, byte[] msg) throws Exception {
         log.info("RX (Message received): {}", formatHex(msg));
 
         if (isLoginMessage(msg)) {
@@ -45,7 +42,7 @@ public class NettyServerHandler extends SimpleChannelInboundHandler<ByteBuf> {
                 return;
             }
 
-            String key = DLMSClientService.getLastRequestKey(serial);
+            String key = RequestResponseService.getLastRequestKey(serial);
             if (key != null) {
                 DLMSRequestTracker.complete(key, msg);
             } else {
@@ -56,9 +53,24 @@ public class NettyServerHandler extends SimpleChannelInboundHandler<ByteBuf> {
         }
     }
 
+    @Override
+    public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
+//        log.error("Error in channel", cause);
+        if (cause instanceof SocketException) {
+            log.warn("⚠️ Socket connection reset by peer: {}", cause.getMessage());
+        } else if (cause instanceof ArrayIndexOutOfBoundsException) {
+            log.warn("Array Index Out Of Bounds Exception: {}", cause.getMessage());
+        } else {
+            log.error("Unhandled error: {}", cause.getMessage(), cause);
+        }
+        ctx.close();
+    }
+
+    private boolean isLoginMessage(byte[] msg) {
+        return msg.length >= 24 && msg[8] == 0x0A && msg[9] == 0x02;
+    }
     private void handleLoginRequest(ChannelHandlerContext ctx, byte[] msg) {
         int calcCRCResponse;
-        MMXCRC16 mmxcrc16 = new MMXCRC16();
         byte[] meterIdBytes = Arrays.copyOfRange(msg, 11, 23); // 12 bytes
         String meterId = new String(meterIdBytes, StandardCharsets.US_ASCII);
 
@@ -74,68 +86,27 @@ public class NettyServerHandler extends SimpleChannelInboundHandler<ByteBuf> {
         System.arraycopy(meterIdBytes, 0, response, 11, 12);
         response[23] = 0x00;
 
-        calcCRCResponse = mmxcrc16.countFCS16(response, 9, 14);
+        calcCRCResponse = CRC16Utility.countFCS16(response, 9, 15);
         response[24] = (byte) ((calcCRCResponse >> 8) & 0xFF);
         response[25] = (byte) (calcCRCResponse & 0xFF);
+
+        log.debug("About to send login response ");
 
         // Log using your specified format
         log.info("TX (Response to meter): {}", formatHex(response));
         log.info("Meter No: {}", meterId);
         log.info("Message type: LOGIN");
 
-        ctx.writeAndFlush(Unpooled.wrappedBuffer(response));
+        ctx.writeAndFlush(response)
+                .addListener((ChannelFutureListener) future -> {
+                    if (future.isSuccess()) {
+                        log.debug("🟢 Write OK to {}", ctx.channel().remoteAddress());
+                    } else {
+                        log.warn("🔴 Write failed: {}", future.cause().getMessage(), future.cause());
+                    }
+                });
 
-        ReferenceCountUtil.release(Unpooled.wrappedBuffer(response));  //Release to prevent memory leakage
-    }
-
-    private boolean isLoginMessage(byte[] msg) {
-        return msg.length >= 24 && msg[8] == 0x0A && msg[9] == 0x02;
-    }
-
-    private int calculateSimpleChecksum(byte[] data) {
-        int crc = 0;
-        for (byte b : data) {
-            crc += b & 0xFF;
-        }
-        return crc & 0xFFFF;
-    }
-
-    private String formatHex(byte[] bytes) {
-        StringBuilder sb = new StringBuilder();
-        for (byte b : bytes) {
-            sb.append(String.format("%02X ", b));
-        }
-        return sb.toString().trim();
-    }
-
-    @Override
-    public void channelActive(ChannelHandlerContext ctx) {
-        log.info("New connection established: {}", ctx.channel().remoteAddress());
-    }
-
-    @Override
-    public void channelInactive(ChannelHandlerContext ctx) {
-        MeterConnections.remove(ctx.channel());
-        log.info("🛑 Disconnected channel {}", ctx.channel().remoteAddress());
-        ctx.close();
-
-        if (client != null) {
-            log.info("DLMS client disconnected");
-            client = null;
-        }
-    }
-
-    @Override
-    public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-//        log.error("Error in channel", cause);
-        if (cause instanceof SocketException) {
-            log.warn("⚠️ Socket connection reset by peer: {}", cause.getMessage());
-        } else if (cause instanceof ArrayIndexOutOfBoundsException) {
-            log.warn("Array Index Out Of Bounds Exception: {}", cause.getMessage());
-    } else {
-            log.error("Unhandled error: {}", cause.getMessage(), cause);
-        }
-        ctx.close();
+        log.debug("Login response sent!");
     }
 
     private boolean isHeartMessage(byte[] msg) {
@@ -144,7 +115,6 @@ public class NettyServerHandler extends SimpleChannelInboundHandler<ByteBuf> {
 
     private void handleHeartRequest(ChannelHandlerContext ctx, byte[] msg) {
         int calcCRCResponse;
-        MMXCRC16 mmxcrc16 = new MMXCRC16();
         byte[] meterIdBytes = Arrays.copyOfRange(msg, 11, 23); // 12 bytes
         String meterId = new String(meterIdBytes, StandardCharsets.US_ASCII);
 
@@ -161,7 +131,7 @@ public class NettyServerHandler extends SimpleChannelInboundHandler<ByteBuf> {
         response[10] = 0x0C; // Length of meterId
         System.arraycopy(meterIdBytes, 0, response, 11, 12);
 
-        calcCRCResponse = mmxcrc16.countFCS16(response, 9, 14);
+        calcCRCResponse = CRC16Utility.countFCS16(response, 9, 14);
         response[23] = (byte) ((calcCRCResponse >> 8) & 0xFF);
         response[24] = (byte) (calcCRCResponse & 0xFF);
 
@@ -170,11 +140,14 @@ public class NettyServerHandler extends SimpleChannelInboundHandler<ByteBuf> {
         log.info("Meter No: {}", meterId);
         log.info("Message type: HEART");
 
-        ctx.writeAndFlush(Unpooled.wrappedBuffer(response));
-
-        ReferenceCountUtil.release(Unpooled.wrappedBuffer(response));  //Release to prevent memory leakage
+        ctx.writeAndFlush(response);
     }
 
-
-
+    private String formatHex(byte[] bytes) {
+        StringBuilder sb = new StringBuilder();
+        for (byte b : bytes) {
+            sb.append(String.format("%02X ", b));
+        }
+        return sb.toString().trim();
+    }
 }
