@@ -5,6 +5,8 @@ import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.channel.*;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 
@@ -12,9 +14,11 @@ import java.io.IOException;
 public class DLMSNettyServer {
 
     private final int port;
+    private final NettyChannelInitializer channelInitializer;
 
-    public DLMSNettyServer(int port) {
+    public DLMSNettyServer(int port, NettyChannelInitializer channelInitializer) {
         this.port = port;
+        this.channelInitializer = channelInitializer;
     }
 
     public void start() throws IOException, InterruptedException {
@@ -31,7 +35,8 @@ public class DLMSNettyServer {
                     .childOption(ChannelOption.TCP_NODELAY, true)
                     .childOption(ChannelOption.SO_RCVBUF, 1024 * 1024) //1048576
                     .childOption(ChannelOption.SO_SNDBUF, 1024 * 1024) //1048576
-                    .childHandler(new NettyChannelInitializer());
+                    .childHandler(channelInitializer);
+//                    .childHandler(new NettyChannelInitializer(channelInitializer));
 
             ChannelFuture future = bootstrap.bind(port).sync();
             log.info("✅ DLMS Netty Server started on port: {}",  port);
