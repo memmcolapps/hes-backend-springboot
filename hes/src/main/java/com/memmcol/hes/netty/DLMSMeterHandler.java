@@ -3,9 +3,6 @@ package com.memmcol.hes.netty;
 import com.memmcol.hes.service.*;
 import io.netty.channel.*;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Service;
-
 import java.net.SocketException;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
@@ -31,7 +28,7 @@ public class DLMSMeterHandler extends SimpleChannelInboundHandler<byte[]> {
         ctx.close();
     }
     @Override
-    protected void channelRead0(ChannelHandlerContext ctx, byte[] msg) throws Exception {
+    protected void channelRead0(ChannelHandlerContext ctx, byte[] msg) {
         log.info("RX (Message received): {}", formatHex(msg));
 
         if (isLoginMessage(msg)) {
