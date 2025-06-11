@@ -142,6 +142,8 @@ public class DlmsService {
         // Format to "YYYY-MM-DD HH:MM:SS"
         strclock = localDateTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
 
+        strclock = "🕒 Meter Clock for "+ serial + ": "+ strclock;
+
         log.info("🕒 Meter Clock: {}", strclock);
 
         return strclock;

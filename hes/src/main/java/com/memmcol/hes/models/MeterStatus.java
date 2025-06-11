@@ -1,15 +1,12 @@
 package com.memmcol.hes.models;
 
-import lombok.AllArgsConstructor;
-import lombok.Getter;
-import lombok.Setter;
+import lombok.*;
 
+@Data
 @AllArgsConstructor
-@Getter
-@Setter
+@NoArgsConstructor
 public class MeterStatus {
     private String serial;
     private String status;
     private long timestamp;
-
 }

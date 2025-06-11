@@ -26,7 +26,11 @@ public class SecurityConfig {
                 .exceptionHandling(eh -> eh.authenticationEntryPoint(jwtAuthEntryPoint))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/**").permitAll()
+                        .requestMatchers(
+                                "/api/auth/**",          // Open for authentication
+                                "/ws-meters/**",         // ⬅️ Explicitly allow WebSocket handshake endpoint
+                                "/actuator/**"           // Optional: if using Spring Boot Actuator
+                        ).permitAll()
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
