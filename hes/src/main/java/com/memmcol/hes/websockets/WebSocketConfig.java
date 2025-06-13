@@ -18,14 +18,14 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     public void registerStompEndpoints(StompEndpointRegistry registry) {
         // Native WebSocket support
         registry.addEndpoint("/ws-meters")
-                .addInterceptors(handshakeInterceptor)
                 .setAllowedOriginPatterns("*")
-                .withSockJS(); // no SockJS
+                .addInterceptors(handshakeInterceptor);
 
         // SockJS fallback
         registry.addEndpoint("/ws-meters")
                 .setAllowedOriginPatterns("*")
-                .addInterceptors(handshakeInterceptor);
+                .addInterceptors(handshakeInterceptor)
+                .withSockJS(); // no SockJS
     }
     @Override
     public void configureMessageBroker(MessageBrokerRegistry cfg) {

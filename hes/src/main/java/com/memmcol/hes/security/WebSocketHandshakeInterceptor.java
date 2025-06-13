@@ -1,6 +1,10 @@
 package com.memmcol.hes.security;
 
 import com.memmcol.hes.security.util.JwtUtil;
+import io.jsonwebtoken.ExpiredJwtException;
+import io.jsonwebtoken.JwtException;
+import io.jsonwebtoken.MalformedJwtException;
+import io.jsonwebtoken.UnsupportedJwtException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.server.ServerHttpRequest;
@@ -20,7 +24,7 @@ import java.util.Map;
 public class WebSocketHandshakeInterceptor implements HandshakeInterceptor {
     private final JwtUtil jwtUtil;
 
-        @Override
+    @Override
     public boolean beforeHandshake(ServerHttpRequest request,
                                    ServerHttpResponse response,
                                    WebSocketHandler wsHandler,
@@ -39,50 +43,38 @@ public class WebSocketHandshakeInterceptor implements HandshakeInterceptor {
                     .orElse(null);
         }
 
-//        if (token != null && jwtUtil.validateToken(token)) {
-//            String username = jwtUtil.getUsernameFromToken(token);
-//            attributes.put("username", username);
-//            return true;
-//        }
+        if (token == null || token.isBlank()) {
+            log.warn("⛔ Missing token in WebSocket handshake");
+            return false;
+        }
 
-        if (token != null) {
+        try {
             jwtUtil.validateToken(token); // throws if invalid
             attributes.put("clientId", jwtUtil.extractClientId(token));
             log.info("✅ WebSocket JWT valid, client: {}", attributes.get("clientId"));
             return true;
+        } catch (ExpiredJwtException e) {
+            log.warn("⏰ JWT expired: {}", e.getMessage());
+        } catch (UnsupportedJwtException e) {
+            log.warn("🚫 Unsupported JWT: {}", e.getMessage());
+        } catch (MalformedJwtException e) {
+            log.warn("❗ Malformed JWT: {}", e.getMessage());
+        } catch (SecurityException e) {
+            log.warn("🔐 Invalid JWT signature: {}", e.getMessage());
+        } catch (IllegalArgumentException e) {
+            log.warn("⚠️ JWT claims string is empty: {}", e.getMessage());
+        } catch (JwtException e) {
+            log.warn("❌ JWT error: {}", e.getMessage());
         }
-
-
-
-    // Optional: Log reason for rejection
-        log.error("❌ WebSocket rejected: missing or invalid token");
-
+        // Default fallback for any JWT error
+        log.error("🔒 WebSocket handshake rejected due to JWT validation failure");
         return false;
-}
+    }
 
-//    @Override
-//    public boolean beforeHandshake1(ServerHttpRequest req, ServerHttpResponse res,
-//                                   WebSocketHandler handler, Map<String, Object> attrs) throws Exception {
-//        log.debug("Handshake attempt: {}", req.getURI());
-//        if (req instanceof ServletServerHttpRequest sreq) {
-//            String header = sreq.getServletRequest().getHeader("Authorization");
-//            log.debug("authHeader: {}", header);
-//
-//            if (header != null && header.startsWith("Bearer ")) {
-//                String token = header.substring(7);
-//                jwtUtil.validateToken(token); // throws if invalid
-//                attrs.put("clientId", jwtUtil.extractClientId(token));
-//                log.info("✅ WebSocket JWT valid, client: {}", attrs.get("clientId"));
-//                return true;
-//            }
-//            log.warn("⚠️ Missing or invalid Authorization header");
-//        }
-//        res.setStatusCode(HttpStatus.UNAUTHORIZED);
-//        return false;
-//    }
-
-    @Override public void afterHandshake(ServerHttpRequest req, ServerHttpResponse res,
-                                         WebSocketHandler handler, Exception ex) {}
+    @Override
+    public void afterHandshake(ServerHttpRequest req, ServerHttpResponse res,
+                               WebSocketHandler handler, Exception ex) {
+    }
 }
 
 
