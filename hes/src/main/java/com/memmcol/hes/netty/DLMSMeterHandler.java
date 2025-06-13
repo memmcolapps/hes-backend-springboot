@@ -1,18 +1,19 @@
 package com.memmcol.hes.netty;
 
-import com.memmcol.hes.service.CRC16Utility;
-import com.memmcol.hes.service.DLMSRequestTracker;
-import com.memmcol.hes.service.MeterConnections;
-import com.memmcol.hes.service.RequestResponseService;
+import com.memmcol.hes.service.*;
 import io.netty.channel.*;
 import lombok.extern.slf4j.Slf4j;
-
 import java.net.SocketException;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 
 @Slf4j
 public class DLMSMeterHandler extends SimpleChannelInboundHandler<byte[]> {
+    private final MeterStatusService meterStatusService;
+
+    public DLMSMeterHandler(MeterStatusService meterStatusService) {
+        this.meterStatusService = meterStatusService;
+    }
 
     @Override
     public void channelActive(ChannelHandlerContext ctx) {
@@ -21,12 +22,13 @@ public class DLMSMeterHandler extends SimpleChannelInboundHandler<byte[]> {
 
     @Override
     public void channelInactive(ChannelHandlerContext ctx) {
+        meterStatusService.broadcastMeterOffline(MeterConnections.getSerial(ctx.channel()));
         MeterConnections.remove(ctx.channel());
         log.info("🛑 Disconnected channel {}", ctx.channel().remoteAddress());
         ctx.close();
     }
     @Override
-    protected void channelRead0(ChannelHandlerContext ctx, byte[] msg) throws Exception {
+    protected void channelRead0(ChannelHandlerContext ctx, byte[] msg) {
         log.info("RX (Message received): {}", formatHex(msg));
 
         if (isLoginMessage(msg)) {
@@ -77,6 +79,7 @@ public class DLMSMeterHandler extends SimpleChannelInboundHandler<byte[]> {
         //add meter to connection pool
         Channel channel = ctx.channel();
         MeterConnections.bind(channel, meterId);
+        meterStatusService.broadcastMeterOnline(meterId);  //Broadcast online
 
         byte[] response = new byte[26];
         System.arraycopy(msg, 0, response, 0, 8); // Copy header
@@ -123,6 +126,7 @@ public class DLMSMeterHandler extends SimpleChannelInboundHandler<byte[]> {
         //add meter to connection pool
         Channel channel = ctx.channel();
         MeterConnections.bind(channel, meterId);
+        meterStatusService.broadcastMeterOnline(meterId);  //Broadcast online
 
         byte[] response = new byte[25];
         System.arraycopy(msg, 0, response, 0, 8); // Copy header

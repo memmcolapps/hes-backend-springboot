@@ -4,6 +4,8 @@ import gurux.dlms.GXByteBuffer;
 import gurux.dlms.GXDLMSClient;
 import gurux.dlms.GXDateTime;
 import gurux.dlms.GXReplyData;
+import gurux.dlms.enums.Authentication;
+import gurux.dlms.enums.InterfaceType;
 import gurux.dlms.enums.ObjectType;
 import gurux.dlms.enums.Unit;
 import gurux.dlms.internal.GXCommon;
@@ -45,7 +47,14 @@ public class DlmsService {
             NoSuchAlgorithmException, BadPaddingException,
             SignatureException, InvalidKeyException {
 
-        GXDLMSClient dlmsClient = new GXDLMSClient();
+        GXDLMSClient dlmsClient = new GXDLMSClient(
+                true,                    // Logical name referencing ✅
+                1,                       // Client address (usually 1 for public)
+                1,                       // Server address
+                Authentication.LOW,     // Auth type
+                "12345678",              // Password
+                InterfaceType.WRAPPER    // DLMS WRAPPER mode
+        );
 
         //2. Generate AARQ Frame
         byte[][] aarq = dlmsClient.aarqRequest();
@@ -132,6 +141,8 @@ public class DlmsService {
 
         // Format to "YYYY-MM-DD HH:MM:SS"
         strclock = localDateTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+
+        strclock = "🕒 Meter Clock for "+ serial + ": "+ strclock;
 
         log.info("🕒 Meter Clock: {}", strclock);
 
