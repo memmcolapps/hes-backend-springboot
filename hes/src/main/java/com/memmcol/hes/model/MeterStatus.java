@@ -1,4 +1,4 @@
-package com.memmcol.hes.models;
+package com.memmcol.hes.model;
 
 import lombok.*;
 

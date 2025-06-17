@@ -1,6 +1,6 @@
 package com.memmcol.hes.service;
 
-import com.memmcol.hes.models.MeterStatus;
+import com.memmcol.hes.model.MeterStatus;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
