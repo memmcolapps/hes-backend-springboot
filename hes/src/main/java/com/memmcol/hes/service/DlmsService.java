@@ -142,7 +142,7 @@ public class DlmsService {
         // Format to "YYYY-MM-DD HH:MM:SS"
         strclock = localDateTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
 
-        strclock = "🕒 Meter Clock for "+ serial + ": "+ strclock;
+        strclock = "🕒 Meter Clock for " + serial + ": " + strclock;
 
         log.info("🕒 Meter Clock: {}", strclock);
 
@@ -152,6 +152,101 @@ public class DlmsService {
     public String greet(String name) {
         return "Al-hamdulilah. My first springboot DLMS application!. You are welcome, " + name + ".";
     }
+
+    public ResponseEntity<Map<String, Object>> readScalerValue(String meterSerial, String obis) throws Exception {
+        try {
+            String[] parts = obis.split(";");
+            if (parts.length != 4) {
+                throw new IllegalArgumentException("OBIS format must be: classId;obisCode;attributeIndex;dataIndex");
+            }
+
+            int classId = Integer.parseInt(parts[0]);
+            String obisCode = parts[1].trim();
+            int attributeIndex = Integer.parseInt(parts[2]);
+            int dataIndex = Integer.parseInt(parts[3]);
+
+            GXDLMSClient client = sessionManager.getClient(meterSerial);
+            if (client == null) {
+                log.warn("No active session for {}. Attempting to create...", meterSerial);
+                sessionManager.addSession(meterSerial, MeterConnections.getChannel(meterSerial));
+
+                // Try again after attempting to establish session
+                client = sessionManager.getClient(meterSerial);
+
+                if (client == null) {
+                    log.warn("No active session for {}", meterSerial);
+                    Map<String, Object> error = new HashMap<>();
+                    error.put("error", "No active session for meter: " + meterSerial);
+                    return ResponseEntity.status(HttpStatus.NOT_FOUND).body(
+                            Map.of(
+                                    "error", "No active session",
+                                    "serial", meterSerial,
+                                    "tip", "Please establish association before reading OBIS"
+                            )
+                    );
+                }
+            }
+
+            ObjectType type = ObjectType.forValue(classId);
+            GXDLMSObject obj = new GXDLMSObject();
+            double scaler = 1.0;
+            int index = 2;
+
+            if (Objects.requireNonNull(type) == ObjectType.REGISTER) {
+                GXDLMSRegister reg = new GXDLMSRegister();
+                reg.setLogicalName(obisCode);
+                index = 3;
+                obj = reg;
+            } else if (Objects.requireNonNull(type) == ObjectType.DEMAND_REGISTER) {
+                GXDLMSDemandRegister dr = new GXDLMSDemandRegister();
+                dr.setLogicalName(obisCode);
+                obj = dr;
+                index = 4;
+            } else {
+                Map<String, Object> error = new HashMap<>();
+                error.put("error", "Object is not Register or Demand Register");
+                error.put("details", "Object is not Register or Demand Register");
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
+            }
+
+            byte[][] scalerUnitRequest = client.read(obj, index);
+            byte[] response = RequestResponseService.sendCommand(meterSerial, scalerUnitRequest[0]);
+            if (isAssociationLost(response)) {
+                throw new AssociationLostException();
+            }
+            GXReplyData reply = new GXReplyData();
+            client.getData(response, reply, null);
+            Object updateValue = client.updateValue(obj, index, reply.getValue());
+
+            if (obj instanceof GXDLMSRegister reg) {
+                scaler = reg.getScaler();
+                scaler = BigDecimal.valueOf(Math.pow(10, scaler)).doubleValue();
+            } else if (obj instanceof GXDLMSDemandRegister reg) {
+                scaler = reg.getScaler();
+                scaler = BigDecimal.valueOf(Math.pow(10, scaler)).doubleValue();
+            }
+
+            Map<String, Object> obis_response = new LinkedHashMap<>();
+            obis_response.put("Meter No", meterSerial);
+            obis_response.put("obisCode", obisCode);
+            obis_response.put("attributeIndex", attributeIndex);
+            obis_response.put("dataIndex", dataIndex);
+            obis_response.put("scaler", scaler);
+            return ResponseEntity.ok(obis_response);
+        } catch (AssociationLostException ex) {
+            sessionManager.removeSession(meterSerial);
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", "🔄 Association lost with meter number: " + meterSerial);
+            error.put("details", ex.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
+        } catch (Exception e) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", "❌ Failed to read from OBIS or Error reading scaler from object");
+            error.put("details", e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
+        }
+    }
+
 
     public ResponseEntity<Map<String, Object>> readObisValue(String meterSerial, String obis) {
         try {
@@ -200,6 +295,7 @@ public class DlmsService {
 
                     // Read Scaler+Unit first
                     readScalerUnit(client, meterSerial, reg, 3);
+//                    readScaler(GXDLMSClient client, String serial, GXDLMSObject obj, int index)
                     scaler = reg.getScaler();
                     if (scaler == 0) {
                         scaler = 1.0;
@@ -305,11 +401,55 @@ public class DlmsService {
         }
     }
 
+    public List<String> getProfileCaptureColumns(GXDLMSClient client, String serial, String obisCode) {
+        List<String> columns = new ArrayList<>();
+
+        try {
+            GXDLMSProfileGeneric profile = new GXDLMSProfileGeneric();
+            profile.setLogicalName(obisCode);
+
+            // Read capture objects (attribute 3)
+            byte[][] request = client.read(profile, 3);
+            byte[] response = RequestResponseService.sendCommand(serial, request[0]);
+
+            if (isAssociationLost(response)) {
+                sessionManager.removeSession(serial);
+                throw new AssociationLostException();
+            }
+
+            GXReplyData reply = new GXReplyData();
+            client.getData(response, reply, null);
+            client.updateValue(profile, 3, reply.getValue());
+
+            for (Map.Entry<GXDLMSObject, GXDLMSCaptureObject> entry : profile.getCaptureObjects()) {
+                GXDLMSObject capturedObject = entry.getKey();
+                if (capturedObject != null) {
+                    columns.add(capturedObject.getLogicalName());
+                }
+            }
+        } catch (Exception e) {
+            log.error("❌ Error reading capture columns from {}: {}", obisCode, e.getMessage());
+        }
+        return columns;
+    }
+
+    private Object readAttribute(GXDLMSClient client, String serial, GXDLMSObject obj, int index) throws Exception {
+        byte[][] request = client.read(obj, index);
+        byte[] response = RequestResponseService.sendCommand(serial, request[0]);
+        if (isAssociationLost(response)) {
+            sessionManager.removeSession(serial);
+            throw new AssociationLostException();
+        }
+        GXReplyData reply = new GXReplyData();
+        client.getData(response, reply, null);
+        return client.updateValue(obj, index, reply.getValue());
+    }
 
     private void readScalerUnit(GXDLMSClient client, String serial, GXDLMSObject obj, int index) throws Exception {
         byte[][] scalerUnitRequest = client.read(obj, index);
         byte[] response = RequestResponseService.sendCommand(serial, scalerUnitRequest[0]);
         if (isAssociationLost(response)) {
+            sessionManager.removeSession(serial);
             throw new AssociationLostException();
         }
         GXReplyData reply = new GXReplyData();
@@ -317,16 +457,34 @@ public class DlmsService {
         client.updateValue(obj, index, reply.getValue());
     }
 
-    private Object readAttribute(GXDLMSClient client, String serial, GXDLMSObject obj, int index) throws Exception {
-        byte[][] request = client.read(obj, index);
-        byte[] response = RequestResponseService.sendCommand(serial, request[0]);
+    private double readScaler(GXDLMSClient client, String serial, GXDLMSObject obj, int index) throws Exception {
+        byte[][] scalerUnitRequest = client.read(obj, index);
+        byte[] response = RequestResponseService.sendCommand(serial, scalerUnitRequest[0]);
         if (isAssociationLost(response)) {
+            sessionManager.removeSession(serial);
             throw new AssociationLostException();
         }
         GXReplyData reply = new GXReplyData();
         client.getData(response, reply, null);
-        return client.updateValue(obj, index, reply.getValue());
+        Object updateValue = client.updateValue(obj, index, reply.getValue());
+
+        try {
+            if (obj instanceof GXDLMSRegister reg) {
+                double scaler = reg.getScaler();
+                return BigDecimal.valueOf(Math.pow(10, scaler)).doubleValue();
+            } else if (obj instanceof GXDLMSDemandRegister reg) {
+                double scaler = reg.getScaler();
+                return BigDecimal.valueOf(Math.pow(10, scaler)).doubleValue();
+            } else {
+                log.warn("⚠️ Object is not Register or Demand Register: {}", obj.getLogicalName());
+            }
+        } catch (Exception e) {
+            log.error("❌ Error reading scaler from object {}: {}", obj.getLogicalName(), e.getMessage());
+        }
+
+        return BigDecimal.ONE.doubleValue();
     }
+
 
     private boolean isAssociationLost(byte[] response) {
         // Match DLMS "Association Lost" signature
