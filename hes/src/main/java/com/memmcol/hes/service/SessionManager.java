@@ -96,8 +96,5 @@ public class SessionManager {
         sessions.remove(serial);
     }
 
-//    public Optional<MeterSession> getSession(String serial) {
-//        return Optional.ofNullable(sessions.get(serial));
-//    }
 
 }

@@ -1,6 +1,6 @@
 package com.memmcol.hes.controller;
 
-import com.memmcol.hes.models.MeterStatus;
+import com.memmcol.hes.model.MeterStatus;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.messaging.handler.annotation.MessageMapping;
