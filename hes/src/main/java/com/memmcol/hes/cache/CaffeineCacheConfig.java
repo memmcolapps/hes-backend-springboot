@@ -37,6 +37,11 @@ public class CaffeineCacheConfig {
                 .expireAfterAccess(20, TimeUnit.MINUTES)
                 .recordStats());
 
+        specs.put("profileMetadata", Caffeine.newBuilder()  // ✅ NEW
+                .maximumSize(500)
+                .expireAfterWrite(60, TimeUnit.MINUTES)
+                .recordStats());
+
         // Custom cache manager with per-cache Caffeine config
         return new CaffeineCacheManager() {
             @Override
@@ -47,5 +52,4 @@ public class CaffeineCacheConfig {
             }
         };
     }
-
 }
