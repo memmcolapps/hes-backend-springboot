@@ -77,6 +77,15 @@ public class SessionManager {
         return null;
     }
 
+    public GXDLMSClient getOrCreateClient(String serial) {
+        GXDLMSClient client = getClient(serial);
+        if (client == null) {
+            addSession(serial, MeterConnections.getChannel(serial));
+            client = getClient(serial);
+        }
+        return client;
+    }
+
     /**
      * Remove expired sessions (run on a schedule).
      */

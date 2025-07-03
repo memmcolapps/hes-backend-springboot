@@ -1,18 +1,25 @@
 package com.memmcol.hes.netty;
 
+import com.memmcol.hes.model.ProfileRowDTO;
 import com.memmcol.hes.service.*;
+import gurux.dlms.internal.GXCommon;
 import io.netty.channel.*;
+import io.netty.handler.timeout.ReadTimeoutException;
 import lombok.extern.slf4j.Slf4j;
 import java.net.SocketException;
+import java.net.SocketTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
+import java.util.List;
 
 @Slf4j
 public class DLMSMeterHandler extends SimpleChannelInboundHandler<byte[]> {
     private final MeterStatusService meterStatusService;
+    private final DlmsService dlmsService;
 
-    public DLMSMeterHandler(MeterStatusService meterStatusService) {
+    public DLMSMeterHandler(MeterStatusService meterStatusService, DlmsService dlmsService) {
         this.meterStatusService = meterStatusService;
+        this.dlmsService = dlmsService;
     }
 
     @Override
@@ -28,17 +35,29 @@ public class DLMSMeterHandler extends SimpleChannelInboundHandler<byte[]> {
         ctx.close();
     }
     @Override
-    protected void channelRead0(ChannelHandlerContext ctx, byte[] msg) {
-        log.info("RX (Message received): {}", formatHex(msg));
+    protected void channelRead0(ChannelHandlerContext ctx, byte[] msg) throws Exception {
+//        log.info("RX (Message received): {}", formatHex(msg));
 
         if (isLoginMessage(msg)) {
+            log.info("RX (Message received): {}", formatHex(msg));
             handleLoginRequest(ctx, msg);
+
+            //For develop test
+            try {
+                String serial = MeterConnections.getSerial(ctx.channel());
+                List<ProfileRowDTO> data = dlmsService.readProfileBuffer(serial, "1.0.99.2.0.255");
+            } catch (Exception e){
+                log.warn("Failed to read profile buffer {}", e.getMessage());
+            }
+
         } else if (isHeartMessage(msg)) {
+            log.info("RX (Message received): {}", formatHex(msg));
             handleHeartRequest(ctx, msg);
         } else if (!isLoginMessage(msg) && !isHeartMessage(msg)){
             // Assume it's a response to a previously sent command
             // Use channel to find the meter serial
             String serial = MeterConnections.getSerial(ctx.channel());
+            log.info("RX: {} : {}", serial, GXCommon.toHex(msg));
             if (serial == null) {
                 log.warn("❌ Received DLMS response from unknown channel {}", ctx.channel().remoteAddress());
                 return;
@@ -51,6 +70,7 @@ public class DLMSMeterHandler extends SimpleChannelInboundHandler<byte[]> {
                 log.warn("Received untracked DLMS response from serial: {}", serial);
             }
         } else {
+            log.info("RX (Message received): {}", formatHex(msg));
             log.warn("Unknown or unsupported message type.");
         }
     }
@@ -62,7 +82,9 @@ public class DLMSMeterHandler extends SimpleChannelInboundHandler<byte[]> {
             log.warn("⚠️ Socket connection reset by peer: {}", cause.getMessage());
         } else if (cause instanceof ArrayIndexOutOfBoundsException) {
             log.warn("Array Index Out Of Bounds Exception: {}", cause.getMessage());
-        } else {
+        } else if (cause instanceof ReadTimeoutException) {
+            log.warn("Read Timeout Error: {}", cause.getMessage());
+        }else {
             log.error("Unhandled error: {}", cause.getMessage(), cause);
         }
         ctx.close();

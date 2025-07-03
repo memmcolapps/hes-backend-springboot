@@ -9,6 +9,7 @@ import gurux.dlms.internal.GXCommon;
 import gurux.dlms.objects.GXDLMSClock;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.Channel;
+import io.netty.handler.timeout.ReadTimeoutException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -38,6 +39,7 @@ public final class RequestResponseService {
     }
 
     public static byte[] sendCommand(String serial, byte[] command) {
+        log.info("TX: {} : {}", serial, GXCommon.toHex(command));
         Channel channel = MeterConnections.getChannel(serial);
         if (channel != null && channel.isActive()) {
             String reqKey = DLMSRequestTracker.register(serial);
@@ -47,9 +49,10 @@ public final class RequestResponseService {
 
             try {
                 return DLMSRequestTracker.waitForResponse(reqKey, 10000); // 3s timeout
-            } catch (TimeoutException e) {
+            } catch (TimeoutException e) {  //ReadTimeoutException
                 log.warn("DLMS read timeout: {}", e.getMessage());
-                throw new IllegalStateException(e);
+//                throw new IllegalStateException(e);
+                throw new ReadTimeoutException("DLMS read timeout");
             }
         } else {
             throw new IllegalStateException("Inactive or missing channel for " + serial);
@@ -57,8 +60,8 @@ public final class RequestResponseService {
     }
 
     public static byte[] sendCommandWithRetry(String serial, byte[] command, int maxRetries, long delayMs) {
+        log.info("TX: {} : {}", serial, GXCommon.toHex(command));
         int attempt = 0;
-
         while (attempt < maxRetries) {
             try {
                 return sendCommand(serial, command); // Uses the async tracker from before
