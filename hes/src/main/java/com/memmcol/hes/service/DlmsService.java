@@ -4,7 +4,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.memmcol.hes.model.*;
+import com.memmcol.hes.nettyUtils.RequestResponseService;
+import com.memmcol.hes.nettyUtils.SessionManager;
 import com.memmcol.hes.repository.DlmsObisObjectRepository;
+import com.memmcol.hes.repository.ProfileChannel2Repository;
+import com.memmcol.hes.trackByTimestamp.*;
+import com.memmcol.hes.trackLastEntryRead.ProfileProgressTracker;
 import gurux.dlms.*;
 import gurux.dlms.enums.Authentication;
 import gurux.dlms.enums.InterfaceType;
@@ -12,11 +17,13 @@ import gurux.dlms.enums.ObjectType;
 import gurux.dlms.enums.Unit;
 import gurux.dlms.internal.GXCommon;
 import gurux.dlms.objects.*;
-import io.netty.handler.timeout.ReadTimeoutException;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Lazy;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import javax.crypto.BadPaddingException;
 import javax.crypto.IllegalBlockSizeException;
@@ -41,12 +48,37 @@ public class DlmsService {
     private final SessionManager sessionManager;
     private final DlmsObisObjectRepository repository;
     private final ProfileMetadataCacheService metadataCache;
+    private final ProfileMetadataService profileMetadataService;
+    private final ProfileChannel2Repository profileChannel2Repository;
+    private final ProfileProgressTracker profileProgressTracker;
+    private final ProfileTimestampTracker profileTimestampTracker;
+    private final MeterProfileTimestampProgressRepository meterProfileTimestampProgressRepository;
+    private final ProfileTimestampCacheService cacheService;
+    private final MeterProfileStateService stateService;
+    private final ProfileTimestampResolver profileTimestampResolver;
+    private final MeterProfileStateRepository meterProfileStateRepository;
+    private final MeterReadAdapter readAdapter;
 
-    public DlmsService(SessionManager sessionManager, DlmsObisObjectRepository repository, ProfileMetadataCacheService metadataCache) {
+    public DlmsService(SessionManager sessionManager,
+                       DlmsObisObjectRepository repository,
+                       ProfileMetadataCacheService metadataCache,
+                       @Lazy ProfileMetadataService profileMetadataService, ProfileChannel2Repository profileChannel2Repository, ProfileProgressTracker profileProgressTracker, ProfileTimestampTracker profileTimestampTracker, MeterProfileTimestampProgressRepository meterProfileTimestampProgressRepository, ProfileTimestampCacheService cacheService, MeterProfileStateService stateService, ProfileTimestampResolver profileTimestampResolver, MeterProfileStateRepository meterProfileStateRepository, MeterReadAdapter readAdapter) {
         this.sessionManager = sessionManager;
         this.repository = repository;
         this.metadataCache = metadataCache;
+        this.profileMetadataService = profileMetadataService;
+        this.profileChannel2Repository = profileChannel2Repository;
+        this.profileProgressTracker = profileProgressTracker;
+        this.profileTimestampTracker = profileTimestampTracker;
+        this.meterProfileTimestampProgressRepository = meterProfileTimestampProgressRepository;
+        this.cacheService = cacheService;
+        this.stateService = stateService;
+        this.profileTimestampResolver = profileTimestampResolver;
+        this.meterProfileStateRepository = meterProfileStateRepository;
+        this.readAdapter = readAdapter;
     }
+
+    public static final DateTimeFormatter GLOBAL_TS_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     public String readClock(String serial) throws InvalidAlgorithmParameterException,
             NoSuchPaddingException, IllegalBlockSizeException,
@@ -217,7 +249,7 @@ public class DlmsService {
 
             byte[][] scalerUnitRequest = client.read(obj, index);
             byte[] response = RequestResponseService.sendCommand(meterSerial, scalerUnitRequest[0]);
-            if (isAssociationLost(response)) {
+            if (readAdapter.isAssociationLost(response)) {
                 throw new AssociationLostException();
             }
             GXReplyData reply = new GXReplyData();
@@ -264,6 +296,8 @@ public class DlmsService {
             int classId = Integer.parseInt(parts[0]);
             String obisCode = parts[1].trim();
             int attributeIndex = Integer.parseInt(parts[2]);
+
+
             int dataIndex = Integer.parseInt(parts[3]);
 
             GXDLMSClient client = sessionManager.getClient(meterSerial);
@@ -300,7 +334,7 @@ public class DlmsService {
                     reg.setLogicalName(obisCode);
 
                     // Read Scaler+Unit first
-                    readScalerUnit(client, meterSerial, reg, 3);
+                    readAdapter.readScalerUnit(client, meterSerial, reg, 3);
 //                    readScaler(GXDLMSClient client, String serial, GXDLMSObject obj, int index)
                     scaler = reg.getScaler();
                     if (scaler == 0) {
@@ -310,7 +344,7 @@ public class DlmsService {
 //                    unit = reg.getUnit() != null ? reg.getUnit().toString() : "";
 
                     // Read value
-                    result = readAttribute(client, meterSerial, reg, attributeIndex);
+                    result =  readAdapter.readAttribute(client, meterSerial, reg, attributeIndex);
                     if (result instanceof Number) {
                         result = BigDecimal.valueOf(((Number) result).doubleValue())
                                 .setScale(2, RoundingMode.HALF_UP)
@@ -324,7 +358,7 @@ public class DlmsService {
                     dr.setLogicalName(obisCode);
 
                     // Read Scaler+Unit
-                    readScalerUnit(client, meterSerial, dr, 4);
+                    readAdapter.readScalerUnit(client, meterSerial, dr, 4);
                     scaler = dr.getScaler();
                     if (scaler == 0) {
                         scaler = 1.0;
@@ -332,7 +366,7 @@ public class DlmsService {
                     unit = dr.getUnit();
 
                     // Read value
-                    result = readAttribute(client, meterSerial, dr, attributeIndex);
+                    result =  readAdapter.readAttribute(client, meterSerial, dr, attributeIndex);
                     if (result instanceof Number) {
                         result = BigDecimal.valueOf(((Number) result).doubleValue())
                                 .setScale(2, RoundingMode.HALF_UP)
@@ -345,7 +379,7 @@ public class DlmsService {
                     GXDLMSClock clk = new GXDLMSClock();
                     clk.setLogicalName(obisCode);
                     GXDateTime clockDateTime;
-                    Object raw = readAttribute(client, meterSerial, clk, attributeIndex);
+                    Object raw =  readAdapter.readAttribute(client, meterSerial, clk, attributeIndex);
                     if (raw instanceof GXDateTime dt) {
                         clockDateTime = dt;
                     } else if (raw instanceof byte[] array) {
@@ -369,7 +403,7 @@ public class DlmsService {
                 case DATA -> {
                     GXDLMSData data = new GXDLMSData();
                     data.setLogicalName(obisCode);
-                    result = readAttribute(client, meterSerial, data, attributeIndex);
+                    result =  readAdapter.readAttribute(client, meterSerial, data, attributeIndex);
                     object = data;
                     unit = null;
                 }
@@ -377,7 +411,7 @@ public class DlmsService {
                 default -> {
                     object = GXDLMSClient.createObject(type);
                     object.setLogicalName(obisCode);
-                    result = readAttribute(client, meterSerial, object, attributeIndex);
+                    result =  readAdapter.readAttribute(client, meterSerial, object, attributeIndex);
                     unit = null;
                 }
 //                default -> throw new IllegalArgumentException("Unsupported object type: " + type);
@@ -418,7 +452,7 @@ public class DlmsService {
             byte[][] request = client.read(profile, 3);
             byte[] response = RequestResponseService.sendCommand(serial, request[0]);
 
-            if (isAssociationLost(response)) {
+            if ( readAdapter.isAssociationLost(response)) {
                 sessionManager.removeSession(serial);
                 getProfileCaptureColumns(client, serial, obisCode);
                 throw new AssociationLostException();
@@ -439,201 +473,6 @@ public class DlmsService {
         }
         return columns;
     }
-
-    private Object readAttribute(GXDLMSClient client, String serial, GXDLMSObject obj, int index) throws Exception {
-        byte[][] request = client.read(obj, index);
-        byte[] response = RequestResponseService.sendCommand(serial, request[0]);
-        if (isAssociationLost(response)) {
-            sessionManager.removeSession(serial);
-            throw new AssociationLostException();
-        }
-        GXReplyData reply = new GXReplyData();
-        client.getData(response, reply, null);
-        return client.updateValue(obj, index, reply.getValue());
-    }
-
-    private Object readAttributeWithBlock(GXDLMSClient client, String serial, GXDLMSObject obj, int index) throws Exception {
-        byte[][] request = client.read(obj, index);
-        GXReplyData reply = readDataBlock(client, serial, request[0]);
-        return client.updateValue(obj, index, reply.getValue());
-    }
-
-    private void readScalerUnit(GXDLMSClient client, String serial, GXDLMSObject obj, int index) throws Exception {
-        byte[][] scalerUnitRequest = client.read(obj, index);
-        byte[] response = RequestResponseService.sendCommand(serial, scalerUnitRequest[0]);
-        if (isAssociationLost(response)) {
-            sessionManager.removeSession(serial);
-            throw new AssociationLostException();
-        }
-        GXReplyData reply = new GXReplyData();
-        client.getData(response, reply, null);
-        client.updateValue(obj, index, reply.getValue());
-    }
-
-    private double readScaler(GXDLMSClient client, String serial, GXDLMSObject obj, int index) throws Exception {
-        byte[][] scalerUnitRequest = client.read(obj, index);
-        byte[] response = RequestResponseService.sendCommand(serial, scalerUnitRequest[0]);
-        if (isAssociationLost(response)) {
-            sessionManager.removeSession(serial);
-            throw new AssociationLostException();
-        }
-        GXReplyData reply = new GXReplyData();
-        client.getData(response, reply, null);
-        Object updateValue = client.updateValue(obj, index, reply.getValue());
-
-        try {
-            if (obj instanceof GXDLMSRegister reg) {
-                double scaler = reg.getScaler();
-                return BigDecimal.valueOf(Math.pow(10, scaler)).doubleValue();
-            } else if (obj instanceof GXDLMSDemandRegister reg) {
-                double scaler = reg.getScaler();
-                return BigDecimal.valueOf(Math.pow(10, scaler)).doubleValue();
-            } else {
-                log.warn("⚠️ Object is not Register or Demand Register: {}", obj.getLogicalName());
-            }
-        } catch (Exception e) {
-            log.error("❌ Error reading scaler from object {}: {}", obj.getLogicalName(), e.getMessage());
-        }
-
-        return BigDecimal.ONE.doubleValue();
-    }
-
-    /**
-     * Reads a DLMS data block, including segmented/multi-frame responses.
-     *
-     * @param client       DLMS client for protocol interaction
-     * @param serial       Meter serial number (used to route channel/command)
-     * @param firstRequest Initial byte request (e.g., from `client.read`)
-     * @return GXReplyData containing the full response
-     */
-    private GXReplyData readDataBlock(GXDLMSClient client, String serial, byte[] firstRequest) throws Exception {
-        GXReplyData reply = new GXReplyData();
-
-        try {
-
-
-            // Send initial request
-            byte[] response = RequestResponseService.sendCommand(serial, firstRequest);
-            if (isAssociationLost(response)) {
-                throw new AssociationLostException("Association lost with " + serial);
-            }
-            client.getData(response, reply, null);
-
-            // Handle multi-block responses
-            // Loop if there is more data
-            while (reply.isMoreData()) {
-                byte[] nextRequest;
-
-                if (reply.isStreaming()) {
-                    log.debug("Streaming block: no receiverReady needed.");
-                    nextRequest = null; // Streaming continues automatically // Streaming doesn't need new request
-                } else {
-                    log.debug("Sending receiverReady...");
-//                nextRequest = client.receiverReady(reply.getMoreData());
-                    nextRequest = client.receiverReady(reply); // ✅ Correct
-
-                }
-
-                if (nextRequest == null) break; // Safety
-
-                response = RequestResponseService.sendCommand(serial, nextRequest);
-
-                if (isAssociationLost(response)) {
-                    sessionManager.removeSession(serial);
-                    throw new AssociationLostException("Association lost in block read");
-                }
-
-                client.getData(response, reply, null);
-            }
-
-        } catch (Exception e) {
-            //
-        }
-
-        return reply;
-    }
-
-
-    /**
-     * ✅ Step-by-Step Upgrade: readDataBlockWithPartialSupport
-     * Reads a DLMS data block, including segmented/multi-frame responses.
-     * Accumulate Partial Data from Profile Generic
-     * Enhanced readDataBlockWithPartialSupport
-     *
-     * @param client         DLMS client for protocol interaction
-     * @param serial         Meter serial number (used to route channel/command)
-     * @param initialRequest Initial byte request (e.g., from `client.read`)
-     * @return GXReplyData containing the full response
-     */
-
-    public List<ProfileRowDTO> readDataBlockWithPartialSupport(
-            GXDLMSClient client,
-            String serial,
-            byte[] initialRequest,
-            List<ProfileMetadataDTO.ColumnDTO> columns,
-            int entryStart
-    ) throws Exception {
-        GXReplyData reply = new GXReplyData();
-
-        ProfileRowParser parser = new ProfileRowParser();
-        int entryId = entryStart;
-        int blockcounter = 0;
-
-        // 🟢 Initial request
-        byte[] response = RequestResponseService.sendCommand(serial, initialRequest);
-
-        if (isAssociationLost(response)) {
-            sessionManager.removeSession(serial);
-            throw new AssociationLostException("🔌 Association lost on first request.");
-        }
-
-        client.getData(response, reply, null);
-
-        // ✅ Decode initial data
-        List<ProfileRowDTO> parsed = parser.parse(columns, reply.getData(), entryId);
-//        result.addAll(parsed);
-        List<ProfileRowDTO> result = new ArrayList<>(parsed);
-        entryId += parsed.size();
-
-        // 🔁 Multi-block handling
-        while (reply.isMoreData()) {
-            byte[] nextRequest = client.receiverReady(reply);
-            if (nextRequest == null) break;
-
-            int retries = 3;
-            while (retries-- > 0) {
-                try {
-                    response = RequestResponseService.sendCommand(serial, nextRequest);
-                    break;
-                } catch (ReadTimeoutException e) {
-                    log.warn("⏱ Timeout reading block, retrying... ({})", retries);
-                    if (retries == 0) throw e;
-                } catch (Exception e) {
-                    log.warn("⚠️ Partial read aborted. Parsed {} rows so far.", result.size());
-                    return result;
-                }
-            }
-
-            if (isAssociationLost(response)) {
-                sessionManager.removeSession(serial);
-                throw new AssociationLostException("Association lost during multi-block read.");
-            }
-
-            client.getData(response, reply, null);
-
-            log.info("📦 Block #{} | Current Total Rows: {}", blockcounter++, result.size());
-
-            // ✅ Parse current block
-            List<ProfileRowDTO> moreParsed = parser.parse(columns, reply.getData(), entryId);
-            result.addAll(moreParsed);
-            entryId += moreParsed.size();
-        }
-
-        return result;
-
-    }
-
-
 
 
     /*
@@ -656,7 +495,7 @@ public class DlmsService {
         byte[][] request = client.read(association, 2);
 
         // Read using block reader
-        GXReplyData reply = readDataBlock(client, meterSerial, request[0]);
+        GXReplyData reply =  readAdapter.readDataBlock(client, meterSerial, request[0]);
 
         // Update value in association object
         client.updateValue(association, 2, reply.getValue());
@@ -701,22 +540,17 @@ public class DlmsService {
         repository.saveAll(entities);
     }
 
-    private boolean isAssociationLost(byte[] response) {
-        // Match DLMS "Association Lost" signature
-        if (response == null || response.length < 3) return false;
-        // Check specific sequence or code e.g., ends with D8 01 01
-        int len = response.length;
-        return response[len - 3] == (byte) 0xD8
-                && response[len - 2] == 0x01
-                && response[len - 1] == 0x01;
-    }
 
-    private String getUnitSymbol(Unit unit) {
+
+    static String getUnitSymbol(Unit unit) {
         return switch (unit) {
             case VOLTAGE -> "V";
             case CURRENT -> "A";
-            case ACTIVE_ENERGY -> "kWh";
+            case ACTIVE_POWER -> "kW";
             case APPARENT_POWER -> "kVA";
+            case REACTIVE_POWER -> "kVar";
+            case ACTIVE_ENERGY -> "kWh";
+            case APPARENT_ENERGY -> "kVAh";
             case REACTIVE_ENERGY -> "kvarh";
             case FREQUENCY -> "Hz";
             // Add more cases as needed
@@ -739,12 +573,12 @@ public class DlmsService {
 
         // Step 1: Read Capture Objects (Attribute 3)
         byte[][] captureRequest = client.read(profile, 3);
-        GXReplyData captureReply = readDataBlock(client, meterSerial, captureRequest[0]);
+        GXReplyData captureReply =  readAdapter.readDataBlock(client, meterSerial, captureRequest[0]);
         client.updateValue(profile, 3, captureReply.getValue());
 
         // Step 2: Read Entries in Use (Attribute 2)
         byte[][] entryRequest = client.read(profile, 2);
-        GXReplyData entryReply = readDataBlock(client, meterSerial, entryRequest[0]);
+        GXReplyData entryReply =  readAdapter.readDataBlock(client, meterSerial, entryRequest[0]);
         client.updateValue(profile, 2, entryReply.getValue());
 
         int totalEntries = profile.getEntriesInUse();
@@ -754,7 +588,7 @@ public class DlmsService {
 
         // Step 3: Read profile buffer using readRowsByEntry
         byte[][] readRequest = client.readRowsByEntry(profile, startIndex, entryCount);
-        GXReplyData reply = readDataBlock(client, meterSerial, readRequest[0]);
+        GXReplyData reply =  readAdapter.readDataBlock(client, meterSerial, readRequest[0]);
         client.updateValue(profile, 4, reply.getValue());
 
         // Step 4: Parse buffer
@@ -779,9 +613,9 @@ public class DlmsService {
                             ? dt
                             : GXCommon.getDateTime((byte[]) raw);
 
-                    DlmsDateUtils.ParsedTimestamp parsed = DlmsDateUtils.parseTimestamp(obj, i);
+                    LocalDateTime parsed = DlmsDateUtils.parseTimestampLdt(obj);
                     assert parsed != null;
-                    row.getValues().put("timestamp", parsed.formatted); // ✅ Add this
+                    row.getValues().put("timestamp", parsed); // ✅ Add this
                 } else {
                     row.getValues().put(name, raw);
                 }
@@ -821,7 +655,7 @@ public class DlmsService {
         } else {
             // Step 1: Read capture objects (Attribute 3)
             byte[][] captureRequest = client.read(profile, 3);
-            GXReplyData captureReply = readDataBlock(client, serial, captureRequest[0]);
+            GXReplyData captureReply = readAdapter.readDataBlock(client, serial, captureRequest[0]);
             client.updateValue(profile, 3, captureReply.getValue());
 
             // Convert capture objects to ColumnDTO list
@@ -845,7 +679,7 @@ public class DlmsService {
         int safeBatchSize = 50;
         byte[][] readRequest = client.readRowsByEntry(profile, knownEntryIndex, safeBatchSize);
 
-        List<ProfileRowDTO> parsedRows = readDataBlockWithPartialSupport(
+        List<ProfileRowDTO> parsedRows = readAdapter.readDataBlockWithPartialSupport(
                 client,
                 serial,
                 readRequest[0],
@@ -863,6 +697,472 @@ public class DlmsService {
         savePartialToJson(parsedRows);
         return parsedRows;
     }
+
+    //enhanced method, now reading attributes 7, 8, and 4, and handling rollover intelligently
+    public void readAndSaveProfileChannel2(String serial, String model, int count) throws Exception {
+        String profileObis = "1.0.99.2.0.255";
+
+        int startIndex = profileProgressTracker.getLastRead(serial, profileObis);
+
+        int nextIndex = startIndex + 1;
+
+        //Read profile columns from cache -> DB -> Meter
+        //List<ModelProfileMetadata>
+        List<ModelProfileMetadata> metadataList = profileMetadataService.getOrLoadMetadata(model, profileObis, serial);
+
+        ProfileMetadataDTO metadataDTO = ProfileMetadataMapper.map(nextIndex, metadataList);
+
+        // profile columns OBIS mapping
+        Map<String, Double> scalers = (Map<String, Double>) metadataList.stream()
+                .collect(Collectors.toMap(ModelProfileMetadata::getCaptureObis, ModelProfileMetadata::getScaler));
+        log.debug("scalers: {}", scalers.toString());
+
+        GXDLMSClient client = sessionManager.getOrCreateClient(serial);
+        if (client == null) throw new IllegalStateException("DLMS session missing");
+
+        GXDLMSProfileGeneric profile = new GXDLMSProfileGeneric();
+        profile.setLogicalName(profileObis);
+        // ✅ Automatically populate capture objects from metadata
+        DlmsUtils.populateCaptureObjects(profile, metadataList);
+
+        // 🔎 Read attribute 7: current entries in use
+        byte[][] captureRequest = client.read(profile, 7);
+        GXReplyData captureReply = readAdapter.readDataBlock(client, serial, captureRequest[0]);
+        client.updateValue(profile, 7, captureReply.getValue());
+        int bufferCount = profile.getEntriesInUse(); // entriesInUse = attribute 7
+        log.info("📦 Meter entries in use (attribute 7) = {}", bufferCount);
+
+        // 🔎 Read attribute 4: max buffer size
+        byte[][] bufferSize = client.read(profile, 4);
+        GXReplyData bufferSizeReply = readAdapter.readDataBlock(client, serial, bufferSize[0]);
+        client.updateValue(profile, 4, bufferSizeReply.getValue());
+        int bufferCapacity = profile.getProfileEntries();
+        log.info("🧮 Meter buffer capacity (attribute 4) = {}", bufferCapacity);
+
+        // 🔎 Read attribute 8: capture period in seconds (optional)
+        byte[][] captureSize = client.read(profile, 8);
+        GXReplyData captureSizeReply = readAdapter.readDataBlock(client, serial, captureSize[0]);
+        client.updateValue(profile, 8, captureSizeReply.getValue());
+        Long capturePeriod = profile.getCapturePeriod();
+        log.info("⏱️ Capture period (attribute 8) = {} seconds", capturePeriod);
+
+        // 🧠 Rollover Detection Logic
+        if (bufferCount == 0) {
+            log.warn("⚠️ Meter buffer is empty — no data to read.");
+            return;
+        }
+
+        if (nextIndex > bufferCount) {
+            // Likely meter rollover
+            log.warn("🔄 Meter rollover detected for {}, startIndex {} > bufferCount {}. Resetting to 1.",
+                    serial, nextIndex, bufferCount);
+
+            nextIndex = 1;
+            profileProgressTracker.updateLastRead(serial, profileObis, 1);
+        }
+
+        int endIndex = bufferCount;
+
+        byte[][] readRequest = client.readRowsByEntry(profile, nextIndex, count); // batch read
+
+        List<ProfileRowDTO> parsedRows = readAdapter.readDataBlockWithPartialSupport(
+                client,
+                serial,
+                readRequest[0],
+                metadataDTO.getColumns(),
+                nextIndex
+        );
+
+//        savePartialToJsonChannel2(parsedRows);
+
+        List<ProfileChannel2ReadingDTO> dtos = parsedRows.stream()
+                .map(row -> {
+                    Map<String, Object> valueMap = row.getValues();
+                    List<Object> values = new ArrayList<>(valueMap.values());
+
+                    return ProfileChannel2ReadingDTO.builder()
+                            .meterSerial(serial)
+                            .modelNumber(model)
+                            .entryIndex(row.getEntryId()) // use explicit entry ID
+                            .profileTimestamp(parseTimestamp(values.get(0)))  // safe parser
+                            .reactiveEnergyKvarh(safeParseDouble(values.get(1), "1.0.2.8.0.255", scalers))
+                            .activeEnergyKwh(safeParseDouble(values.get(2), "1.0.1.8.0.255", scalers))
+                            .rawData(row.getRawData().toString())
+                            .receivedAt(LocalDateTime.now())
+                            .build();
+                }).toList();
+
+        //Check for duplicates
+        try {
+            List<Integer> entryIndexes = dtos.stream()
+                    .map(ProfileChannel2ReadingDTO::getEntryIndex)
+                    .toList();
+
+            List<LocalDateTime> incomingTimestamps = dtos.stream()
+                    .map(ProfileChannel2ReadingDTO::getProfileTimestamp)
+                    .toList();
+
+            List<Long> existingIndexes = profileChannel2Repository
+                    .findExistingIndexesWithTimestamps(serial, entryIndexes, incomingTimestamps);
+
+            // Filter out duplicates
+            List<ProfileChannel2ReadingDTO> newDtos = dtos.stream()
+                    .filter(dto -> !existingIndexes.contains(dto.getEntryIndex()))
+                    .toList();
+
+            if (newDtos.isEmpty()) {
+                log.info("✅ All records already exist for meter {} – no new data to insert.", serial);
+                return;
+            }
+
+            // Convert and save new entities
+            List<ProfileChannel2Reading> entities2 = ProfileChannel2ReadingMapper.toEntityList(newDtos);
+            profileChannel2Repository.saveAll(entities2);
+
+            int newLast = newDtos.stream()
+                    .mapToInt(ProfileChannel2ReadingDTO::getEntryIndex)
+                    .max()
+                    .orElse(nextIndex);
+
+            profileProgressTracker.updateLastRead(serial, profileObis, newLast);
+
+        } catch (DataIntegrityViolationException e) {
+            log.error("❌ Data integrity violation during save: {}", e.getMessage(), e);
+            throw e;  // rethrow or handle gracefully
+        }
+    }
+
+    public int readProfileChannel2ByTimestamp(String serial, String model, LocalDateTime endDate) throws Exception {
+        String profileObis = "1.0.99.2.0.255";
+
+//        // ⏱️ Determine the timestamp to resume from
+//        LocalDateTime resumeFrom = (startDate != null)
+//                ? profileTimestampTracker.getLastTimestamp(serial, profileObis)
+//                : startDate;
+//        log.info("📅 Reading meter {} from timestamp: {}", serial, resumeFrom);
+
+        LocalDateTime resumeFrom = profileTimestampTracker.getLastTimestamp(serial, profileObis);
+        log.info("📅 Reading meter {} from timestamp: {}", serial, resumeFrom);
+
+        LocalDateTime resumeAfter = resumeFrom.plusHours(4);
+
+        // 🔧 Load metadata and setup DLMS profile object
+        List<ModelProfileMetadata> metadataList = profileMetadataService.getOrLoadMetadata(model, profileObis, serial);
+        ProfileMetadataDTO metadataDTO = ProfileMetadataMapper.map(1, metadataList);
+
+        GXDLMSClient client = sessionManager.getOrCreateClient(serial);
+        if (client == null) throw new IllegalStateException("DLMS session missing");
+
+        GXDLMSProfileGeneric profile = new GXDLMSProfileGeneric();
+        profile.setLogicalName(profileObis);
+        DlmsUtils.populateCaptureObjects(profile, metadataList);
+
+        // 🔎 Read attribute 8: capture period in seconds (optional)
+        byte[][] captureSize = client.read(profile, 8);
+        GXReplyData captureSizeReply = readAdapter.readDataBlock(client, serial, captureSize[0]);
+        client.updateValue(profile, 8, captureSizeReply.getValue());
+        Long capturePeriod = profile.getCapturePeriod();
+        log.info("⏱️ Capture period (attribute 8) = {} seconds", capturePeriod);
+
+        // 📨 Read rows from the meter using date range
+        byte[][] readRequest = client.readRowsByRange(profile, DlmsUtils.toGXDateTime(resumeFrom), DlmsUtils.toGXDateTime(resumeAfter)); // null = up to latest
+
+        List<ProfileRowDTO> parsedRows = readAdapter.readDataBlockWithPartialSupport(
+                client,
+                serial,
+                readRequest[0],
+                metadataDTO.getColumns(),
+                1
+        );
+
+        if (parsedRows.isEmpty()) {
+            log.info("📭 No new profile rows found for meter {} since {}", serial, resumeFrom);
+            return 0;
+        }
+
+        // 🔧 Parse scalers from metadata
+        Map<String, Double> scalers = metadataList.stream()
+                .collect(Collectors.toMap(ModelProfileMetadata::getCaptureObis, ModelProfileMetadata::getScaler));
+
+        // 🎯 Map parsed rows into DTOs
+        List<ProfileChannel2ReadingDTO> dtos = parsedRows.stream()
+                .map(row -> {
+                    Map<String, Object> valueMap = row.getValues();
+                    List<Object> values = new ArrayList<>(valueMap.values());
+
+                    return ProfileChannel2ReadingDTO.builder()
+                            .meterSerial(serial)
+                            .modelNumber(model)
+                            .entryIndex(row.getEntryId()) // retained for logging/debug only
+                            .profileTimestamp(parseTimestamp(values.get(0)))
+                            .reactiveEnergyKvarh(safeParseDouble(values.get(1), "1.0.2.8.0.255", scalers))
+                            .activeEnergyKwh(safeParseDouble(values.get(2), "1.0.1.8.0.255", scalers))
+                            .rawData(row.getRawData().toString())
+                            .receivedAt(LocalDateTime.now())
+                            .build();
+                }).toList();
+
+        // 📌 Deduplication by timestamp only
+        List<LocalDateTime> incomingTimestamps = dtos.stream()
+                .map(ProfileChannel2ReadingDTO::getProfileTimestamp)
+                .toList();
+
+        List<LocalDateTime> existingTimestamps = meterProfileTimestampProgressRepository
+                .findExistingTimestamps(serial, incomingTimestamps);
+
+        List<ProfileChannel2ReadingDTO> newDtos = dtos.stream()
+                .filter(dto -> !existingTimestamps.contains(dto.getProfileTimestamp()))
+                .toList();
+
+        if (newDtos.isEmpty()) {
+            log.info("✅ No new readings to save — all timestamps already exist.");
+            return 0;
+        }
+
+        // 💾 Save new readings
+        List<ProfileChannel2Reading> entities = ProfileChannel2ReadingMapper.toEntityList(newDtos);
+        profileChannel2Repository.saveAll(entities);
+
+        // ⏱️ Update timestamp tracker
+        LocalDateTime newLastTimestamp = newDtos.stream()
+                .map(ProfileChannel2ReadingDTO::getProfileTimestamp)
+                .max(LocalDateTime::compareTo)
+                .orElse(resumeFrom);
+
+        profileTimestampTracker.updateLastTimestamp(serial, profileObis, newLastTimestamp);
+
+        log.info("📌 Profile progress for {} updated to lastTimestamp = {}", serial, newLastTimestamp);
+
+        return entities.size(); // return number of saved records
+    }
+
+    public int readProfileChannel2ByTimestampDatablock(String serial, String model, LocalDateTime endDate) throws Exception {
+        String profileObis = "1.0.99.2.0.255";
+
+//        // ⏱️ Determine the timestamp to resume from
+//        LocalDateTime resumeFrom = (startDate != null)
+//                ? profileTimestampTracker.getLastTimestamp(serial, profileObis)
+//                : startDate;
+//        log.info("📅 Reading meter {} from timestamp: {}", serial, resumeFrom);
+
+        LocalDateTime resumeFrom = profileTimestampTracker.getLastTimestamp(serial, profileObis);
+        log.info("📅 Reading meter {} from timestamp: {}", serial, resumeFrom);
+
+        LocalDateTime resumeAfter = resumeFrom.plusHours(1);
+
+        // 🔧 Load metadata and setup DLMS profile object
+        List<ModelProfileMetadata> metadataList = profileMetadataService.getOrLoadMetadata(model, profileObis, serial);
+        ProfileMetadataDTO metadataDTO = ProfileMetadataMapper.map(1, metadataList);
+
+        GXDLMSClient client = sessionManager.getOrCreateClient(serial);
+        if (client == null) throw new IllegalStateException("DLMS session missing");
+
+        GXDLMSProfileGeneric profile = new GXDLMSProfileGeneric();
+        profile.setLogicalName(profileObis);
+        DlmsUtils.populateCaptureObjects(profile, metadataList);
+
+        // 🔎 Read attribute 7: current entries in use
+        byte[][] captureRequest = client.read(profile, 7);
+        GXReplyData captureReply =  readAdapter.readDataBlock(client, serial, captureRequest[0]);
+        client.updateValue(profile, 7, captureReply.getValue());
+        int bufferCount = profile.getEntriesInUse(); // entriesInUse = attribute 7
+        log.info("📦 Meter entries in use (attribute 7) = {}", bufferCount);
+
+        // 🔎 Read attribute 4: max buffer size
+        byte[][] bufferSize = client.read(profile, 4);
+        GXReplyData bufferSizeReply =  readAdapter.readDataBlock(client, serial, bufferSize[0]);
+        client.updateValue(profile, 4, bufferSizeReply.getValue());
+        int bufferCapacity = profile.getProfileEntries();
+        log.info("🧮 Meter buffer capacity (attribute 4) = {}", bufferCapacity);
+
+        // 🔎 Read attribute 8: capture period in seconds (optional)
+        byte[][] captureSize = client.read(profile, 8);
+        GXReplyData captureSizeReply =  readAdapter.readDataBlock(client, serial, captureSize[0]);
+        client.updateValue(profile, 8, captureSizeReply.getValue());
+        Long capturePeriod = profile.getCapturePeriod();
+        log.info("⏱️ Capture period (attribute 8) = {} seconds", capturePeriod);
+
+        // 📨 Read rows from the meter using date range
+        byte[][] readRequest = client.readRowsByRange(profile, DlmsUtils.toGXDateTime(resumeFrom), DlmsUtils.toGXDateTime(resumeAfter)); // null = up to latest
+        GXReplyData reply =  readAdapter.readDataBlock(client, serial, readRequest[0]);
+        client.updateValue(profile, 2, reply.getValue());
+
+        // Step 4: Parse the buffer
+        List<ProfileChannel2ReadingDTO> readings = new ArrayList<>();
+        List<Object> buffer = List.of(profile.getBuffer());
+        // 🔧 Parse scalers from metadata
+        Map<String, Double> scalers = metadataList.stream()
+                .collect(Collectors.toMap(ModelProfileMetadata::getCaptureObis, ModelProfileMetadata::getScaler));
+
+        for (Object rowObj : buffer) {
+            if (!(rowObj instanceof Object[] row)) {
+                log.warn("Skipping unexpected buffer row type: {}", rowObj.getClass());
+                continue;
+            }
+
+            LocalDateTime timestamp = null;
+            Double activeEnergy = null;
+            Double reactiveEnergy = null;
+
+            // Parse timestamp
+            if (row[0] instanceof GXDateTime gxDateTime) {
+                timestamp = parseTimestamp(gxDateTime);
+            }
+
+            // Parse energies
+            if (row[1] instanceof Number) {
+                activeEnergy = safeParseDouble(((Number) row[1]).doubleValue(), "1.0.1.8.0.255", scalers);
+                assert activeEnergy != null;
+                activeEnergy = BigDecimal.valueOf(((Number) activeEnergy).doubleValue())
+                        .setScale(2, RoundingMode.HALF_UP)
+                        .doubleValue();
+            }
+
+            if (row[2] instanceof Number) {
+                reactiveEnergy = safeParseDouble(((Number) row[2]).doubleValue(), "1.0.2.8.0.255", scalers);
+                assert reactiveEnergy != null;
+                reactiveEnergy = BigDecimal.valueOf(((Number) reactiveEnergy).doubleValue())
+                        .setScale(2, RoundingMode.HALF_UP)
+                        .doubleValue();
+            }
+
+            if (timestamp != null) {
+                readings.add(ProfileChannel2ReadingDTO.builder()
+                        .entryIndex(1)
+                        .profileTimestamp(timestamp)
+                        .activeEnergyKwh(activeEnergy)
+                        .reactiveEnergyKvarh(reactiveEnergy)
+                        .meterSerial(serial)
+                        .modelNumber(model)
+                        .receivedAt(LocalDateTime.now())
+                        .build());
+            }
+        }
+
+        // 📌 Deduplication by timestamp only
+        List<LocalDateTime> incomingTimestamps = readings.stream()
+                .map(ProfileChannel2ReadingDTO::getProfileTimestamp)
+                .toList();
+
+        List<LocalDateTime> existingTimestamps = meterProfileTimestampProgressRepository
+                .findExistingTimestamps(serial, incomingTimestamps);
+
+        List<ProfileChannel2ReadingDTO> newDtos = readings.stream()
+                .filter(dto -> !existingTimestamps.contains(dto.getProfileTimestamp()))
+                .toList();
+
+        if (newDtos.isEmpty()) {
+            log.info("✅ No new readings to save — all timestamps already exist.");
+            return 0;
+        }
+
+        // 💾 Save new readings
+        List<ProfileChannel2Reading> entities = ProfileChannel2ReadingMapper.toEntityList(newDtos);
+        profileChannel2Repository.saveAll(entities);
+
+        // ⏱️ Update timestamp tracker
+        LocalDateTime newLastTimestamp = newDtos.stream()
+                .map(ProfileChannel2ReadingDTO::getProfileTimestamp)
+                .max(LocalDateTime::compareTo)
+                .orElse(resumeFrom);
+
+        profileTimestampTracker.updateLastTimestamp(serial, profileObis, newLastTimestamp);
+
+        log.info("📌 Profile progress for {} updated to lastTimestamp = {}", serial, newLastTimestamp);
+
+        return entities.size(); // return number of saved records
+    }
+
+
+    public void tryReadWithRetry(String serial, String model, int count) {
+        int maxAttempts = 3;
+        int delayMs = 5000;
+
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                readAndSaveProfileChannel2(serial, model, count);
+                return; // ✅ Success
+            } catch (IOException | GXDLMSException e) {
+                log.warn("⚠️ Attempt {}/{} failed for meter {}: {}", attempt, maxAttempts, serial, e.getMessage());
+
+                if (attempt == maxAttempts) {
+                    log.error("❌ All retry attempts failed for meter {} – skipping.", serial);
+                } else {
+                    try {
+                        Thread.sleep(delayMs);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        log.warn("Retry interrupted for meter {}", serial);
+                        return;
+                    }
+                }
+            } catch (Exception e) {
+                log.error("❌ Unexpected error for meter {}: {}", serial, e.getMessage(), e);
+                return; // Stop retrying for unknown/unhandled exceptions
+            }
+        }
+    }
+
+    private Double scale(Map<String, Number> raw, String obis, Map<String, Double> scalers) {
+        Number val = raw.get(obis);
+        if (val == null) return null;
+        double scaler = scalers.getOrDefault(obis, 1.0);
+        return val.doubleValue() * scaler;
+    }
+
+    private Double safeParseDouble(Object val, String obis, Map<String, Double> scalers) {
+        double result = 1.00;
+        if (val instanceof Number) {
+            double scaler = scalers.getOrDefault(obis, 1.0);
+            result = ((Number) val).doubleValue() * scaler;
+        } else
+            try {
+                result = Double.parseDouble(val.toString());
+            } catch (Exception ex) {
+                return null;
+            }
+        return result;
+    }
+
+    private Double safeParseDouble(Object val) {
+        if (val instanceof Number) return ((Number) val).doubleValue();
+        try {
+            return Double.parseDouble(val.toString());
+        } catch (Exception ex) {
+            return null;
+        }
+    }
+
+    private LocalDateTime parseTimestamp(Object raw) {
+        switch (raw) {
+            case null -> {
+                return null;
+            }
+
+            case GXDateTime gxdt -> {
+                Date date = gxdt.getValue(); // returns java.util.Date
+                return date.toInstant().atZone(ZoneId.systemDefault()).toLocalDateTime();
+            }
+
+            case LocalDateTime dt -> {
+                return dt;
+            }
+            case String str -> {
+                try {
+                    // Acceptable format in your JSON: 2024-08-21 10:30:00
+                    DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+                    return LocalDateTime.parse(str, formatter);
+                } catch (Exception e) {
+                    log.error("❌ Failed to parse timestamp: {}", str, e);
+                }
+            }
+            default -> {
+            }
+        }
+
+        return null;
+    }
+
 
     public List<Map.Entry<GXDLMSObject, GXDLMSCaptureObject>> applyMetadataToProfile(GXDLMSProfileGeneric profile, ProfileMetadataDTO metadata) {
         List<Map.Entry<GXDLMSObject, GXDLMSCaptureObject>> columns = new ArrayList<>();
@@ -914,13 +1214,26 @@ public class DlmsService {
         }
     }
 
+    private void savePartialToJsonChannel2(List<ProfileRowDTO> rows) {
+        try {
+            ObjectMapper mapper = new ObjectMapper()
+                    .registerModule(new JavaTimeModule())                          // ✅ Enables Java 8 date/time
+                    .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)       // ✅ Use ISO-8601, not numeric timestamps
+                    .enable(SerializationFeature.INDENT_OUTPUT);
+            mapper.writeValue(new File("dlms_profile_channel2.json"), rows);
+            log.info("📝 Partial profile saved to dlms_profile_channel2.json with {} rows", rows.size());
+        } catch (IOException e) {
+            log.warn("⚠️ Could not save partial profile data", e);
+        }
+    }
+
     public ProfileMetadataDTO readAndCacheProfileMetadata(GXDLMSClient client, String serial, String obisCode) throws Exception {
         GXDLMSProfileGeneric profile = new GXDLMSProfileGeneric();
         profile.setLogicalName(obisCode);
 
         // Step 1: Read Attribute 3 (Capture Object definitions)
         byte[][] captureRequest = client.read(profile, 3);
-        GXReplyData captureReply = readDataBlock(client, serial, captureRequest[0]);
+        GXReplyData captureReply =  readAdapter.readDataBlock(client, serial, captureRequest[0]);
 
         Object[] captureArray = (Object[]) captureReply.getValue(); // ⚠️ Attribute 3 is always an array of GXStructures
         ProfileMetadataDTO metadataDTO = new ProfileMetadataDTO();
@@ -944,7 +1257,7 @@ public class DlmsService {
         // Step 2: Optionally read Attribute 2 (EntriesInUse)
         try {
             byte[][] entryRequest = client.read(profile, 2);
-            GXReplyData entryReply = readDataBlock(client, serial, entryRequest[0]);
+            GXReplyData entryReply =  readAdapter.readDataBlock(client, serial, entryRequest[0]);
             client.updateValue(profile, 2, entryReply.getValue());
             metadataDTO.setEntriesInUse(profile.getEntriesInUse());
         } catch (Exception e) {
@@ -985,9 +1298,9 @@ public class DlmsService {
 
                 if (col.getClassId() == 8) { // GXDLMSClock
                     GXDateTime dt = (val instanceof GXDateTime) ? (GXDateTime) val : GXCommon.getDateTime((byte[]) val);
-                    DlmsDateUtils.ParsedTimestamp parsed = DlmsDateUtils.parseTimestamp(val, i);
+                    LocalDateTime parsed = DlmsDateUtils.parseTimestampLdt(val);
                     assert parsed != null;
-                    row.getValues().put("timestamp", parsed.formatted); // ✅ Add this
+                    row.getValues().put("timestamp", parsed.format(GLOBAL_TS_FORMATTER)); // ✅ Add this
                 } else {
                     row.getValues().put(col.getObis(), val);
                 }
@@ -999,5 +1312,188 @@ public class DlmsService {
         return result;
     }
 
+//    ✅ Step 1: Loader Method – Read Attribute 3 + Save Metadata
+//
+//    Create this method in a service (e.g. ProfileCaptureLoaderService) to be passed into the getMetadata(...) call.
+
+    public List<ModelProfileMetadata> readAttribute3FromMeterAndConvertToEntity(
+            String meterModel,    //Temporary replaced with meter serial number. The meter model will be added later,
+            String profileObis
+    ) {
+        try {
+            GXDLMSClient client = sessionManager.getOrCreateClient(meterModel);
+            if (client == null) throw new IllegalStateException("No DLMS session found.");
+
+            GXDLMSProfileGeneric profile = new GXDLMSProfileGeneric();
+            profile.setLogicalName(profileObis);
+
+            // Read attribute 3 (CaptureObjects)
+            byte[][] request = client.read(profile, 3);
+            GXReplyData reply =  readAdapter.readDataBlock(client, meterModel, request[0]);
+            client.updateValue(profile, 3, reply.getValue());
+
+            List<ModelProfileMetadata> result = new ArrayList<>();
+            List<Map.Entry<GXDLMSObject, GXDLMSCaptureObject>> captureObjects = profile.getCaptureObjects();
+
+            for (Map.Entry<GXDLMSObject, GXDLMSCaptureObject> entry : captureObjects) {
+                GXDLMSObject obj = entry.getKey();
+                GXDLMSCaptureObject co = entry.getValue();
+
+                String captureObis = obj.getLogicalName();
+                int classId = obj.getObjectType().getValue();
+                int attrIndex = co.getAttributeIndex();
+
+                double scaler = DlmsScalerUnitHelper.extractScaler(obj);
+                String unit = DlmsScalerUnitHelper.extractUnit(obj);
+
+                ModelProfileMetadata meta = ModelProfileMetadata.builder()
+                        .meterModel(meterModel)
+                        .profileObis(profileObis)
+                        .captureObis(captureObis)
+                        .classId(classId)
+                        .attributeIndex(attrIndex)
+                        .scaler(scaler)
+                        .unit(unit)
+                        .build();
+
+                result.add(meta);
+            }
+
+            return result;
+
+        } catch (Exception ex) {
+            log.warn("⚠️ Failed to read metadata from meter model={} obis={}", meterModel, profileObis, ex);
+            return Collections.emptyList();
+        }
+    }
+
+    public LocalDateTime getInitialTimestamp(String serial, String obisCode) throws Exception {
+        GXDLMSClient client = sessionManager.getOrCreateClient(serial);
+        if (client == null) throw new IllegalStateException("Session not established");
+
+        GXDLMSProfileGeneric profile = new GXDLMSProfileGeneric();
+        profile.setLogicalName(obisCode);
+
+        // Step 1: Read Capture Objects (attribute 3)
+        byte[][] captureRequest = client.read(profile, 3);
+        GXReplyData captureReply = readAdapter.readDataBlock(client, serial, captureRequest[0]);
+        client.updateValue(profile, 3, captureReply.getValue());
+
+        // Step 2: Read entry #1 only
+        byte[][] readRequest = client.readRowsByEntry(profile, 1, 1);
+        GXReplyData reply = readAdapter.readDataBlock(client, serial, readRequest[0]);
+        client.updateValue(profile, 2, reply.getValue());
+
+        List<Object> buffer = List.of(profile.getBuffer());
+        if (buffer.isEmpty()) return null;
+
+        GXStructure structure = (GXStructure) buffer.get(0);
+        Object tsRaw = structure.get(0);  // timestamp is typically first column
+
+        return DlmsDateUtils.parseTimestampLdt(tsRaw);
+    }
+
+    @Transactional
+    public void initializeProfileState(GXDLMSClient client, GXDLMSProfileGeneric profile, String serial) throws Exception {
+        String obis = profile.getLogicalName();
+
+        // ✅ Try cache first
+        LocalDateTime cachedTs = cacheService.get(serial, obis);
+        if (cachedTs != null) {
+            log.info("Using cached timestamp: {} for {}", cachedTs, serial);
+            return;
+        }
+
+        // ✅ Fetch first timestamp (first 10 entries)
+        byte[][] readRequest = client.readRowsByEntry(profile, 1, 10);
+        GXReplyData reply = readAdapter.readDataBlock(client, serial, readRequest[0]);
+        client.updateValue(profile, 4, reply.getValue());
+
+        List<?> rows = (List<?>) reply.getValue();
+        if (rows == null || rows.isEmpty()) {
+            log.warn("No profile rows found for meter {}", serial);
+            return;
+        }
+
+        // ✅ Extract first timestamp
+        Object firstVal = ((GXStructure) rows.get(0)).get(0);
+        LocalDateTime initialTs = DlmsDateUtils.parseTimestampLdt(firstVal);
+
+        // ✅ Fetch capture period
+         // 🔎 Read attribute 8: capture period in seconds (optional)
+        byte[][] captureSize = client.read(profile, 8);
+        GXReplyData captureSizeReply = readAdapter.readDataBlock(client, serial, captureSize[0]);
+        client.updateValue(profile, 8, captureSizeReply.getValue());
+        Long capturePeriodSec = profile.getCapturePeriod();
+        log.info("⏱️ Capture period (attribute 8) = {} seconds", capturePeriodSec);
+
+
+
+        // ✅ Save to DB
+        stateService.upsertTimestampAndCapturePeriod(serial, obis, initialTs, Math.toIntExact(capturePeriodSec));
+
+        // ✅ Cache the timestamp
+        cacheService.put(serial, obis, initialTs);
+
+        log.info("Initial timestamp for {} [{}] = {}, capturePeriodSec={}", serial, obis, initialTs, capturePeriodSec);
+    }
+
+
+
+
+//    7. Putting It All Together in Your Read Service
+
+    public void testBootstrapTimestamp(String serial, String model) throws Exception {
+        String profileObis = "1.0.99.2.0.255";
+
+        LocalDateTime startTs = profileTimestampResolver.resolveStartTimestamp(serial, profileObis, model);
+        if (startTs == null) {
+            log.warn("Meter {} returned no profile data.", serial);
+        } else {
+            log.info("Resolved start timestamp for {} ({}) = {}", serial, profileObis, startTs);
+        }
+    }
+
+
+    public void readProfileInBatchesByTimestamp(String serial,
+                                                String profileObis,
+                                                GXDLMSClient client,
+                                                GXDLMSProfileGeneric profile,
+                                                LocalDateTime startTs,
+                                                int capturePeriodSec,
+                                                int batchSize) throws Exception {
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime currentTs = startTs;
+
+        while (currentTs.isBefore(now)) {
+            LocalDateTime endTs = currentTs.plusSeconds((long) capturePeriodSec * batchSize);
+
+            GXDateTime fromGX = new GXDateTime(Date.from(currentTs.atZone(ZoneId.systemDefault()).toInstant()));
+            GXDateTime toGX = new GXDateTime(Date.from(endTs.atZone(ZoneId.systemDefault()).toInstant()));
+
+            log.info("Reading profile {} from {} to {}", profileObis, currentTs, endTs);
+
+            // 📨 Read rows from the meter using date range
+            byte[][] readRequest = client.readRowsByRange(profile, fromGX, toGX); // null = up to latest
+            GXReplyData reply =  readAdapter.readDataBlock(client, serial, readRequest[0]);
+            client.updateValue(profile, 2, reply.getValue());
+
+            // Apply result to profile buffer
+            client.updateValue(profile, 2, reply.getValue());
+
+//            List<List<Object>> rows = profile.getBuffer(); // decoded rows
+
+//            if (rows == null || rows.isEmpty()) {
+//                log.info("No more rows from {} to {}", currentTs, endTs);
+//                break; // Stop reading
+//            }
+
+            // Persist batch (decode + save)
+//            persistRows(rows, serial, profileObis);
+
+            // Move currentTs forward
+            currentTs = endTs;
+        }
+    }
 
 }

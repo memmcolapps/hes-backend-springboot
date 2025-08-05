@@ -1,0 +1,253 @@
+SN,group,description,class_id,OBIS_Code,Attribute_index,Data_Type,Scaler,Unit
+1, Product Information,Logical Device Name,1,00002A0000FF,2,visible-string,,
+2, Product Information,Meter Serial number,1,0000600100FF,2,visible-string,,
+3, Product Information,Meter Equipment Identifier,1,0000600101FF,2,visible-string,,
+4, Product Information,Hardware version,1,0000600104FF,2,visible-string,,
+5, Product Information,Meter Certified Type,1,0000600107FF,2,visible-string,,
+6, Product Information,Firmware version,1,0000000201FF,2,visible-string,,
+7, Product Information,Firmware checksum,1,0000000208FF,2,visible-string,,
+8, Product Information,Manufacturer Certified Flag,1,0000600106FF,2,visible-string,,
+9, Product Information,Communication Modem ID,1,0000603229FF,2,long-unsigned,,
+10, Product Information,Related voltage,3,0100000600FF,2,double-long-unsigned,0.01,V
+11, Product Information,Related Normal Current,3,0100000601FF,2,double-long-unsigned,0.01,A
+12, Product Information,Related Maximum Current,3,0100000603FF,2,double-long-unsigned,0.01,A
+13, Product Information,Related Frequency,3,0100000602FF,2,double-long-unsigned,0.01,Hz
+14, Product Information,Constant of Active Energy(LED),1,0100000300FF,2,double-long-unsigned,,
+15, Product Information,Constant of Reactive Energy(LED),1,0100000301FF,2,double-long-unsigned,,
+16,Clock,Clock,8,0000010000FF,2,octet-string,,
+17,Clock,Time Zone,8,0000010000FF,3,long,,
+18,Energy,Daily consumption kWh,3,0100011E00FF,2,double-long-unsigned,0.01,kWh
+19,Energy,Monthly consumption kWh,3,0100011D00FF,2,double-long-unsigned,0.01,kWh
+20,Energy,Total absolute active kWh,3,01000F0800FF,2,double-long-unsigned,0.01,kWh
+21,Energy,T1 absolute active kWh,3,01000F0801FF,2,double-long-unsigned,0.01,kWh
+22,Energy,T2 absolute active kWh,3,01000F0802FF,2,double-long-unsigned,0.01,kWh
+23,Energy,T3 absolute active kWh,3,01000F0803FF,2,double-long-unsigned,0.01,kWh
+24,Energy,T4 absolute active kWh,3,01000F0804FF,2,double-long-unsigned,0.01,kWh
+25,Energy,Total algebraic active kWh,3,0100100800FF,2,double-long-unsigned,0.01,kWh
+26,Energy,T1 algebraic active kWh,3,0100100801FF,2,double-long-unsigned,0.01,kWh
+27,Energy,T2 algebraic active kWh,3,0100100801FF,2,double-long-unsigned,0.01,kWh
+28,Energy,T3 algebraic active kWh,3,0100100801FF,2,double-long-unsigned,0.01,kWh
+29,Energy,T4 algebraic active kWh,3,0100100801FF,2,double-long-unsigned,0.01,kWh
+30,Energy,Total import active kWh,3,0100010800FF,2,double-long-unsigned,0.01,kWh
+31,Energy,T1 import active kWh,3,0100010801FF,2,double-long-unsigned,0.01,kWh
+32,Energy,T2 import active kWh,3,0100010802FF,2,double-long-unsigned,0.01,kWh
+33,Energy,T3 import active kWh,3,0100010803FF,2,double-long-unsigned,0.01,kWh
+34,Energy,T4 import active kWh,3,0100010804FF,2,double-long-unsigned,0.01,kWh
+35,Energy,Total export active kWh,3,0100020800FF,2,double-long-unsigned,0.01,kWh
+36,Energy,T1 export active kWh,3,0100020801FF,2,double-long-unsigned,0.01,kWh
+37,Energy,T2 export active kWh,3,0100020802FF,2,double-long-unsigned,0.01,kWh
+38,Energy,T3 export active kWh,3,0100020803FF,2,double-long-unsigned,0.01,kWh
+39,Energy,T4 export active kWh,3,0100020804FF,2,double-long-unsigned,0.01,kWh
+40,Energy,Total import reactive kvarh,3,0100030800FF,2,double-long-unsigned,0.01,kvarh
+41,Energy,T1 import reactive kvarh,3,0100030801FF,2,double-long-unsigned,0.01,kvarh
+42,Energy,T2 import reactive kvarh,3,0100030802FF,2,double-long-unsigned,0.01,kvarh
+43,Energy,T3 import reactive kvarh,3,0100030803FF,2,double-long-unsigned,0.01,kvarh
+44,Energy,T4 import reactive kvarh,3,0100030804FF,2,double-long-unsigned,0.01,kvarh
+45,Energy,Total export reactive kvarh,3,0100040800FF,2,double-long-unsigned,0.01,kvarh
+46,Energy,T1 export reactive kvarh,3,0100040801FF,2,double-long-unsigned,0.01,kvarh
+47,Energy,T2 export reactive kvarh,3,0100040802FF,2,double-long-unsigned,0.01,kvarh
+48,Energy,T3 export reactive kvarh,3,0100040803FF,2,double-long-unsigned,0.01,kvarh
+49,Energy,T4 export reactive kvarh,3,0100040804FF,2,double-long-unsigned,0.01,kvarh
+50,Energy,Total import apparent kVAh,3,0100090800FF,2,double-long-unsigned,0.01,kVAh
+51,Energy,T1 import apparent kVAh,3,0100090801FF,2,double-long-unsigned,0.01,kVAh
+52,Energy,T2 import apparent kVAh,3,0100090802FF,2,double-long-unsigned,0.01,kVAh
+53,Energy,T3 import apparent kVAh,3,0100090803FF,2,double-long-unsigned,0.01,kVAh
+54,Energy,T4 import apparent kVAh,3,0100090804FF,2,double-long-unsigned,0.01,kVAh
+55,Energy,Total export apparent kVAh,3,01000A0800FF,2,double-long-unsigned,0.01,kVAh
+56,Energy,T1 export apparent kVAh,3,01000A0801FF,2,double-long-unsigned,0.01,kVAh
+57,Energy,T2 export apparent kVAh,3,01000A0802FF,2,double-long-unsigned,0.01,kVAh
+58,Energy,T3 export apparent kVAh,3,01000A0803FF,2,double-long-unsigned,0.01,kVAh
+59,Energy,T4 export apparent kVAh,3,01000A0804FF,2,double-long-unsigned,0.01,kVAh
+60,Energy,Total absolute apparent kVAh,3,0100603D00FF,2,double-long-unsigned,0.01,kVAh
+61,Energy,T1 absolute apparent kVAh,3,0100603D01FF,2,double-long-unsigned,0.01,kVAh
+62,Energy,T2 absolute apparent kVAh,3,0100603D02FF,2,double-long-unsigned,0.01,kVAh
+63,Energy,T3 absolute apparent kVAh,3,0100603D03FF,2,double-long-unsigned,0.01,kVAh
+64,Energy,T4 absolute apparent kVAh,3,0100603D04FF,2,double-long-unsigned,0.01,kVAh
+65,Energy,Total algebraic apparent kVAh,3,0100603E00FF,2,double-long-unsigned,0.01,kVAh
+66,Energy,T1 algebraic apparent kVAh,3,0100603E01FF,2,double-long-unsigned,0.01,kVAh
+67,Energy,T2 algebraic apparent kVAh,3,0100603E02FF,2,double-long-unsigned,0.01,kVAh
+68,Energy,T3 algebraic apparent kVAh,3,0100603E03FF,2,double-long-unsigned,0.01,kVAh
+69,Energy,T4 algebraic apparent kVAh,3,0100603E04FF,2,double-long-unsigned,0.01,kVAh
+70,Maximum Demand,Total import active MD (kW) ,4,0100010600FF,2,double-long-unsigned,0.0001,kW
+71,Maximum Demand,Total import active MD Datetime,4,0100010600FF,5,double-long-unsigned,,
+72,Maximum Demand,T1 import active MD (kW),4,0100010601FF,2,double-long-unsigned,0.0001,kW
+73,Maximum Demand,T1 import active MD Datetime,4,0100010601FF,5,octet-string,,
+74,Maximum Demand,T2 import active MD (kW),4,0100010602FF,2,double-long-unsigned,0.0001,kW
+75,Maximum Demand,T2 import active MD Datetime,4,0100010602FF,5,octet-string,,
+76,Maximum Demand,T3 import active MD (kW),4,0100010603FF,2,double-long-unsigned,0.0001,kW
+77,Maximum Demand,T3 import active MD Datetime,4,0100010603FF,5,octet-string,,
+78,Maximum Demand,T4 import active MD (kW),4,0100010604FF,2,double-long-unsigned,0.0001,kW
+79,Maximum Demand,T4 import active MD Datetime,4,0100010604FF,5,octet-string,,
+80,Maximum Demand,Total export active MD (kW),4,0100020600FF,2,double-long-unsigned,0.0001,kW
+81,Maximum Demand,Total export active MD Datetime,4,0100020600FF,5,octet-string,,
+82,Maximum Demand,T1 export active MD (kW),4,0100020601FF,2,double-long-unsigned,0.0001,kW
+83,Maximum Demand,T1 export active MD Datetime,4,0100020601FF,5,octet-string,,
+84,Maximum Demand,T2 export active MD (kW),4,0100020602FF,2,double-long-unsigned,0.0001,kW
+85,Maximum Demand,T2 export active MD Datetime,4,0100020602FF,5,octet-string,,
+86,Maximum Demand,T3 export active MD (kW),4,0100020603FF,2,double-long-unsigned,0.0001,kW
+87,Maximum Demand,T3 export active MD Datetime,4,0100020603FF,5,octet-string,,
+88,Maximum Demand,T4 export active MD (kW),4,0100020604FF,2,double-long-unsigned,0.0001,kW
+89,Maximum Demand,T4 export active MD Datetime,4,0100020604FF,5,octet-string,,
+90,Maximum Demand,Total import reactive MD (kvar),4,0100030600FF,2,double-long-unsigned,0.0001,kvar
+91,Maximum Demand,Total import reactive MD Datetime,4,0100030600FF,5,octet-string,,
+92,Maximum Demand,T1 import reactive MD (kvar),4,0100030601FF,2,double-long-unsigned,0.0001,kvar
+93,Maximum Demand,T1 import reactive MD Datetime,4,0100030601FF,5,octet-string,,
+94,Maximum Demand,T2 import reactive MD (kvar),4,0100030602FF,2,double-long-unsigned,0.0001,kvar
+95,Maximum Demand,T2 import reactive MD Datetime,4,0100030602FF,5,octet-string,,
+96,Maximum Demand,T3 import reactive MD (kvar),4,0100030603FF,2,double-long-unsigned,0.0001,kvar
+97,Maximum Demand,T3 import reactive MD Datetime,4,0100030603FF,5,octet-string,,
+98,Maximum Demand,T4 import reactive MD (kvar),4,0100030604FF,2,double-long-unsigned,0.0001,kvar
+99,Maximum Demand,T4 import reactive MD Datetime,4,0100030604FF,5,octet-string,,
+100,Maximum Demand,Total export reactive MD (kvar),4,0100040600FF,2,double-long-unsigned,0.0001,kvar
+101,Maximum Demand,Total export reactive MD Datetime,4,0100040600FF,5,octet-string,,
+102,Maximum Demand,T1 export reactive MD (kvar),4,0100040601FF,2,double-long-unsigned,0.0001,kvar
+103,Maximum Demand,T1 export reactive MD Datetime,4,0100040601FF,5,octet-string,,
+104,Maximum Demand,T2 export reactive MD (kvar),4,0100040602FF,2,double-long-unsigned,0.0001,kvar
+105,Maximum Demand,T2 export reactive MD Datetime,4,0100040602FF,5,octet-string,,
+106,Maximum Demand,T3 export reactive MD (kvar),4,0100040603FF,2,double-long-unsigned,0.0001,kvar
+107,Maximum Demand,T3 export reactive MD Datetime,4,0100040603FF,5,octet-string,,
+108,Maximum Demand,T4 export reactive MD (kvar),4,0100040604FF,2,double-long-unsigned,0.0001,kvar
+109,Maximum Demand,T4 export reactive MD Datetime,4,0100040604FF,5,octet-string,,
+110,Maximum Demand,Total import apparent MD (kVA),4,0100090600FF,2,double-long-unsigned,0.0001,kVA
+111,Maximum Demand,Total import apparent MD Datetime,4,0100090600FF,5,octet-string,,
+112,Maximum Demand,T1 import apparent MD (kVA),4,0100090601FF,2,double-long-unsigned,0.0001,kVA
+113,Maximum Demand,T1 import apparent MD Datetime,4,0100090601FF,5,octet-string,,
+114,Maximum Demand,T2 import apparent MD (kVA),4,0100090602FF,2,double-long-unsigned,0.0001,kVA
+115,Maximum Demand,T2 import apparent MD Datetime,4,0100090602FF,5,octet-string,,
+116,Maximum Demand,T3 import apparent MD (kVA),4,0100090603FF,2,double-long-unsigned,0.0001,kVA
+117,Maximum Demand,T3 import apparent MD Datetime,4,0100090603FF,5,octet-string,,
+118,Maximum Demand,T4 import apparent MD (kVA),4,0100090604FF,2,double-long-unsigned,0.0001,kVA
+119,Maximum Demand,T4 import apparent MD Datetime,4,0100090604FF,5,octet-string,,
+120,Maximum Demand,Total export apparent MD (kVA),4,01000A0600FF,2,double-long-unsigned,0.0001,kVA
+121,Maximum Demand,Total export apparent MD Datetime,4,01000A0600FF,5,octet-string,,
+122,Maximum Demand,T1 export apparent MD (kVA),4,01000A0601FF,2,double-long-unsigned,0.0001,kVA
+123,Maximum Demand,T1 export apparent MD Datetime,4,01000A0601FF,5,octet-string,,
+124,Maximum Demand,T2 export apparent MD (kVA),4,01000A0602FF,2,double-long-unsigned,0.0001,kVA
+125,Maximum Demand,T2 export apparent MD Datetime,4,01000A0602FF,5,octet-string,,
+126,Maximum Demand,T3 export apparent MD (kVA),4,01000A0603FF,2,double-long-unsigned,0.0001,kVA
+127,Maximum Demand,T3 export apparent MD Datetime,4,01000A0603FF,5,octet-string,,
+128,Maximum Demand,T4 export apparent MD (kVA),4,01000A0604FF,2,double-long-unsigned,0.0001,kVA
+129,Maximum Demand,T4 export apparent MD Datetime,4,01000A0604FF,5,octet-string,,
+130,Instantaneous,Sum Li total power factor,3,01000D0700FF,2,double-long,0.01,
+131,Instantaneous,Sum Li total active power (kW),3,01000F0700FF,2,double-long,0.0001,kW
+132,Instantaneous,Sum Li import active power (kW),3,0100010700FF,2,double-long,0.0001,kW
+133,Instantaneous,Sum Li export active power (kW),3,0100020700FF,2,double-long,0.0001,kW
+134,Instantaneous,Sum Li import reactive power (kvar),3,0100030700FF,2,double-long,0.0001,kvar
+135,Instantaneous,Sum Li export reactive power (kvar),3,0100040700FF,2,double-long,0.0001,kvar
+136,Instantaneous,Sum Li import apparent power (kVA),3,0100090700FF,2,double-long,0.0001,kVA
+137,Instantaneous,Sum Li export apparent power (kVA),3,01000A0700FF,2,double-long,0.0001,kVA
+138,Instantaneous,Frequency (Hz),3,01000E0700FF,2,double-long-unsigned,0.01,Hz
+139,Instantaneous,L1 current (A),3,01001F0700FF,2,double-long-unsigned,0.01,A
+140,Instantaneous,L1 voltage (V),3,0100200700FF,2,double-long-unsigned,0.01,V
+141,Instantaneous,L1 current harmonic THD (%),3,01001F077CFF,2,double-long,0.001,%
+142,Instantaneous,L1 voltage harmonic THD (%),3,010020077CFF,2,double-long,0.001,%
+143,Instantaneous,L1 total power factor,3,0100210700FF,2,double-long,0.01,
+144,Instantaneous,L1 total active power (kW),3,0100230700FF,2,double-long,0.0001,kW
+145,Instantaneous,L1 import active power (kW),3,0100150700FF,2,double-long,0.0001,kW
+146,Instantaneous,L1 import reactive power (kvar),3,0100170700FF,2,double-long,0.0001,kvar
+147,Instantaneous,L1 import apparent power (kVA),3,01001D0700FF,2,double-long,0.0001,kVA
+148,Instantaneous,L2 current (A),3,0100330700FF,2,double-long-unsigned,0.01,A
+149,Instantaneous,L2 voltage (V),3,0100340700FF,2,double-long-unsigned,0.01,V
+150,Instantaneous,L2 current harmonic THD(%),3,010033077CFF,2,double-long,0.001,%
+151,Instantaneous,L2 voltage harmonic THD(%),3,010034077CFF,2,double-long,0.001,%
+152,Instantaneous,L2 total power factor,3,0100350700FF,2,double-long,0.01,
+153,Instantaneous,L2 total active power (kW),3,0100370700FF,2,double-long,0.0001,kW
+154,Instantaneous,L2 import active power (kW),3,0100290700FF,2,double-long,0.0001,kW
+155,Instantaneous,L2 import reactive power (kvar),3,01002B0700FF,2,double-long,0.0001,kvar
+156,Instantaneous,L2 import apparent power (kVA),3,0100310700FF,2,double-long,0.0001,kVA
+157,Instantaneous,L3 current (A),3,0100470700FF,2,double-long-unsigned,0.01,A
+158,Instantaneous,L3 voltage (V),3,0100480700FF,2,double-long-unsigned,0.01,V
+159,Instantaneous,L3 current harmonic THD(%),3,010047077CFF,2,double-long,0.001,%
+160,Instantaneous,L3 voltage harmonic THD(%),3,010048077CFF,2,double-long,0.001,%
+161,Instantaneous,L3 total power factor,3,0100490700FF,2,double-long,0.01,
+162,Instantaneous,L3 total active power (kW),3,01004B0700FF,2,double-long,0.0001,kW
+163,Instantaneous,L3 import active power (kW),3,01003D0700FF,2,double-long,0.0001,kW
+164,Instantaneous,L3 import reactive power (kvar),3,01003F0700FF,2,double-long,0.0001,kvar
+165,Instantaneous,L3 import apparent power (kVA),3,0100450700FF,2,double-long,0.0001,kVA
+166,Instantaneous,Neutral current (A),3,01005B0700FF,2,double-long-unsigned,0.01,A
+167,Instantaneous,Phase angle of U(L2) - U(L1) (�),3,0100510701FF,2,double-long-unsigned,0.01,�
+168,Instantaneous,Phase angle of U(L3) - U(L1) (�),3,0100510702FF,2,double-long-unsigned,0.01,�
+169,Instantaneous,Phase angle of U(L2) - U(L3) (�),3,0100510715FF,2,double-long-unsigned,0.01,�
+170,Instantaneous,Phase angle of U(L1) - I(L1) (�),3,0100510728FF,2,double-long-unsigned,0.01,�
+171,Instantaneous,Phase angle of U(L2) - I(L2) (�),3,0100510733FF,2,double-long-unsigned,0.01,�
+172,Instantaneous,Phase angle of U(L3) - I(L3) (�),3,010051073EFF,2,double-long-unsigned,0.01,�
+173,Instantaneous,Actual quadrant,1,0000603C26FF,2,unsigned,,
+174,Instantaneous,Ambient temperature (�C),3,0000600900FF,2,long,0.01,�C
+175,Instantaneous,Battery voltage (V),3,0000600603FF,2,long-unsigned,0.01,V
+176,Instantaneous,Battery installation date and time,1,0000600605FF,2,date_time,,
+177,Instantaneous,Battery estimated remaining capacity (%),3,0000600606FF,2,double-long,0.001,%
+178, Event Count,Counter of programing,1,0000600F2FFF,2,long-unsigned,,
+179, Event Count,Counter of clock adjusted,1,0000600F05FF,2,long-unsigned,,
+180, Event Count,Counter of demand reset,1,0000600F16FF,2,long-unsigned,,
+181, Event Count,Counter of meter cover open,1,0000601400FF,2,long-unsigned,,
+182, Event Count,Counter of terminal cover open,1,0000601405FF,2,long-unsigned,,
+183, Event Count,Counter of module cover open,1,000060140AFF,2,long-unsigned,,
+184, Event Count,Counter of strong DC magnetic field,1,000060140FFF,2,long-unsigned,,
+185, Event Count,Total Counter of Tamper,1,0000600F01FF,2,long-unsigned,,
+186, Event Count,Counter of over loading,1,0000600F63FF,2,long-unsigned,,
+187, Event Count,Counter of low power factor,1,0000600F57FF,2,long-unsigned,,
+188, Event Count,Counter of relay remote disconnected,1,0000600F3EFF,2,long-unsigned,,
+189, Event Count,Counter of relay remote connected,1,0000600F3FFF,2,long-unsigned,,
+190, Event Count,Counter of relay local disconnected,1,0000600F40FF,2,long-unsigned,,
+191, Event Count,Counter of relay local connected,1,0000600F45FF,2,long-unsigned,,
+192, Event Count,Counter of L1 under voltage ,1,0100202000FF,2,long-unsigned,,
+193, Event Count,Counter of L2 under voltage ,1,0100342000FF,2,long-unsigned,,
+194, Event Count,Counter of L3 under voltage ,1,0100482000FF,2,long-unsigned,,
+195, Event Count,Counter of L1 over voltage,1,0100202400FF,2,long-unsigned,,
+196, Event Count,Counter of L2 over voltage,1,0100342400FF,2,long-unsigned,,
+197, Event Count,Counter of L3 over voltage,1,0100482400FF,2,long-unsigned,,
+198, Event Count,Counter of power failures,1,0000600715FF,2,long-unsigned,,
+199, Event Count,Counter of current reverse,1,0000600F5EFF,2,long-unsigned,,
+200, Event Count,Counter of L1 current reverse,1,0000600F5BFF,2,long-unsigned,,
+201, Event Count,Counter of L2 current reverse,1,0000600F5CFF,2,long-unsigned,,
+202, Event Count,Counter of L3 current reverse,1,0000600F5DFF,2,long-unsigned,,
+203,Relay,Main disconnector including relay state-control state-Control mode-Disconnect-Connect,70,000060030AFF,2,,,
+204,Relay,Relay Operation reason,1,0000603200FF,2,unsigned,,
+205,Monthly Billing,Monthly Billing Channel ,7,0100620100FF,2,,,
+206,Monthly Billing,Date_time of Monthly Billing,1,0100000102FF,2,date_time,,
+207,Monthly Billing,Billing period counter,1,0000600F2BFF,2,long-unsigned,,
+208,Monthly Billing,Billing period reset lockout time (Min),1,0000603500FF,2,long-unsigned,,
+209,Monthly Billing,Current month cumulative running hours,3,000060352DFF,2,double-long-unsigned,0,Second
+210,Daily billing,Daily Billing Channel ,7,0100620200FF,2,,,
+211,Daily billing,Date_time of Daily Billing,1,0100000105FF,2,date_time,,
+212, Event,Standard Event Logs,7,0000636200FF,2,,,
+213, Event,Fraud Event Logs,7,0000636201FF,2,,,
+214, Event,Control Event Logs,7,0000636202FF,2,,,
+215, Event,Recharge Token Event Logs,7,0000636203FF,2,,,
+216, Event,Power Grid Event Logs,7,0000636204FF,2,,,
+217, Event,ManageToken Event Logs,7,0000636205FF,2,,,
+218,Load Profile,Load Profile 1,7,0100630100FF,2,,,
+219,Load Profile,Load Profile 2,7,0100630101FF,2,,,
+220,Load Profile,Load Profile 3,7,0100630102FF,2,,,
+221,Load Profile,Load Profile 4,7,0100630103FF,2,,,
+222,Load Profile,Load Profile 5,7,0100630104FF,2,,,
+223,Load Profile,Load Profile 6,7,0100630105FF,2,,,
+224,GPRS modem setup,GPRS modem setup (APN),45,0000190400FF,2,,,
+225,GPRS modem setup,Auto connect setup (IP & Port),29,0000020100FF,2,,,
+226,Prepayment energy registers,Balance (kWh),3,0000603C00FF,2,double long,0.01,kWh
+227,Prepayment energy registers,Estimated remaining days,3,0000603C09FF,2,long-unsigned,0.1,days
+228,Prepayment energy registers,Total recharged amount (kWh),3,0000603C01FF,2,double long,0.01,kWh
+229,Prepayment energy registers,Actual recharged amount (kWh),3,0000603C05FF,2,double long,0.01,kWh
+230,Prepayment energy registers,Maximum accumulative amount (kWh),3,0000603C14FF,2,double long,0.01,kWh
+231,Prepayment energy registers,Alarm Level 1 of remainder days,3,0000603C27FF,2,long-unsigned,0.1,days
+232,Prepayment energy registers,Alarm Level 2 of remainder days,3,0000603C28FF,2,long-unsigned,0.1,days
+233,Prepayment energy registers,Alarm Level 3 of remainder days,3,0000603C2EFF,2,long-unsigned,0.1,days
+234,CT and PT Ratio,Numerator of CT ratio,1,0100000402FF,2,long unsigned,1,
+235,CT and PT Ratio,Denominator of CT ratio,1,0100000404FF,2,long unsigned,1,
+236,CT and PT Ratio,Numerator of PT ratio,1,0100000403FF,2,long unsigned,1,
+237,CT and PT Ratio,Denominator of PT ratio,1,0100000405FF,2,long unsigned,1,
+238,Threshold Parameters,Maximum Demand -Period (s),5,0100010400FF,8,double-long-unsigned,1,s
+239,Threshold Parameters,Maximum Demand -Number of periods,5,0100010400FF,9,long-unsigned,1,
+240,Threshold Parameters,Threshold of under voltage (V),3,01000C1F00FF,2,double long,0.01,V
+241,Threshold Parameters,Time threshold of under voltage (s),3,01000C2B00FF,2,long unsigned,1,s
+242,Threshold Parameters,Threshold of swell voltage (V),3,01000C2300FF,2,double long,0.01,V
+243,Threshold Parameters,Time threshold of swell voltage (s),3,01000C2C00FF,2,long unsigned,1,s
+244,Threshold Parameters,Threshold of over loading (W),3,0000603C07FF,2,double long,0.01,kW
+245,Threshold Parameters,Time threshold of over loading (s),3,0000603529FF,2,long unsigned,1,s
+246,Threshold Parameters,Time threshold of over loading stop (s),3,000060352AFF,2,long unsigned,1,s
+247,Threshold Parameters,Time threshold of over loading recover (s),3,000060352BFF,2,long unsigned,1,s
+248,Threshold Parameters,Threshold of meter high temperature (�C),3,000060352EFF,2,long,0.01,�C
+249,TOU Tariff,Actual tariff indicator   ,1,0000600E00FF,2,unsigned,,
+250,TOU Tariff,Activity calendar setup,20,00000D0000FF,2,array,,
+251,TOU Tariff,Special days table,11,00000B0000FF,2,array,,
+252,Firmware Upgrade,Firmware upgrade,18,00002C0000FF,2,array,,

@@ -9,10 +9,13 @@ import gurux.dlms.objects.GXDLMSClock;
 import gurux.dlms.objects.GXDLMSObject;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+
+import static com.memmcol.hes.service.DlmsService.GLOBAL_TS_FORMATTER;
 
 @Service
 public class ProfileCaptureObjectParser {
@@ -41,8 +44,9 @@ public class ProfileCaptureObjectParser {
                     GXDateTime dateTime = (val instanceof GXDateTime dt)
                             ? dt
                             : GXCommon.getDateTime((byte[]) val);
-                    DlmsDateUtils.ParsedTimestamp parsed = DlmsDateUtils.parseTimestamp(val, i);
-                    row.getValues().put("timestamp", parsed.formatted); // ✅ Add this
+                    LocalDateTime parsed = DlmsDateUtils.parseTimestampLdt(val);
+                    assert parsed != null;
+                    row.getValues().put("timestamp", parsed.format(GLOBAL_TS_FORMATTER)); // ✅ Add this
                 } else {
                     row.getValues().put(obis, val);
                 }
