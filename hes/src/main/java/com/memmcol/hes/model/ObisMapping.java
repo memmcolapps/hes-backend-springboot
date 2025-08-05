@@ -8,7 +8,9 @@ import lombok.Setter;
 @Table(
         name = "obis_mapping",
         indexes = {
-                @Index(name = "IX_OBISCode", columnList = "obis_code", unique = true)
+                @Index(name = "ix_obis_code_combined", columnList = "obis_code_combined"),
+                @Index(name = "ix_obis_code", columnList = "obis_code"),
+                @Index(name = "ux_model_obis_code_combined", columnList = "model, obis_code_combined", unique = true)
         }
 )
 @Getter
@@ -18,7 +20,7 @@ public class ObisMapping {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "obis_code", unique = true, nullable = false)
+    @Column(name = "obis_code", nullable = false)
     private String obisCode;
 
     @Column(name = "description", nullable = false)
@@ -37,7 +39,7 @@ public class ObisMapping {
     private int dataIndex;
 
     @Column(name="scaler", nullable = true)
-    private int scaler;
+    private Double scaler;
 
     @Column(name="unit", nullable = true)
     private String unit;
@@ -45,6 +47,12 @@ public class ObisMapping {
     @Column(name="group_name", nullable = true)
     private String groupName;
 
-    @Column(name="obis_code_combined", nullable = true)
+    @Column(name = "obis_code_combined", nullable = false)
     private String obisCodeCombined;
+
+    @Column(name = "model", nullable = false)
+    private String model;
+
+    @Column(name = "purpose", nullable = true)
+    private String purpose;  // 🔁 NEW FIELD
 }

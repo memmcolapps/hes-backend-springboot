@@ -5,9 +5,7 @@ import gurux.dlms.enums.ObjectType;
 import gurux.dlms.objects.GXDLMSCaptureObject;
 import gurux.dlms.objects.GXDLMSObject;
 import gurux.dlms.objects.GXDLMSProfileGeneric;
-import lombok.Data;
-import lombok.Getter;
-import lombok.Setter;
+import lombok.*;
 
 import java.io.Serializable;
 import java.util.AbstractMap;
@@ -17,17 +15,23 @@ import java.util.Map;
 
 @Getter
 @Setter
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class ProfileMetadataDTO implements Serializable {
     private int entriesInUse;
     private List<ColumnDTO> columns = new ArrayList<>();
 
     @Data
-    @Getter
-    @Setter
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
     public static class ColumnDTO {
         private String obis;
         private int attributeIndex;
         private int classId;
+        private double scaler;
+        private String unit;
     }
 
     public static ProfileMetadataDTO from(GXDLMSProfileGeneric profile) {
