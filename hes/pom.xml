@@ -120,7 +120,12 @@
             <groupId>com.github.ben-manes.caffeine</groupId>
             <artifactId>caffeine</artifactId>
         </dependency>
-
+        <!-- Quartz core dependency -->
+        <dependency>
+            <groupId>org.quartz-scheduler</groupId>
+            <artifactId>quartz</artifactId>
+            <version>2.3.2</version>
+        </dependency>
         <!-- Optional: Micrometer for cache metrics -->
         <dependency>
             <groupId>io.micrometer</groupId>
