@@ -1,12 +1,11 @@
 package com.memmcol.hes.model;
 
+import com.memmcol.hes.domain.profile.ObisObjectType;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-
-import java.util.List;
 
 /**
  * One row = one captured column that belongs to a profile OBIS
@@ -67,4 +66,18 @@ public class ModelProfileMetadata {
 
     /** Optional free-text description. */
     private String description;
+
+    @Column(name = "capture_index", nullable = false)
+    private Integer captureIndex = 0;
+
+    @Column(name = "column_name", nullable = false)
+    private String columnName = "";
+
+    @Column(name = "multiply_by")
+    private String multiplyBy = "CTPT";
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "type")
+    private ObisObjectType type;  // New field
 }
+

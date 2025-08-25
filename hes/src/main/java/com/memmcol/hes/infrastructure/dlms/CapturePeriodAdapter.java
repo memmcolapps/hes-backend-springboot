@@ -115,6 +115,11 @@ public class CapturePeriodAdapter implements CapturePeriodPort {
 
             int cpInt = cp == null ? -1 : cp.intValue();
 
+            // 0 = monthly profile → use 1 month (represented as "1")
+            if (cpInt == 0 && profileObis.startsWith("0.0.98.1")) {
+                log.info("CapturePeriod=0 detected for monthly profile → assuming 1 month");
+                return 1;  // 1 month
+            }
             log.info("Read capturePeriod from meter={} obis={} cp={}s", serial, profileObis, cpInt);
             return cpInt;
 

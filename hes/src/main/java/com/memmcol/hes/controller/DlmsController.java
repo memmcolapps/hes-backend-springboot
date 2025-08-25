@@ -1,10 +1,13 @@
 package com.memmcol.hes.controller;
 
+import com.memmcol.hes.domain.profile.ProfileProcessRequest;
+import com.memmcol.hes.domain.profile.ProfileProcessor;
 import com.memmcol.hes.model.ProfileRowDTO;
 import com.memmcol.hes.model.TimestampRequest;
 import com.memmcol.hes.service.DlmsService;
 import com.memmcol.hes.service.ProfileMetadataService;
 import gurux.dlms.objects.GXDLMSObject;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -27,15 +30,18 @@ import java.util.List;
 import java.util.Map;
 
 @RestController
+@Slf4j
 @RequestMapping("/api/dlms")
 public class DlmsController {
 
     private final DlmsService dlmsService;
     private final ProfileMetadataService profileMetadataService;
+    private final ProfileProcessor profileProcessor;
 
-    public DlmsController(DlmsService dlmsService, ProfileMetadataService profileMetadataService) {
+    public DlmsController(DlmsService dlmsService, ProfileMetadataService profileMetadataService, ProfileProcessor profileProcessor) {
         this.dlmsService = dlmsService;
         this.profileMetadataService = profileMetadataService;
+        this.profileProcessor = profileProcessor;
     }
 
     @GetMapping("/readClock")
@@ -205,6 +211,28 @@ public class DlmsController {
             response.put("details", ex.getMessage());
             response.put("timestamp", now);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
+    }
+
+    @PostMapping("/profiles/process")
+    public ResponseEntity<String> processProfiles(@RequestBody ProfileProcessRequest request) {
+        try {
+            // Pass values from request to service
+            profileProcessor.setModel(request.getModel());
+            profileProcessor.setMeterSerial(request.getMeterSerial());
+            profileProcessor.setProfileObis(request.getProfileObis());
+            profileProcessor.setFrom(request.getFrom());
+            profileProcessor.setTo(request.getTo());
+            profileProcessor.setMdMeter(request.isMdMeter());
+
+            // Call the service
+            profileProcessor.processProfiles();
+
+            return ResponseEntity.ok("Profile processing completed successfully.");
+        } catch (Exception e) {
+            log.error("Error processing profiles", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Error: " + e.getMessage());
         }
     }
 }

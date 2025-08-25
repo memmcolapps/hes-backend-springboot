@@ -1,5 +1,7 @@
 package com.memmcol.hes.service;
 
+import com.memmcol.hes.domain.profile.ObisMappingService;
+import com.memmcol.hes.domain.profile.ObisObjectType;
 import com.memmcol.hes.infrastructure.dlms.DlmsReaderUtils;
 import com.memmcol.hes.model.ModelProfileMetadata;
 import com.memmcol.hes.nettyUtils.SessionManager;
@@ -12,10 +14,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.CacheManager;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Objects;
+import java.util.*;
 
 @Slf4j
 @Service
@@ -27,6 +26,7 @@ public class ProfileMetadataService {
     private final ModelProfileMetadataRepository repo;             // ← JPA
     private final SessionManager sessionManager;
     private final DlmsReaderUtils dlmsReaderUtils;
+    private final ObisMappingService obisMappingService;
 
     /**
      * Return metadata for a given meter model & profile OBIS.
@@ -47,7 +47,7 @@ public class ProfileMetadataService {
 
         // ② DB
         List<ModelProfileMetadata> dbRows =
-                repo.findByMeterModelAndProfileObis(meterModel, profileObis);
+                repo.findByMeterModelAndProfileObisOrderByCaptureIndexAsc(meterModel, profileObis);
         if (!dbRows.isEmpty()) {
             log.info("📙 Loaded {} rows from DB for {}", dbRows.size(), key);
             Objects.requireNonNull(cacheManager.getCache(CACHE)).put(key, dbRows);
@@ -88,10 +88,12 @@ public class ProfileMetadataService {
             client.updateValue(profile, 3, rep.getValue());
 
             List<ModelProfileMetadata> rows = new ArrayList<>();
+            List<Map.Entry<GXDLMSObject, GXDLMSCaptureObject>> captureObjects = profile.getCaptureObjects();
 
-            for (var coEntry : profile.getCaptureObjects()) {
-                GXDLMSObject obj = coEntry.getKey();
-                GXDLMSCaptureObject co = coEntry.getValue();
+            for (int i = 0; i < captureObjects.size(); i++) {
+                var entry = captureObjects.get(i);
+                GXDLMSObject obj = entry.getKey();
+                GXDLMSCaptureObject co = entry.getValue();
 
                 double scaler = 1.0;
                 String unit = "N/A";
@@ -104,19 +106,31 @@ public class ProfileMetadataService {
                 }
 
                 if (obj instanceof GXDLMSExtendedRegister || obj instanceof GXDLMSDemandRegister) {
-                    dlmsReaderUtils.readScalerUnit(client, sampleSerial, obj, 4);
+                    dlmsReaderUtils.readScalerUnit(client, sampleSerial, obj, 3);
                     scaler = DlmsScalerUnitHelper.extractScaler(obj);
                     unit = DlmsScalerUnitHelper.extractUnit(obj);
                 }
 
+                int captureIndex = i; // Index in the capture object list
+                String obis = obj.getLogicalName();
+                String multiplyBy = "CTPT"; // can later be determined per meter model if needed
+                ObisColumnDto dto = obisMappingService.getDescriptionAndColumnName(obis, meterModel);
+                String descriptionName = dto.getDescription(); // e.g., "Voltage (V)"
+                String columnName = dto.getColumnName();  // e.g., "voltage"
+
                 ModelProfileMetadata row = ModelProfileMetadata.builder()
                         .meterModel(meterModel)
                         .profileObis(profileObis)
-                        .captureObis(obj.getLogicalName())
+                        .captureObis(obis)
                         .classId(obj.getObjectType().getValue())
                         .attributeIndex(co.getAttributeIndex())
                         .scaler(scaler)
                         .unit(unit)
+                        .captureIndex(captureIndex)
+                        .columnName(columnName)
+                        .description(descriptionName)
+                        .multiplyBy(multiplyBy)
+                        .type(ObisObjectType.NONE)
                         .build();
 
                 rows.add(row);

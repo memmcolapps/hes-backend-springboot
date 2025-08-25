@@ -47,9 +47,9 @@ public class ProfileRowMapper {
                 .meterSerial(meterSerial)
                 .modelNumber(modelNumber)
                 .entryIndex(entryIndex)
-                .profileTimestamp(timestamp)
-                .reactiveEnergyKvarh(reactiveEnergy)
-                .activeEnergyKwh(activeEnergy)
+                .entryTimestamp(timestamp)
+                .exportActiveEnergy(reactiveEnergy)
+                .importActiveEnergy(activeEnergy)
                 .rawData(values.toString()) // optional
                 .receivedAt(LocalDateTime.now())
                 .build();

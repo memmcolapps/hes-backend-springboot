@@ -3,17 +3,14 @@ package com.memmcol.hes.infrastructure.dlms;
 import com.memmcol.hes.application.port.out.PartialProfileRecoveryPort;
 import com.memmcol.hes.application.port.out.ProfileDataReaderPort;
 import com.memmcol.hes.application.port.out.ProfileReadException;
+import com.memmcol.hes.domain.profile.ProfileMetadataResult;
 import com.memmcol.hes.domain.profile.ProfileRow;
 import com.memmcol.hes.domain.profile.ProfileTimestamp;
 import com.memmcol.hes.model.ModelProfileMetadata;
 import com.memmcol.hes.nettyUtils.RequestResponseService;
 import com.memmcol.hes.nettyUtils.SessionManager;
-import com.memmcol.hes.repository.ModelProfileMetadataRepository;
 import com.memmcol.hes.service.*;
-import gurux.dlms.GXByteBuffer;
-import gurux.dlms.GXDLMSClient;
-import gurux.dlms.GXDateTime;
-import gurux.dlms.GXReplyData;
+import gurux.dlms.*;
 import gurux.dlms.internal.GXCommon;
 import gurux.dlms.internal.GXDataInfo;
 import gurux.dlms.objects.*;
@@ -21,14 +18,7 @@ import io.netty.handler.timeout.ReadTimeoutException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
-import javax.crypto.BadPaddingException;
-import javax.crypto.IllegalBlockSizeException;
-import javax.crypto.NoSuchPaddingException;
-import java.io.IOException;
-import java.security.InvalidAlgorithmParameterException;
-import java.security.InvalidKeyException;
-import java.security.NoSuchAlgorithmException;
-import java.security.SignatureException;
+
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
@@ -39,17 +29,15 @@ import java.util.*;
  * 4. Infrastructure Adapters (Skeletons)
  * 4.1 Gurux Reader Adapter
  */
-@Component
+@Component("channelTwoReaderAdapter")
 @Slf4j
 @RequiredArgsConstructor
-public class GuruxProfileReaderAdapter implements ProfileDataReaderPort, PartialProfileRecoveryPort {
+public class ChannelTwoReaderAdapter implements ProfileDataReaderPort<ProfileRow>, PartialProfileRecoveryPort<ProfileRow> {
 
     //DlmsPartialDecoder and DlmsTimestampDecoder are wrappers you create around your existing parsing utilities.
     private final SessionManager sessionManager;           // your existing component
     private final DlmsPartialDecoder partialDecoder;       // -> create wrapper for existing parser
     private final DlmsTimestampDecoder timestampDecoder;   // util for timestamp bytes
-    private final ModelProfileMetadataRepository repo;
-    private final DlmsReaderUtils dlmsReaderUtils;
 
     // Optional: if you later need scalers, you can inject a resolver:
     // private final ProfileScalerResolver scalerResolver;
@@ -85,7 +73,7 @@ public class GuruxProfileReaderAdapter implements ProfileDataReaderPort, Partial
      * @param to          inclusive end timestamp
      */
     @Override
-    public List<ProfileRow> readRange(String model, String meterSerial, String profileObis, List<ModelProfileMetadata> metadataList, LocalDateTime from, LocalDateTime to) throws ProfileReadException {
+    public List<ProfileRow> readRange(String model, String meterSerial, String profileObis, ProfileMetadataResult metadataResult, LocalDateTime from, LocalDateTime to) throws ProfileReadException {
         GXDLMSClient client = null;
         long t0 = System.currentTimeMillis();
 
@@ -107,6 +95,7 @@ public class GuruxProfileReaderAdapter implements ProfileDataReaderPort, Partial
 
             // 🔧 Load metadata and setup DLMS profile object
             // Ensure capture objects are populated (attr 3)
+            List<ModelProfileMetadata> metadataList = metadataResult.getMetadataList();
             DlmsUtils.populateCaptureObjects(profile, metadataList);
 
             byte[][] reqFrames = client.readRowsByRange(profile, gxFrom, gxTo);
@@ -123,7 +112,8 @@ public class GuruxProfileReaderAdapter implements ProfileDataReaderPort, Partial
                 // --- Send first frame
                 byte[] firstFrame = reqFrames[0];
 //            byte[] resp1 = RequestResponseService.sendCommandWithRetry(meterSerial, firstFrame);
-                byte[] resp1 = RequestResponseService.sendOnceListen(meterSerial, firstFrame, 4000, 16000, 100);
+//                byte[] resp1 = RequestResponseService.sendOnceListen(meterSerial, firstFrame, 4000, 16000, 100);
+                byte[] resp1 = RequestResponseService.sendReceiveWithContext(meterSerial, firstFrame, 20000);
                 if (sessionManager.isAssociationLost(resp1)) {
                     throw new AssociationLostException("Association lost on first frame");
                 }
@@ -138,13 +128,8 @@ public class GuruxProfileReaderAdapter implements ProfileDataReaderPort, Partial
                     if (nextReq == null) break;
 
 //                byte[] resp = RequestResponseService.sendCommandWithRetry(meterSerial, nextReq);
-                    byte[] resp = RequestResponseService.sendOnceListen(meterSerial, nextReq, 4000, 16000, 100);
-                    if (sessionManager.isAssociationLost(resp1)) {
-                        throw new AssociationLostException("Association lost on next frame");
-                    }
-
+                    byte[] resp = RequestResponseService.sendReceiveWithContext(meterSerial, nextReq, 20000);
                     client.getData(resp, reply, null);
-
                     updateProfileBufferOnBlock(client, profile, profileObis, meterSerial, reply);
                 }
             } catch (ReadTimeoutException timeoutException) {
@@ -184,11 +169,6 @@ public class GuruxProfileReaderAdapter implements ProfileDataReaderPort, Partial
         }
     }
 
-    @Override
-    public void sendDisconnectRequest(String meterSerial) throws InvalidAlgorithmParameterException, NoSuchPaddingException, IllegalBlockSizeException, IOException, NoSuchAlgorithmException, BadPaddingException, SignatureException, InvalidKeyException {
-        //
-    }
-
         /* -----------------------------------------------------------------------
        Internal Helpers
        ----------------------------------------------------------------------- */
@@ -198,23 +178,6 @@ public class GuruxProfileReaderAdapter implements ProfileDataReaderPort, Partial
      * Depending on Gurux version, the buffer might be set by updateValue(..,4,..)
      * or embedded in reply.getValue(); we keep a defensive branch.
      */
-    private void updateProfileBufferOnBlock1(GXDLMSClient client, GXDLMSProfileGeneric profile, String profileObis, String meterSerial, GXReplyData reply) {
-
-        Object val = reply.getValue() != null ? reply.getValue() : reply.getData();
-
-        try {
-            // Attribute 4 is the DLMS Profile Buffer
-            client.updateValue(profile, 2, val);
-            List<List<Object>> buf = partialDecoder.normalizeProfileBuffer(profile.getBuffer());
-            if (buf != null && !buf.isEmpty()) {
-                // Accumulate after each new chunk
-                partialDecoder.accumulate(meterSerial, profileObis, buf);
-            }
-        } catch (Exception e) {
-            log.debug("Silent buffer update issue (not fatal) meter={} obis={} msg={}", meterSerial, profileObis, e.getMessage());
-        }
-    }
-
     private void updateProfileBufferOnBlock(GXDLMSClient client, GXDLMSProfileGeneric profile, String profileObis, String meterSerial, GXReplyData reply) {
         Object val = reply.getValue() != null ? reply.getValue() : reply.getData();
 
@@ -250,25 +213,36 @@ public class GuruxProfileReaderAdapter implements ProfileDataReaderPort, Partial
         }
     }
 
-//    private int partialSizeEstimate(String meterSerial, String obis) {
-//        // purely optional – if you want to expose size, store it in DlmsPartialDecoder
-//        return 0;
-//    }
-
-
     /**
      * Decode the final profile buffer on a successful full read.
      */
     private List<ProfileRow> decodeProfileBuffer(GXDLMSProfileGeneric profile, String meterSerial, String profileObis) {
         List<List<Object>> raw = partialDecoder.normalizeProfileBuffer(profile.getBuffer());
-//        List<List<Object>> raw = profile.getBuffer();
         if (raw == null || raw.isEmpty()) return List.of();
         return mapRawLists(raw, meterSerial, profileObis);
     }
 
+
+
     private List<ProfileRow> mapRawLists(List<List<Object>> raw, String meterSerial, String profileObis) {
         List<ProfileRow> out = new ArrayList<>();
         int rowIndex = 0;
+
+//        List<Map.Entry<GXDLMSObject, GXDLMSCaptureObject>> columns = profile.getCaptureObjects();
+//        for (List<Object> row : raw) {
+//            for (Object rowObj : row) {
+//                ProfileRowDTO rowDTO = new ProfileRowDTO();
+//                GXStructure structure = (GXStructure) rowObj;
+//                for (int i = 0; i < columns.size(); i++) {
+//                    GXDLMSObject obj = columns.get(i).getKey();
+//                    Object raw = structure.get(i); // ✅ Correct access
+//
+//
+//                    String name = obj.getLogicalName();
+//                }
+//            }
+//        }
+
         for (List<Object> row : raw) {
             rowIndex++;
             if (row == null || row.isEmpty()) continue;
@@ -278,14 +252,8 @@ public class GuruxProfileReaderAdapter implements ProfileDataReaderPort, Partial
                 log.debug("Skipping row {} (no timestamp) meter={} obis={}", rowIndex, meterSerial, profileObis);
                 continue;
             }
-
             Double active = getNumeric(row, 1);
             Double reactive = getNumeric(row, 2);
-
-            // OPTIONAL scaling hook:
-            // active = scalerResolver.scaleActive(profileObis, active);
-            // reactive = scalerResolver.scaleReactive(profileObis, reactive);
-
             String rawHex = buildRawHex(row);
             out.add(new ProfileRow(new ProfileTimestamp(ts), active, reactive, rawHex));
         }
@@ -303,21 +271,6 @@ public class GuruxProfileReaderAdapter implements ProfileDataReaderPort, Partial
             return null;
         }
     }
-
-//    private String buildRawHex(List<Object> row) {
-//        StringBuilder sb = new StringBuilder();
-//        for (Object o : row) {
-//            if (o instanceof byte[] b) {
-//
-//                sb.append(o).append(' ');
-//            } else {
-//                sb.append(o).append(' ');
-//            }
-//        }
-//        return sb.toString().trim();
-//    }
-
-
 
     private String buildRawHex(List<Object> row) {
         StringBuilder sb = new StringBuilder();
@@ -343,92 +296,5 @@ public class GuruxProfileReaderAdapter implements ProfileDataReaderPort, Partial
     }
 
 
-    private String toHex(byte[] data) {
-        if (data == null) return "";
-        StringBuilder sb = new StringBuilder(data.length * 2);
-        for (byte b : data) sb.append(String.format("%02X", b));
-        return sb.toString();
-    }
-
-
-//    private List<ProfileRow> mapBufferToRows(GXDLMSProfileGeneric profile) {
-//        List<List<Object>> buffer = profile.getBuffer();
-//        return mapRawLists(buffer);
-//    }
-
-    private Double toDouble(List<Object> row, int idx) {
-        if (idx >= row.size()) return null;
-        Object v = row.get(idx);
-        if (v instanceof Number n) return n.doubleValue();
-        try {
-            return Double.valueOf(String.valueOf(v));
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    private GXDateTime toGX(LocalDateTime ldt) {
-        return new GXDateTime(java.util.Date.from(ldt.atZone(ZoneId.systemDefault()).toInstant()));
-    }
-
-    public List<ModelProfileMetadata> loadFromMeterAndPersist(String sampleSerial, String meterModel, String profileObis) {
-
-        try {
-            GXDLMSClient client = sessionManager.getOrCreateClient(sampleSerial);
-            if (client == null) throw new IllegalStateException("DLMS session not available");
-
-            GXDLMSProfileGeneric profile = new GXDLMSProfileGeneric();
-            profile.setLogicalName(profileObis);
-
-            // ── 1. Read capture-objects list ──────────────────────────────────────
-            byte[][] req = client.read(profile, 3);
-            GXReplyData rep = dlmsReaderUtils.readDataBlock(client, sampleSerial, req[0]);
-            client.updateValue(profile, 3, rep.getValue());
-
-            List<ModelProfileMetadata> rows = new ArrayList<>();
-
-            for (var coEntry : profile.getCaptureObjects()) {
-                GXDLMSObject obj = coEntry.getKey();
-                GXDLMSCaptureObject co = coEntry.getValue();
-
-                double scaler = 1.0;
-                String unit = "N/A";
-
-                // ── 2. If Register-like, read attribute-3 once to get scaler/unit
-                if (obj instanceof GXDLMSRegister) {
-                    dlmsReaderUtils.readScalerUnit(client, sampleSerial, obj, 3);
-                    scaler = DlmsScalerUnitHelper.extractScaler(obj);
-                    unit = DlmsScalerUnitHelper.extractUnit(obj);
-                }
-
-                if (obj instanceof GXDLMSExtendedRegister || obj instanceof GXDLMSDemandRegister) {
-                    dlmsReaderUtils.readScalerUnit(client, sampleSerial, obj, 4);
-                    scaler = DlmsScalerUnitHelper.extractScaler(obj);
-                    unit = DlmsScalerUnitHelper.extractUnit(obj);
-                }
-
-                ModelProfileMetadata row = ModelProfileMetadata.builder().meterModel(meterModel).profileObis(profileObis).captureObis(obj.getLogicalName()).classId(obj.getObjectType().getValue()).attributeIndex(co.getAttributeIndex()).scaler(scaler).unit(unit).build();
-
-                rows.add(row);
-            }
-
-            repo.saveAll(rows);          // ③ Persist once
-            log.info("💾 Saved {} metadata rows for model={} profile={}", rows.size(), meterModel, profileObis);
-            return rows;
-
-
-        } catch (AssociationLostException ex) {
-            sessionManager.removeSession(sampleSerial);
-            log.error("Association lost with meter number: {}", sampleSerial);
-            return Collections.emptyList();
-        } catch (Exception ex) {
-            log.error("❌ Metadata load failed", ex);
-            return Collections.emptyList();
-        }
-    }
-
-    public void sendDisconnectRequest(String meterSerial, GXDLMSClient dlmsClient) throws InvalidAlgorithmParameterException, NoSuchPaddingException, IllegalBlockSizeException, IOException, NoSuchAlgorithmException, BadPaddingException, SignatureException, InvalidKeyException, InterruptedException {
-        dlmsReaderUtils.sendDisconnectRequest(meterSerial, dlmsClient);
-    }
 
 }

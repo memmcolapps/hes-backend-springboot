@@ -63,7 +63,7 @@ public class ProfileTimestampPortImpl implements ProfileTimestampPort {
             log.error("Failed to read first timestamp from meter={} obis={}: {}", meterSerial, profileObis, ex.getMessage());
         }
 
-        // 4. Fallback default
+        // 4. Fallback default to Yesterday
         LocalDateTime fallback = new ProfileTimestamp(LocalDateTime.now().minusDays(1)).value();
         log.warn("Unable to determine last timestamp for meter={} obis={}, using fallback={}", meterSerial, profileObis, fallback);
         return fallback;

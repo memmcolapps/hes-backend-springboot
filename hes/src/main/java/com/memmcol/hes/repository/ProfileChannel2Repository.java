@@ -32,4 +32,10 @@ public interface ProfileChannel2Repository extends JpaRepository<ProfileChannel2
             @Param("timestamps") List<LocalDateTime> timestamps
     );
 
+    @Query("SELECT r.entryTimestamp FROM ProfileChannel2Reading r WHERE r.meterSerial = :serial AND r.entryTimestamp IN :timestamps")
+    List<LocalDateTime> findExistingTimestamps(@Param("serial") String serial, @Param("timestamps") List<LocalDateTime> timestamps);
+
+    @Query("SELECT MAX(p.entryTimestamp) FROM ProfileChannel2Reading p WHERE p.meterSerial = :serial")
+    LocalDateTime findLatestTimestamp(@Param("serial") String serial);
+
 }

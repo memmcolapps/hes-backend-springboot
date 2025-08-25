@@ -12,7 +12,7 @@ import java.util.Optional;
 public interface ModelProfileMetadataRepository
         extends JpaRepository<ModelProfileMetadata, Long> {
 
-    List<ModelProfileMetadata> findByMeterModelAndProfileObis(
+    List<ModelProfileMetadata> findByMeterModelAndProfileObisOrderByCaptureIndexAsc(
             String meterModel, String profileObis);
 
 }

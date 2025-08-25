@@ -12,8 +12,11 @@ import org.slf4j.MDC;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.time.LocalDateTime;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.*;
 
 import static com.memmcol.hes.nettyUtils.DLMSRequestTracker.serialToKey;
@@ -21,6 +24,8 @@ import static com.memmcol.hes.nettyUtils.DLMSRequestTracker.serialToKey;
 @Slf4j
 @Service
 public final class RequestResponseService {
+
+    private static final Logger DLMS_LOG = LoggerFactory.getLogger("DLMS-TXRX");
 
     private static final Map<String, BlockingQueue<byte[]>> meterResponseQueues = new ConcurrentHashMap<>();
     private static final Map<String, String> commandKeyMap = new ConcurrentHashMap<>();
@@ -63,6 +68,7 @@ public final class RequestResponseService {
             try {
                 log.info("Sending DLMS request to {}, corrId={}", context.getMeterId(), correlationId);
                 log.info("TX: {} : {}", context.getMeterId(), GXCommon.toHex(requestData));
+                logTx(context.getMeterId(), requestData);
                 // Attach correlationId to channel for response matching
                 channel.attr(AttributeKey.valueOf("CID")).set(correlationId);
                 channel.writeAndFlush(requestData);
@@ -377,6 +383,42 @@ public final class RequestResponseService {
 
     public static String getLastRequestKey(String serial) {
         return commandKeyMap.get(serial);
+    }
+
+
+    public static void logTx(String meterSerial, String msg) {
+        try {
+            MDC.put("meter", meterSerial);   // <-- used by logback discriminator
+            DLMS_LOG.info("[MSG]:{}", msg);
+        } finally {
+            MDC.remove("meter");
+        }
+    }
+
+    public static void logTx(String meterSerial, byte[] frame) {
+        try {
+            MDC.put("meter", meterSerial);   // <-- used by logback discriminator
+            DLMS_LOG.info("[TX]:{}: {}", meterSerial, toHex(frame));
+        } finally {
+            MDC.remove("meter");
+        }
+    }
+
+    public static void logRx(String meterSerial, byte[] frame) {
+        try {
+            MDC.put("meter", meterSerial);
+            DLMS_LOG.info("[RX]:{}: {}", meterSerial,toHex(frame));
+        } finally {
+            MDC.remove("meter");
+        }
+    }
+
+    private static String toHex(byte[] data) {
+        StringBuilder sb = new StringBuilder();
+        for (byte b : data) {
+            sb.append(String.format("%02X ", b));
+        }
+        return sb.toString().trim();
     }
 
 

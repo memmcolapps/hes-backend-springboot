@@ -21,8 +21,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
-import static com.memmcol.hes.nettyUtils.RequestResponseService.TRACKER;
-import static com.memmcol.hes.nettyUtils.RequestResponseService.inflightRequests;
+import static com.memmcol.hes.nettyUtils.RequestResponseService.*;
 
 @Service
 @Slf4j
@@ -54,25 +53,18 @@ public class SessionManager {
                 Authentication.LOW,
                 "12345678",
                 InterfaceType.WRAPPER);
-
         try {
+            String msg = String.format("Setting up DLMS Association for meter=%s", serial);
+            log.info(msg);
+            logTx(serial, msg);
             byte[][] aarq = dlmsClient.aarqRequest();
-            log.debug("AARQ (hex): {}", GXCommon.toHex(aarq[0]));
-
-//            byte[] response = RequestResponseService.sendCommand(serial, aarq[0]);
-//            byte[] response = RequestResponseService.sendCommandWithRetry(serial, aarq[0]);
-//            byte[] response = RequestResponseService.sendOnceListen(serial, aarq[0], 15000, 5000, 200);
-//            byte[] response = RequestResponseService.sendCommandWithRetryListenFirst(serial, aarq[0], 10000, 10000, 200, 2);
             byte[] response = RequestResponseService.sendReceiveWithContext(serial, aarq[0], 20000);
-
             byte[] payload = Arrays.copyOfRange(response, 8, response.length);
             GXByteBuffer replyBuffer = new GXByteBuffer(payload);
-
             try {
                 dlmsClient.parseAareResponse(replyBuffer);
             } catch (IllegalArgumentException e) {
                 log.warn("⚠️ AARE parse failed: {}", e.getMessage());
-                log.debug("Assuming AARQ accepted externally.");
             }
             log.info("✅ DLMS Association established for {}", serial);
             MeterSession meterSession = new MeterSession(serial, channel, dlmsClient);
@@ -104,18 +96,6 @@ public class SessionManager {
         }
         return client;
     }
-
-    /**
-     * Remove expired sessions (run on a schedule).
-     */
-//    @Scheduled(fixedDelay = 60000)
-//    public void cleanupExpiredSessions() {
-//        log.debug("🔍 Cleaning up expired sessions...");
-//        int before = sessions.size();
-//        sessions.entrySet().removeIf(entry -> entry.getValue().isExpired(SESSION_TIMEOUT));
-//        int after = sessions.size();
-//        log.debug("🔍 Cleaned up expired sessions: {} removed, {} remaining", before - after, after);
-//    }
 
     /**
      * Optional: forcibly clear session if needed.
