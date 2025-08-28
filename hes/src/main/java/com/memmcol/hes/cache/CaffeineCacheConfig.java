@@ -9,6 +9,7 @@ import org.springframework.cache.caffeine.CaffeineCacheManager;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -39,7 +40,32 @@ public class CaffeineCacheConfig {
 
         specs.put("profileMetadata", Caffeine.newBuilder()  // ✅ NEW
                 .maximumSize(500)
-                .expireAfterWrite(60, TimeUnit.MINUTES)
+                .expireAfterWrite(12, TimeUnit.HOURS)
+                .recordStats());
+
+        specs.put("lastProfileTimestamp", Caffeine.newBuilder()  // ✅ NEW
+                .maximumSize(500)
+                .expireAfterWrite(12, TimeUnit.HOURS)
+                .recordStats());
+
+        specs.put("profileCapturePeriod", Caffeine.newBuilder()
+                .maximumSize(500)
+                .expireAfterWrite(12, TimeUnit.HOURS)
+                .recordStats());
+
+        specs.put("modelScalerMap", Caffeine.newBuilder()
+                .maximumSize(500)
+                .expireAfterWrite(12, TimeUnit.HOURS)
+                .recordStats());
+
+        specs.put("meterRatios", Caffeine.newBuilder()
+                .maximumSize(500)
+                .expireAfterWrite(12, TimeUnit.HOURS)
+                .recordStats());
+
+        specs.put("modelDescriptionMap", Caffeine.newBuilder()
+                .maximumSize(500)
+                .expireAfterWrite(12, TimeUnit.HOURS)
                 .recordStats());
 
         // Custom cache manager with per-cache Caffeine config
@@ -52,4 +78,6 @@ public class CaffeineCacheConfig {
             }
         };
     }
+
+
 }

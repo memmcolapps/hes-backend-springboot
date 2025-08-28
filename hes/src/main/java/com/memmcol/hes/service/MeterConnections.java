@@ -3,20 +3,25 @@ package com.memmcol.hes.service;
 import io.netty.channel.Channel;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 @Slf4j
 public final class MeterConnections {
 
     private static final ConcurrentHashMap<Channel, String> CHANNEL_TO_SERIAL_meterConnectionsPool = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<String, Channel> SERIAL_TO_CHANNEL_meterConnectionsPool = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<Channel, Queue<byte[]>> CHANNEL_INBOUND_QUEUES = new ConcurrentHashMap<>();
+
 
     private MeterConnections() {}
 
     public static void bind(Channel channel, String serial) {
         CHANNEL_TO_SERIAL_meterConnectionsPool.put(channel, serial);
         SERIAL_TO_CHANNEL_meterConnectionsPool.put(serial, channel);
+        CHANNEL_INBOUND_QUEUES.put(channel, new ConcurrentLinkedQueue<>());
         log.debug("🔗 Binding channel {} to serial {}", channel.id(), serial);
 
         log.debug("🔍 Looking for serial '{}'", serial);
@@ -28,9 +33,6 @@ public final class MeterConnections {
     }
 
     public static Channel getChannel(String serial) {
-//        Channel channel = SERIAL_TO_CHANNEL_meterConnectionsPool.get(serial);
-//        return channel;
-
         log.debug("📡 Looking up channel for serial: '{}'", serial);
         Channel ch = SERIAL_TO_CHANNEL_meterConnectionsPool.get(serial);
 
@@ -44,9 +46,14 @@ public final class MeterConnections {
         return ch;
     }
 
+    public static Queue<byte[]> getInboundQueue(Channel channel) {
+        return CHANNEL_INBOUND_QUEUES.computeIfAbsent(channel, k -> new ConcurrentLinkedQueue<>());
+    }
+
     public static void remove(Channel channel) {
         String serial = CHANNEL_TO_SERIAL_meterConnectionsPool.remove(channel);
         if (serial != null) SERIAL_TO_CHANNEL_meterConnectionsPool.remove(serial);
+        CHANNEL_INBOUND_QUEUES.remove(channel);
         channel.close();
         log.info("❌ Disconnected Meter and connection {}", serial);
     }

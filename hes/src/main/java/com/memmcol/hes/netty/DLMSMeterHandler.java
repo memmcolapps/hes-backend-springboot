@@ -1,16 +1,22 @@
 package com.memmcol.hes.netty;
 
-import com.memmcol.hes.model.ProfileRowDTO;
+import com.memmcol.hes.nettyUtils.DLMSRequestTracker;
+import com.memmcol.hes.nettyUtils.DlmsRequestContext;
+import com.memmcol.hes.nettyUtils.RequestResponseService;
 import com.memmcol.hes.service.*;
 import gurux.dlms.internal.GXCommon;
 import io.netty.channel.*;
 import io.netty.handler.timeout.ReadTimeoutException;
+import io.netty.util.AttributeKey;
 import lombok.extern.slf4j.Slf4j;
 import java.net.SocketException;
-import java.net.SocketTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
-import java.util.List;
+import java.util.Queue;
+import java.util.concurrent.BlockingQueue;
+
+import static com.memmcol.hes.nettyUtils.RequestResponseService.TRACKER;
+import static com.memmcol.hes.nettyUtils.RequestResponseService.inflightRequests;
 
 @Slf4j
 public class DLMSMeterHandler extends SimpleChannelInboundHandler<byte[]> {
@@ -34,45 +40,92 @@ public class DLMSMeterHandler extends SimpleChannelInboundHandler<byte[]> {
         log.info("🛑 Disconnected channel {}", ctx.channel().remoteAddress());
         ctx.close();
     }
+
+    /**
+     * Called with fully-decoded DLMS bytes (thanks to SimpleChannelInboundHandler<byte[]>).
+     * We:
+     *  1. Copy into per-channel inbound queue (for late-response / flush diagnostics).
+     *  2. Classify (login / heartbeat / normal DLMS).
+     *  3. Complete the active request tracker for this meter when appropriate.
+     */
     @Override
     protected void channelRead0(ChannelHandlerContext ctx, byte[] msg) throws Exception {
-//        log.info("RX (Message received): {}", formatHex(msg));
+        final Channel ch = ctx.channel();
+        final String serial = MeterConnections.getSerial(ch);
 
-        if (isLoginMessage(msg)) {
-            log.info("RX (Message received): {}", formatHex(msg));
-            handleLoginRequest(ctx, msg);
+        // Store a copy in inbound queue for late-listen / flush support
+        // (avoid storing the same reference if upstream reuses buffers)
+        MeterConnections.getInboundQueue(ch).offer(Arrays.copyOf(msg, msg.length));
 
-            //For develop test
-            try {
-                String serial = MeterConnections.getSerial(ctx.channel());
-                List<ProfileRowDTO> data = dlmsService.readProfileBuffer(serial, "1.0.99.2.0.255");
-            } catch (Exception e){
-                log.warn("Failed to read profile buffer {}", e.getMessage());
-            }
+//        Queue<byte[]> inbound = MeterConnections.getInboundQueue(ctx.channel());
+//        log.info("Inbound queue size={} for serial={}", inbound.size(), serial);
 
-        } else if (isHeartMessage(msg)) {
-            log.info("RX (Message received): {}", formatHex(msg));
-            handleHeartRequest(ctx, msg);
-        } else if (!isLoginMessage(msg) && !isHeartMessage(msg)){
-            // Assume it's a response to a previously sent command
-            // Use channel to find the meter serial
-            String serial = MeterConnections.getSerial(ctx.channel());
+        // Optional: very light RX logging to avoid log flood
+        if (serial != null) {
             log.info("RX: {} : {}", serial, GXCommon.toHex(msg));
-            if (serial == null) {
-                log.warn("❌ Received DLMS response from unknown channel {}", ctx.channel().remoteAddress());
-                return;
-            }
-
-            String key = RequestResponseService.getLastRequestKey(serial);
-            if (key != null) {
-                DLMSRequestTracker.complete(key, msg);
-            } else {
-                log.warn("Received untracked DLMS response from serial: {}", serial);
-            }
         } else {
-            log.info("RX (Message received): {}", formatHex(msg));
-            log.warn("Unknown or unsupported message type.");
+            log.info("RX (unbound channel): {}", GXCommon.toHex(msg));
         }
+
+        // Message classification
+        if (isLoginMessage(msg)) {
+            handleLoginRequest(ctx, msg);
+            return;
+        }
+
+        if (isHeartMessage(msg)) {
+            handleHeartRequest(ctx, msg);
+            return;
+        }
+
+        // Normal DLMS application response
+        if (serial == null) {
+            log.warn("❌ Received DLMS response from unknown channel {}", ch.remoteAddress());
+            return;
+        }
+
+        /**
+         * Handle Incoming Response
+         * tracking correlationId
+         */
+        String correlationId = (String) ch.attr(AttributeKey.valueOf("CID")).get();
+        DlmsRequestContext context = inflightRequests.get(correlationId);
+        if (context == null) {
+            log.warn("❌ Unknown or stale DLMS response: CID={} — discarding", correlationId);
+            return;
+        }
+
+        if (System.currentTimeMillis() > context.getExpiryTime()) {
+            inflightRequests.remove(correlationId);
+            log.warn("⚠️ Expired response for CID={} (Meter={}) — discarded", correlationId, context.getMeterId());
+            return;
+        }
+
+        inflightRequests.remove(correlationId);
+        log.debug("✅ Accepted DLMS response: CID={}, Meter={}", correlationId, context.getMeterId());
+
+        BlockingQueue<byte[]> queue = TRACKER.get(correlationId);
+        if (queue != null) {
+            queue.offer(Arrays.copyOf(msg, msg.length));
+        } else {
+            log.warn("⚠️ No waiting queue for correlationId={} — possible timeout or late RX", correlationId);
+        }
+
+
+        // Complete the active tracker for this serial (new API)
+//        log.info("channelRead0: Received msg for serial={} — attempting to complete future", serial);
+//        boolean completed = DLMSRequestTracker.completeActiveForSerial(serial, msg);
+//        if (!completed) {
+//            // Backward-compatible fallback if you're still using old key mapping
+//            String key = RequestResponseService.getLastRequestKey(serial);
+//
+//            if (key != null) {
+//                DLMSRequestTracker.complete(key, msg);
+//            } else {
+//                log.warn("Received untracked DLMS frame from meter={}. No active request.", serial);
+//            }
+//        }
+
     }
 
     @Override
@@ -164,6 +217,12 @@ public class DLMSMeterHandler extends SimpleChannelInboundHandler<byte[]> {
         // Log using your specified format
         log.info("TX (Response to meter): {}", formatHex(response));
         log.info("Meter No: {}", meterId);
+
+
+
+
+
+
         log.info("Message type: HEART");
 
         ctx.writeAndFlush(response);
