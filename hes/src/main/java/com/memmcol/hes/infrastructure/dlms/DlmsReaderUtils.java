@@ -25,6 +25,7 @@ import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.security.SignatureException;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -330,7 +331,7 @@ public class DlmsReaderUtils {
                 Object value = row.get(i);
                 values.put(key, value);
             }
-            ProfileRowGeneric rowGeneric = new ProfileRowGeneric(ts.atZone(ZoneId.systemDefault()).toInstant(), values);
+            ProfileRowGeneric rowGeneric = new ProfileRowGeneric(Instant.now(), meterSerial, profileObis, values);
             out.add(rowGeneric);
         }
         return out;
@@ -365,18 +366,12 @@ public class DlmsReaderUtils {
 
             //Set other columns
             for (int i = 1; i < row.size() && i < metadataList.size(); i++) {
-//                obisCode = metadataList.get(i).getCaptureObis();
-//                Object value = row.get(i);
-//                values.put(obisCode, value);
-//                obisCode = metadataList.get(i).getCaptureObis() + "-" + metadataList.get(i).getAttributeIndex();
                 ModelProfileMetadata meta = metadataList.get(i);
                 String key = meta.getCaptureObis() + "-" + meta.getAttributeIndex();
                 Object value = row.get(i);
                 values.put(key, value);
-
-
             }
-            ProfileRowGeneric rowGeneric = new ProfileRowGeneric(ts.atZone(ZoneId.systemDefault()).toInstant(), values);
+            ProfileRowGeneric rowGeneric = new ProfileRowGeneric(Instant.now(), meterSerial, profileObis, values);
             out.add(rowGeneric);
         }
         return out;
@@ -396,36 +391,6 @@ public class DlmsReaderUtils {
         } catch (Exception e) {
             throw new ProfileReadException("Partial recovery failed: " + e.getMessage(), e);
         }
-    }
-
-    public LocalDateTime parseTimestamp(Object raw) {
-        switch (raw) {
-            case null -> {
-                return null;
-            }
-
-            case GXDateTime gxdt -> {
-                Date date = gxdt.getValue(); // returns java.util.Date
-                return date.toInstant().atZone(ZoneId.systemDefault()).toLocalDateTime();
-            }
-
-            case LocalDateTime dt -> {
-                return dt;
-            }
-            case String str -> {
-                try {
-                    // Acceptable format in your JSON: 2024-08-21 10:30:00
-                    DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
-                    return LocalDateTime.parse(str, formatter);
-                } catch (Exception e) {
-                    log.error("❌ Failed to parse timestamp: {}", str, e);
-                }
-            }
-            default -> {
-            }
-        }
-
-        return null;
     }
 
     public LocalDateTime extractFirstRowTimestampDirect(GXDLMSProfileGeneric profile) {
@@ -483,6 +448,37 @@ public class DlmsReaderUtils {
             firstCol = rowObj;
         }
 
-        return parseTimestamp(firstCol);
+        return timestampDecoder.decodeTimestamp(firstCol);
+    }
+
+    public LocalDateTime parseTimestamp(Object raw) {
+        switch (raw) {
+            case null -> {
+                return null;
+            }
+            case GXDateTime gxdt -> {
+                Date date = gxdt.getValue(); // returns java.util.Date
+                return date.toInstant().atZone(ZoneId.systemDefault()).toLocalDateTime();
+            }
+            case LocalDateTime dt -> {
+                return dt;
+            }
+            case String str -> {
+                try {
+                    // Acceptable format in your JSON: 2024-08-21 10:30:00
+                    DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+                    return LocalDateTime.parse(str, formatter);
+                } catch (Exception e) {
+                    log.error("❌ Failed to parse timestamp: {}", str, e);
+                }
+            }
+            case byte[] bytes -> {
+                return timestampDecoder.decode(bytes);
+            }
+            default -> {
+            }
+        }
+
+        return null;
     }
 }

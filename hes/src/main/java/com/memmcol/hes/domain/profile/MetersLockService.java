@@ -15,6 +15,8 @@ public class MetersLockService {
     private final ProfileMetricsPort metricsPort;
     private final ProfileChannelOneServiceExtension channelOneServiceExtension;
     private final MonthlyBillingService monthlyBillingService;
+    private final DailyBillingService dailyBillingService;
+    private final EventLogService eventLogService;
 
     public void readChannelOneWithLock(String model, String meterSerial, String profileObis, int batchSize) {
         try {
@@ -41,6 +43,44 @@ public class MetersLockService {
             lockPort.withExclusive(meterSerial, () -> {
                 monthlyBillingService.readProfileAndSave(model, meterSerial, profileObis, batchSize);
                 log.info("Profile reading completed or aborted. meter={} profile={}", meterSerial, profileObis);
+                return null;
+            });
+        } catch (IllegalStateException e2) {
+            log.error("Sync fatal meter={} profile={} reason={}", meterSerial, profileObis, e2.getMessage(), e2);
+            assert metricsPort != null;
+            metricsPort.recordFailure(meterSerial, profileObis, "Server restarted");
+        } catch (Exception e) {
+            log.error("Sync fatal meter={} profile={} reason={}", meterSerial, profileObis, e.getMessage(), e);
+            assert metricsPort != null;
+            metricsPort.recordFailure(meterSerial, profileObis, "lock_or_sync_error");
+        }
+    }
+
+    public void readDailyBillWithLock(String model, String meterSerial, String profileObis, int batchSize) {
+        try {
+            assert lockPort != null;
+            lockPort.withExclusive(meterSerial, () -> {
+                dailyBillingService.readProfileAndSave(model, meterSerial, profileObis, batchSize);
+                log.info("Profile reading completed or aborted. meter={} profile={}", meterSerial, profileObis);
+                return null;
+            });
+        } catch (IllegalStateException e2) {
+            log.error("Sync fatal meter={} profile={} reason={}", meterSerial, profileObis, e2.getMessage(), e2);
+            assert metricsPort != null;
+            metricsPort.recordFailure(meterSerial, profileObis, "Server restarted");
+        } catch (Exception e) {
+            log.error("Sync fatal meter={} profile={} reason={}", meterSerial, profileObis, e.getMessage(), e);
+            assert metricsPort != null;
+            metricsPort.recordFailure(meterSerial, profileObis, "lock_or_sync_error");
+        }
+    }
+
+    public void readEventsWithLock(String model, String meterSerial, String profileObis, int batchSize) {
+        try {
+            assert lockPort != null;
+            lockPort.withExclusive(meterSerial, () -> {
+                eventLogService.readProfileAndSave(model, meterSerial, profileObis, batchSize);
+                log.info("Events Profile reading completed or aborted. meter={} profile={}", meterSerial, profileObis);
                 return null;
             });
         } catch (IllegalStateException e2) {

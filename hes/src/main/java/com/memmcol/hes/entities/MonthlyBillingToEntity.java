@@ -1,7 +1,6 @@
 package com.memmcol.hes.entities;
 
 import com.memmcol.hes.dto.MonthlyBillingDTO;
-import com.memmcol.hes.dto.ProfileChannelOneDTO;
 
 public class MonthlyBillingToEntity {
     public static MonthlyBillingEntity toEntity(MonthlyBillingDTO dto) {

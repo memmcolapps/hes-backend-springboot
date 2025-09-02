@@ -4,14 +4,11 @@ import com.memmcol.hes.application.port.out.CapturePeriodPort;
 import com.memmcol.hes.application.port.out.ProfileMetricsPort;
 import com.memmcol.hes.application.port.out.ProfileReadException;
 import com.memmcol.hes.application.port.out.ProfileStatePort;
-import com.memmcol.hes.domain.profile.mappers.MonthlyBillingMapper;
-import com.memmcol.hes.domain.profile.mappers.ProfileChannelOneMapper;
-import com.memmcol.hes.dto.MonthlyBillingDTO;
-import com.memmcol.hes.dto.ProfileChannelOneDTO;
+import com.memmcol.hes.domain.profile.mappers.DailyBillingMapper;
+import com.memmcol.hes.dto.DailyBillingProfileDTO;
 import com.memmcol.hes.infrastructure.dlms.DlmsReaderUtils;
 import com.memmcol.hes.infrastructure.dlms.ProfileMetadataProvider;
-import com.memmcol.hes.infrastructure.persistence.MonthlyBillingPersistenceAdapter;
-import com.memmcol.hes.infrastructure.persistence.ProfileChannelOnePersistAdapter;
+import com.memmcol.hes.infrastructure.persistence.DailyBillingPersistenceAdapter;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -23,15 +20,15 @@ import java.util.List;
 @AllArgsConstructor
 @Slf4j
 @Service
-public class MonthlyBillingService {
+public class DailyBillingService {
     private final ProfileTimestampPortImpl timestampPort;
     private final CapturePeriodPort capturePeriodPort;
     private final DlmsReaderUtils dlmsReaderUtils;
     private final ProfileMetricsPort metricsPort;
     private final ProfileStatePort statePort;
     private final ProfileMetadataProvider metadataProvider;
-    private final MonthlyBillingMapper billingMapper;
-    private final MonthlyBillingPersistenceAdapter monthlyBillingPersistenceAdapter;
+    private final DailyBillingMapper dailyBillingMapper;
+    private final DailyBillingPersistenceAdapter dailyBillingPersistenceAdapter;
 
     @Transactional
     public void readProfileAndSave(String model, String meterSerial, String profileObis, int batchSize) {
@@ -51,10 +48,10 @@ public class MonthlyBillingService {
                 LocalDateTime from = cursor.value();
                 LocalDateTime to;
 
-                // Monthly profile → move by full months
-                if ((cp.seconds() == 0 || cp.seconds() == 1) && profileObis.startsWith("0.0.98.1")) {
+                // Daily profile → move by days
+                if ((cp.seconds() == 0 || cp.seconds() == 1) && profileObis.startsWith("0.0.98")) {
                     // advance by <batchSize> months
-                    to = from.plusMonths(1);
+                    to = from.plusDays(1);
                 } else {
                     // normal (load) profile → advance by seconds
                     to = from.plusSeconds((long) batchSize * cp.seconds());
@@ -65,16 +62,16 @@ public class MonthlyBillingService {
                 long t0 = System.currentTimeMillis();
                 boolean exceptionOccurred = false;
 
-                ProfileMetadataResult metadataResult = metadataProvider.resolve(meterSerial, profileObis, model);
+                ProfileMetadataResult captureObjects = metadataProvider.resolve(meterSerial, profileObis, model);
                 List<ProfileRowGeneric> rawRows;
 
                 try {
-                    rawRows = dlmsReaderUtils.readRange(model, meterSerial, profileObis, metadataResult, from, to, true);
+                    rawRows = dlmsReaderUtils.readRange(model, meterSerial, profileObis, captureObjects, from, to, true);
                 } catch (Exception e) {
                     log.warn("Range read failed; attempting recovery meter={} profile={} cause={}",
                             meterSerial, profileObis, e.getMessage());
                     exceptionOccurred = true;
-                    rawRows = attemptRecovery(model, meterSerial, profileObis, metadataResult);
+                    rawRows = attemptRecovery(model, meterSerial, profileObis, captureObjects);
                 }
 
                 // --- Cursor & Salvage Logic ---
@@ -92,15 +89,14 @@ public class MonthlyBillingService {
                     continue;
                 }
 
-//                 Map, createPartitionsIfMissing & save
-                List<MonthlyBillingDTO> dtos = billingMapper.toDTO(rawRows, meterSerial, model, true, metadataResult);
-                monthlyBillingPersistenceAdapter.createPartitionsIfMissing(dtos);
-                ProfileSyncResult syncResult = monthlyBillingPersistenceAdapter.saveBatchAndAdvanceCursor(meterSerial, profileObis, dtos, cp);
+                List<DailyBillingProfileDTO> dtos = dailyBillingMapper.toDTO(rawRows, meterSerial, model, true, captureObjects);
+                dailyBillingPersistenceAdapter.createPartitionsIfMissing(dtos);
+                ProfileSyncResult syncResult = dailyBillingPersistenceAdapter.saveBatchAndAdvanceCursor(meterSerial, profileObis, dtos, cp);
 
                 long t1 = System.currentTimeMillis() - t0;
                 metricsPort.recordBatch(meterSerial, profileObis, syncResult.getInsertedCount(), t1);
 
-                // Persist new cursor
+                // Persist new cursor (Next iteration)
                 ProfileTimestamp resume = ProfileTimestamp.ofNullable(syncResult.getAdvanceTo());
                 cursor = (resume != null ? resume.plus(cp) : cursor.plus(cp));
                 statePort.upsertState(meterSerial, profileObis, resume, cp);
@@ -111,7 +107,6 @@ public class MonthlyBillingService {
                     return;
                 }
             }
-
         } catch (Exception ex) {
             // Final safety: log and exit WITHOUT re-throwing.
             log.error("Fatal exception while reading profile, meter={}, profile={}: {}",
@@ -120,14 +115,14 @@ public class MonthlyBillingService {
         }
     }
 
-    private List<ProfileRowGeneric> attemptRecovery(String model, String serial, String profileObis, ProfileMetadataResult metadataResult) {
+    public List<ProfileRowGeneric> attemptRecovery(String model, String serial, String profileObis, ProfileMetadataResult captureObjects) {
         /*TODO:
-         *  1. I have encountered timeout error.
+         *  1. I have not encountered timeout error.
          *  2. I want to debug the decoding of partial rows.
          *  3. After debuging and resolving, then delete the neccessary block in timestampdecoder class
          * */
         try {
-            List<ProfileRowGeneric> salvaged = dlmsReaderUtils.recoverPartial(serial, profileObis, model, metadataResult);
+            List<ProfileRowGeneric> salvaged = dlmsReaderUtils.recoverPartial(serial, profileObis, model, captureObjects);
             metricsPort.recordRecovery(serial, profileObis, salvaged.size());
             return salvaged;
         } catch (ProfileReadException e) {
@@ -136,5 +131,4 @@ public class MonthlyBillingService {
             return List.of();
         }
     }
-
 }

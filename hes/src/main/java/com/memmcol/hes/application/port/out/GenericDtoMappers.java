@@ -14,14 +14,14 @@ public interface GenericDtoMappers<T> {
                                                  String meterSerial,
                                                  String modelNumber,
                                                  boolean mdMeter,
-                                                 ProfileMetadataResult metadataResult) throws Exception;
+                                                 ProfileMetadataResult captureObjects) throws Exception;
 
 
     T mapRow(ProfileRowGeneric raw,
                     String meterSerial,
                     String modelNumber,
                     boolean mdMeter,
-                    ProfileMetadataResult metadataResult,
+                    ProfileMetadataResult captureObjects,
                     MeterRatios meterRatios);
 
     void setDtoField(T dto, String columnName, BigDecimal value);

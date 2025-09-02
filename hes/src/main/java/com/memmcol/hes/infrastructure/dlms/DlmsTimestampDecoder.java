@@ -78,9 +78,11 @@ public class DlmsTimestampDecoder {
                 .toLocalDateTime();
     }
 
-    LocalDateTime decodeTimestamp(Object rawValue){
+    public LocalDateTime decodeTimestamp(Object rawValue){
         LocalDateTime tsInstant;
         switch (rawValue) {
+            case GXDateTime gx ->
+                tsInstant = convertGXDateTime(gx);
             case LocalDateTime localDateTime ->
                 // Already a LocalDateTime
                     tsInstant = localDateTime;

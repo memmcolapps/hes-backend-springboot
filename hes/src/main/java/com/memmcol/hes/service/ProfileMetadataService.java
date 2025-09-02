@@ -16,6 +16,8 @@ import org.springframework.stereotype.Service;
 
 import java.util.*;
 
+import static com.memmcol.hes.nettyUtils.RequestResponseService.logTx;
+
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -68,15 +70,21 @@ public class ProfileMetadataService {
      * Reads attribute-3 of the ProfileGeneric *and* scaler/unit of each Register-type
      * capture object, then persists the list.
      *
-     * @param sampleSerial  an online meter of this model (used once)
+     * @param meterSerial  an online meter of this model (used once)
      */
     public List<ModelProfileMetadata> loadFromMeterAndPersist(
-            String sampleSerial,
+            String meterSerial,
             String meterModel,
             String profileObis) {
 
         try {
-            GXDLMSClient client = sessionManager.getOrCreateClient(sampleSerial);
+            String msg = String.format(
+                    "Reading capture objects, scaler and units for model=%s meter=%s obis=%s",
+                    meterModel, meterSerial, profileObis);
+            log.info(msg);
+            logTx(meterSerial, msg);
+
+            GXDLMSClient client = sessionManager.getOrCreateClient(meterSerial);
             if (client == null) throw new IllegalStateException("DLMS session not available");
 
             GXDLMSProfileGeneric profile = new GXDLMSProfileGeneric();
@@ -84,7 +92,7 @@ public class ProfileMetadataService {
 
             // ── 1. Read capture-objects list ──────────────────────────────────────
             byte[][] req = client.read(profile, 3);
-            GXReplyData rep = dlmsReaderUtils.readDataBlock(client, sampleSerial, req[0]);
+            GXReplyData rep = dlmsReaderUtils.readDataBlock(client, meterSerial, req[0]);
             client.updateValue(profile, 3, rep.getValue());
 
             List<ModelProfileMetadata> rows = new ArrayList<>();
@@ -100,13 +108,13 @@ public class ProfileMetadataService {
 
                 // ── 2. If Register-like, read attribute-3 once to get scaler/unit
                 if (obj instanceof GXDLMSRegister) {
-                    dlmsReaderUtils.readScalerUnit(client, sampleSerial, obj, 3);
+                    dlmsReaderUtils.readScalerUnit(client, meterSerial, obj, 3);
                     scaler = DlmsScalerUnitHelper.extractScaler(obj);
                     unit = DlmsScalerUnitHelper.extractUnit(obj);
                 }
 
                 if (obj instanceof GXDLMSExtendedRegister || obj instanceof GXDLMSDemandRegister) {
-                    dlmsReaderUtils.readScalerUnit(client, sampleSerial, obj, 3);
+                    dlmsReaderUtils.readScalerUnit(client, meterSerial, obj, 3);
                     scaler = DlmsScalerUnitHelper.extractScaler(obj);
                     unit = DlmsScalerUnitHelper.extractUnit(obj);
                 }
@@ -142,8 +150,8 @@ public class ProfileMetadataService {
 
 
         } catch (AssociationLostException ex) {
-            sessionManager.removeSession(sampleSerial);
-            log.error("Association lost with meter number: {}", sampleSerial);
+            sessionManager.removeSession(meterSerial);
+            log.error("Association lost with meter number: {}", meterSerial);
             return Collections.emptyList();
         } catch (Exception ex) {
             log.error("❌ Metadata load failed", ex);
