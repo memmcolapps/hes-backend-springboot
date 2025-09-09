@@ -16,6 +16,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Optional;
 
+import static com.memmcol.hes.nettyUtils.RequestResponseService.logTx;
+
 @Component
 @RequiredArgsConstructor
 @Slf4j
@@ -46,6 +48,10 @@ public class CapturePeriodAdapter implements CapturePeriodPort {
         }
 
         // 3. Meter read
+        String msg = String.format("Reading capture period from meter=%s obis=%s", meterSerial, profileObis);
+        log.info(msg);
+        logTx(meterSerial, msg);
+
         int fromMeter = readCapturePeriodFromMeter(meterSerial, profileObis);
         if (fromMeter > 0) {
             // persist (insert or update)
@@ -115,6 +121,11 @@ public class CapturePeriodAdapter implements CapturePeriodPort {
 
             int cpInt = cp == null ? -1 : cp.intValue();
 
+            // 0 = monthly profile → use 1 month (represented as "1")
+            if (cpInt == 0 && profileObis.startsWith("0.0.98")) {
+                log.info("CapturePeriod=0 detected for monthly profile → assuming 1 month");
+                return 1;  // 1 month / Day
+            }
             log.info("Read capturePeriod from meter={} obis={} cp={}s", serial, profileObis, cpInt);
             return cpInt;
 

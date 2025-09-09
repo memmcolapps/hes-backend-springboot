@@ -1,10 +1,19 @@
 package com.memmcol.hes.controller;
 
+import com.memmcol.hes.domain.profile.ProfileProcessRequest;
+import com.memmcol.hes.domain.profile.ProfileProcessor;
+import com.memmcol.hes.domain.profile.ProfileTimestampPortImpl;
+import com.memmcol.hes.infrastructure.dlms.CapturePeriodAdapter;
 import com.memmcol.hes.model.ProfileRowDTO;
 import com.memmcol.hes.model.TimestampRequest;
 import com.memmcol.hes.service.DlmsService;
 import com.memmcol.hes.service.ProfileMetadataService;
 import gurux.dlms.objects.GXDLMSObject;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import io.swagger.v3.oas.annotations.tags.Tags;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -26,19 +35,28 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+@Tag(name = "DLMS APIs", description = "Meter reading & profile APIs")
 @RestController
+@Slf4j
 @RequestMapping("/api/dlms")
 public class DlmsController {
 
     private final DlmsService dlmsService;
     private final ProfileMetadataService profileMetadataService;
+    private final ProfileProcessor profileProcessor;
+    private final ProfileTimestampPortImpl timestampPort;
+    private final CapturePeriodAdapter capturePeriodAdapter;
 
-    public DlmsController(DlmsService dlmsService, ProfileMetadataService profileMetadataService) {
+    public DlmsController(DlmsService dlmsService, ProfileMetadataService profileMetadataService, ProfileProcessor profileProcessor, ProfileTimestampPortImpl timestampPort, CapturePeriodAdapter capturePeriodAdapter) {
         this.dlmsService = dlmsService;
         this.profileMetadataService = profileMetadataService;
+        this.profileProcessor = profileProcessor;
+        this.timestampPort = timestampPort;
+        this.capturePeriodAdapter = capturePeriodAdapter;
     }
 
     @GetMapping("/readClock")
+    @Tag(name = "Clock", description = "Read clock by providing only the meter number.")
     public String readClock(@RequestParam String serial) throws InvalidAlgorithmParameterException, NoSuchPaddingException, IllegalBlockSizeException, NoSuchAlgorithmException, BadPaddingException, SignatureException, InvalidKeyException {
         return dlmsService.readClock(serial);
     }
@@ -207,4 +225,70 @@ public class DlmsController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
     }
+
+    @PostMapping("/profiles/process")
+    public ResponseEntity<String> processProfiles(@RequestBody ProfileProcessRequest request) {
+        try {
+            // Pass values from request to service
+            profileProcessor.setModel(request.getModel());
+            profileProcessor.setMeterSerial(request.getMeterSerial());
+            profileProcessor.setProfileObis(request.getProfileObis());
+            profileProcessor.setFrom(request.getFrom());
+            profileProcessor.setTo(request.getTo());
+            profileProcessor.setMdMeter(request.isMdMeter());
+
+            // Call the service
+            profileProcessor.processProfiles();
+
+            return ResponseEntity.ok("Profile processing completed successfully.");
+        } catch (Exception e) {
+            log.error("Error processing profiles", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Error: " + e.getMessage());
+        }
+    }
+
+     /**
+     * Resolve the last timestamp for a given meter and OBIS profile.
+     */
+    @Operation(
+            summary = "Get last timestamp",
+            description = "Resolves the last known timestamp for a given meter and OBIS profile. " +
+                    "It checks cache → DB → meter read → fallback."
+    )
+    @GetMapping("/last-timestamp")
+    public ResponseEntity<LocalDateTime> refreshLastTimestamp(
+            @Parameter(description = "Unique serial number of the meter", example = "123456789")
+            @RequestParam String meterSerial,
+
+            @Parameter(description = "OBIS code for the profile", example = "0.0.99.98.0.255")
+            @RequestParam String obis) {
+
+        log.info("Request to resolve last timestamp meter={} obis={}", meterSerial, obis);
+        LocalDateTime ts = timestampPort.refreshLastTimestamp(meterSerial, obis);
+        return ResponseEntity.ok(ts);
+    }
+
+    /**
+     * Resolve the last timestamp for a given meter and OBIS profile.
+     */
+    @Operation(
+            summary = "Get capture period",
+            description = "Resolves the capture period for a given meter and OBIS profile. " +
+                    "It checks cache → DB → meter read → fallback."
+    )
+    @GetMapping("/capture-period")
+    public ResponseEntity<Integer> refreshCapturePeriodSeconds(
+            @Parameter(description = "Unique serial number of the meter", example = "123456789")
+            @RequestParam String meterSerial,
+
+            @Parameter(description = "OBIS code for the profile", example = "0.0.99.98.0.255")
+            @RequestParam String obis) {
+
+        log.info("Request to get the capture period meter={} obis={}", meterSerial, obis);
+        int ts = capturePeriodAdapter.refreshCapturePeriodSeconds(meterSerial, obis);
+        return ResponseEntity.ok(ts);
+    }
+
+
 }

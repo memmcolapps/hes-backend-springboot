@@ -1,5 +1,6 @@
 package com.memmcol.hes.service;
 
+import com.memmcol.hes.application.port.out.TxRxService;
 import com.memmcol.hes.nettyUtils.RequestResponseService;
 import com.memmcol.hes.nettyUtils.SessionManager;
 import gurux.dlms.GXDLMSClient;
@@ -28,6 +29,7 @@ public class MeterSession {
     private final String meterSerial;
     private final Channel channel;
     private final GXDLMSClient client;
+    private final TxRxService txRxService;
 
     @Setter
     private boolean isAssociated = false;
@@ -56,7 +58,7 @@ public class MeterSession {
         // e.g., send via channel or command interface
         try {
             byte[] disconnect = client.disconnectRequest();
-            byte[] response = RequestResponseService.sendReceiveWithContext(meterSerial, disconnect, 20000);
+            byte[] response = txRxService.sendReceiveWithContext(meterSerial, disconnect, 20000);
             log.info("Meter disconnected successfully.");
         } catch (Exception e) {
             log.warn("⚠️ Failed to send disconnect for {}: {}", meterSerial, e.getMessage());

@@ -1,6 +1,7 @@
 package com.memmcol.hes.trackByTimestamp;
 
 import com.github.benmanes.caffeine.cache.Caffeine;
+import com.memmcol.hes.repository.ProfileChannel2Repository;
 import com.memmcol.hes.service.MeterReadAdapter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cache.Cache;
@@ -17,7 +18,8 @@ public class ProfileTimestampTracker {
 
 
     private final CacheManager cacheManager;
-    private final MeterProfileTimestampProgressRepository repo;
+    private final MeterProfileTimestampProgressRepository timestampProgressRepository;
+    private final ProfileChannel2Repository channel2Repository;
     private final MeterReadAdapter readAdapter;
 
     private Cache getCache() {
@@ -26,13 +28,13 @@ public class ProfileTimestampTracker {
 
 
     public LocalDateTime getLastTimestamp(String serial, String obis) {
-        return repo.findByMeterSerialAndProfileObis(serial, obis)
+        return timestampProgressRepository.findByMeterSerialAndProfileObis(serial, obis)
                 .map(MeterProfileTimestampProgress::getLastProfileTimestamp)
                 .orElse(LocalDateTime.MIN); // Start from the beginning
     }
 
     public void updateLastTimestamp(String serial, String obis, LocalDateTime timestamp) {
-        MeterProfileTimestampProgress progress = repo.findByMeterSerialAndProfileObis(serial, obis)
+        MeterProfileTimestampProgress progress = timestampProgressRepository.findByMeterSerialAndProfileObis(serial, obis)
                 .orElse(MeterProfileTimestampProgress.builder()
                         .meterSerial(serial)
                         .profileObis(obis)
@@ -43,7 +45,7 @@ public class ProfileTimestampTracker {
         progress.setLastProfileTimestamp(timestamp);
         progress.setUpdatedAt(LocalDateTime.now());
 
-        repo.save(progress);
+        timestampProgressRepository.save(progress);
     }
 
     public LocalDateTime getLastTimestamp(String serial, String obis, String model) throws Exception {
@@ -54,7 +56,7 @@ public class ProfileTimestampTracker {
         }
 
         // ✅ Try DB
-        LocalDateTime dbTimestamp = repo.findLatestTimestamp(serial);
+        LocalDateTime dbTimestamp = channel2Repository.findLatestTimestamp(serial);
         if (dbTimestamp != null) {
             getCache().put("lastProfileTimestamp:" + serial, dbTimestamp); // 🧠 cache it
             return dbTimestamp;

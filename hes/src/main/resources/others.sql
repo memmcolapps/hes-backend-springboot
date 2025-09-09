@@ -1,5 +1,5 @@
 select * from model_profile_metadata
-where profile_obis = '0.0.99.98.4.255'
+where profile_obis = '1.0.99.1.0.255'
   and class_id = 4;
 
 SELECT DISTINCT profile_obis from model_profile_metadata;
@@ -21,6 +21,7 @@ select * from model_profile_metadata_captured_obis;
 select * from dlms_obis_objects;  --Association view
 select * from profile_reading_energy;
 select * from obis_mapping; --Has OBIS Combined
+select * from meter_profile_state; --Stored last read timestamp
 -- delete from obis_mapping;
 
 ALTER TABLE public.obis_mapping

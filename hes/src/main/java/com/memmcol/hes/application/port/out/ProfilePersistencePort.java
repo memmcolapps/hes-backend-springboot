@@ -1,9 +1,6 @@
 package com.memmcol.hes.application.port.out;
 
-import com.memmcol.hes.domain.profile.CapturePeriod;
-import com.memmcol.hes.domain.profile.ProfileRow;
-import com.memmcol.hes.domain.profile.ProfileSyncResult;
-import com.memmcol.hes.domain.profile.ProfileTimestamp;
+import com.memmcol.hes.domain.profile.*;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
@@ -12,15 +9,21 @@ import java.util.Map;
 /**
  * 2. Port Interfaces (Application Layer Contracts)
  */
-public interface ProfilePersistencePort {
-    int saveBatch(String meterSerial, String profileObis, List<ProfileRow> rows);
+public interface ProfilePersistencePort<T> {
+    int saveBatch(String meterSerial, String profileObis, List<T> rows);
 
     ProfileTimestamp findLatestTimestamp(String meterSerial, String profileObis); // optional quick lookup
 
     ProfileSyncResult saveBatchAndAdvanceCursor(String meterSerial,
                                                 String meterModel,
                                                 String obis,
-                                                List<ProfileRow> rows,
+                                                List<T> rows,
                                                 CapturePeriod capturePeriodSeconds,
-                                                Map<String, Double> scalers);
+                                                ProfileMetadataResult metadataResult);
+
+    ProfileSyncResult saveBatchAndAdvanceCursor(String meterSerial,
+                                                String meterModel,
+                                                String obis,
+                                                List<T> rows,
+                                                CapturePeriod capturePeriodSeconds);
 }

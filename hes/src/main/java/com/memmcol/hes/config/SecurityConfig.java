@@ -29,7 +29,10 @@ public class SecurityConfig {
                         .requestMatchers(
                                 "/api/auth/**",          // Open for authentication
                                 "/ws-meters/**",         // ⬅️ Explicitly allow WebSocket handshake endpoint
-                                "/actuator/**"           // Optional: if using Spring Boot Actuator
+                                "/actuator/**" ,          // Optional: if using Spring Boot Actuator
+                                "/swagger-ui/**",
+                                "/swagger-ui.html",
+                                "/v3/api-docs/**"
                         ).permitAll()
                         .anyRequest().authenticated()
                 )

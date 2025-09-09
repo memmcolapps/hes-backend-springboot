@@ -14,9 +14,9 @@ public class ProfileChannel2ReadingMapper {
                 .meterSerial(dto.getMeterSerial())
                 .modelNumber(dto.getModelNumber())
                 .entryIndex(dto.getEntryIndex())
-                .entryTimestamp(dto.getProfileTimestamp())
-                .reactiveEnergy(dto.getReactiveEnergyKvarh())
-                .activeEnergy(dto.getActiveEnergyKwh())
+                .entryTimestamp(dto.getEntryTimestamp())
+                .exportActiveEnergy(dto.getExportActiveEnergy())
+                .importActiveEnergy(dto.getImportActiveEnergy())
                 .rawData(dto.getRawData())
                 .receivedAt(dto.getReceivedAt())
                 .build();

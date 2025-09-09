@@ -79,7 +79,7 @@ public class ProfileRowParserRaw {
             if (col.getClassId() == ObjectType.CLOCK.getValue()) {
                 LocalDateTime parsed = DlmsDateUtils.parseTimestampLdt(val);
                 if (parsed != null) {
-                    mapped.put("timestamp", parsed);
+                    mapped.put(col.getObis(), parsed);
                     raw.add(parsed);
                     ts = parsed;
                 } else {
