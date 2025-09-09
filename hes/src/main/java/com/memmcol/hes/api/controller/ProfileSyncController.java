@@ -101,12 +101,16 @@ public class ProfileSyncController {
             @PathVariable String profileObis,
 
             @Parameter(description = "Optional number of rows per batch", example = "100")
-            @RequestParam(required = false, defaultValue = "1") int batchSize) {
+            @RequestParam(required = false, defaultValue = "1") int batchSize,
 
-        metersLockService.readEventsWithLock(model, serial, profileObis, batchSize);
+            @Parameter(description = "Test mode flag", example = "false")
+            @RequestParam(required = false, defaultValue = "false") boolean testMode) {
+
+        metersLockService.readEventsWithLock(model, serial, profileObis, batchSize, testMode);
         return ResponseEntity.accepted()
                 .body("Sync started for meter " + serial +
                         " profile " + profileObis +
-                        " with batchSize=" + batchSize);
+                        " with batchSize=" + batchSize +
+                        " testMode=" + testMode);
     }
 }

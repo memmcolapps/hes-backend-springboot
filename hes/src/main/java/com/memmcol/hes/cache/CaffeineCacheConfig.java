@@ -68,6 +68,11 @@ public class CaffeineCacheConfig {
                 .expireAfterWrite(12, TimeUnit.HOURS)
                 .recordStats());
 
+        specs.put("eventCodeLookup", Caffeine.newBuilder()
+                .maximumSize(500)
+                .expireAfterWrite(24, TimeUnit.HOURS) // or no expiry if lookup table is static
+                .recordStats());
+
         // Custom cache manager with per-cache Caffeine config
         return new CaffeineCacheManager() {
             @Override

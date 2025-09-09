@@ -92,6 +92,9 @@ public class DlmsTimestampDecoder {
             case byte[] bytes ->
                 // Raw bytes → decode to LocalDateTime
                     tsInstant = decode(bytes);
+            case Date d ->
+                // Already a Date
+                tsInstant = LocalDateTime.ofInstant(d.toInstant(), zone);
             default -> {
                 // Fallback: unexpected type
                 log.warn("Unexpected timestamp type: {}, using fallback",

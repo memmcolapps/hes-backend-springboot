@@ -75,11 +75,11 @@ public class MetersLockService {
         }
     }
 
-    public void readEventsWithLock(String model, String meterSerial, String profileObis, int batchSize) {
+    public void readEventsWithLock(String model, String meterSerial, String profileObis, int batchSize, boolean testMode) {
         try {
             assert lockPort != null;
             lockPort.withExclusive(meterSerial, () -> {
-                eventLogService.readProfileAndSave(model, meterSerial, profileObis, batchSize);
+                eventLogService.readProfileAndSave(model, meterSerial, profileObis, batchSize, testMode);
                 log.info("Events Profile reading completed or aborted. meter={} profile={}", meterSerial, profileObis);
                 return null;
             });

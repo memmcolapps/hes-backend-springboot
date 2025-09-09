@@ -36,7 +36,8 @@ VALUES
     ('Standard Event Logs', '0.0.99.98.0.255', 'General meter/system events'),
     ('Power Grid Event Logs', '0.0.99.98.4.255', 'Grid-related events'),
     ('Fraud Event Logs', '0.0.99.98.1.255', 'Tamper/fraud events'),
-    ('Control Event Logs', '0.0.99.98.2.255', 'Control/operation events');
+    ('Control Event Logs', '0.0.99.98.2.255', 'Control/operation events'),
+    ('Undefined Event Log', '0.0.0.0.0.255', 'Undefined Events');
 
 -- Event Code Lookup (sample)
 INSERT INTO event_code_lookup (event_type_id, code, description)

@@ -33,12 +33,24 @@ public class DlmsRequestContext {
         return System.currentTimeMillis() > expiryTime;
     }
 
+    /**
+     * Total duration since request start (ms).
+     */
     public long getDuration() {
         return System.currentTimeMillis() - requestStartTime;
     }
 
     public void markTimeout() {
         this.timedOut = true;
+    }
+
+    /**
+     * How much extra time (ms) passed beyond expiry.
+     * Returns 0 if still within expiry window.
+     */
+    public long getOverdueDelay() {
+        long now = System.currentTimeMillis();
+        return (now > expiryTime) ? (now - expiryTime) : 0L;
     }
 
 

@@ -6,7 +6,10 @@ import lombok.*;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "event_log")
+@Table(name = "event_log",
+        uniqueConstraints = @UniqueConstraint(
+                columnNames = {"meter_serial", "event_code", "event_time"}
+        ))
 @Getter
 @Setter
 @NoArgsConstructor
@@ -34,9 +37,16 @@ public class EventLog {
     @Column(length = 10)
     private String phase;   // optional (L1, L2, L3, N)
 
-    @Column(columnDefinition = "jsonb")
-    private String details;   // store as JSON string
+    @Column(length = 255)
+    private String details;   // <-- just the event description
 
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private LocalDateTime createdAt = LocalDateTime.now();
+    @Column(name = "created_at", insertable = false, updatable = false)
+    private LocalDateTime createdAt;
+
+//    @PrePersist
+//    protected void onCreate() {
+//        if (createdAt == null) {
+//            createdAt = LocalDateTime.now();
+//        }
+//    }
 }

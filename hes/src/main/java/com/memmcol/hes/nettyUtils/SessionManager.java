@@ -1,5 +1,6 @@
 package com.memmcol.hes.nettyUtils;
 
+import com.memmcol.hes.application.port.out.TxRxService;
 import com.memmcol.hes.service.MeterConnections;
 import com.memmcol.hes.service.MeterSession;
 import gurux.dlms.GXByteBuffer;
@@ -29,6 +30,11 @@ public class SessionManager {
     private final Map<String, MeterSession> sessionMap = new ConcurrentHashMap<>();
     // Session timeout for inactive meters (e.g., 5 minutes)
     private final Duration SESSION_TIMEOUT = Duration.ofMinutes(3);
+    private final TxRxService txRxService;
+
+    public SessionManager(TxRxService txRxService) {
+        this.txRxService = txRxService;
+    }
 
     @PostConstruct
     public void init() {
@@ -58,7 +64,7 @@ public class SessionManager {
             log.info(msg);
             logTx(serial, msg);
             byte[][] aarq = dlmsClient.aarqRequest();
-            byte[] response = RequestResponseService.sendReceiveWithContext(serial, aarq[0], 20000);
+            byte[] response = txRxService.sendReceiveWithContext(serial, aarq[0], 20000);
             byte[] payload = Arrays.copyOfRange(response, 8, response.length);
             GXByteBuffer replyBuffer = new GXByteBuffer(payload);
             try {
@@ -67,7 +73,7 @@ public class SessionManager {
                 log.warn("⚠️ AARE parse failed: {}", e.getMessage());
             }
             log.info("✅ DLMS Association established for {}", serial);
-            MeterSession meterSession = new MeterSession(serial, channel, dlmsClient);
+            MeterSession meterSession = new MeterSession(serial, channel, dlmsClient, txRxService);
             meterSession.setAssociated(true);
             sessionMap.put(serial, meterSession);
         } catch (Exception e) {

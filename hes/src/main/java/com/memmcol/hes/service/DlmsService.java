@@ -3,6 +3,7 @@ package com.memmcol.hes.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.memmcol.hes.application.port.out.TxRxService;
 import com.memmcol.hes.model.*;
 import com.memmcol.hes.nettyUtils.RequestResponseService;
 import com.memmcol.hes.nettyUtils.SessionManager;
@@ -57,11 +58,21 @@ public class DlmsService {
     private final MeterProfileStateService stateService;
     private final ProfileTimestampResolver profileTimestampResolver;
     private final MeterReadAdapter readAdapter;
+    private final RequestResponseService requestResponseService;
 
     public DlmsService(SessionManager sessionManager,
                        DlmsObisObjectRepository repository,
                        ProfileMetadataCacheService metadataCache,
-                       @Lazy ProfileMetadataService profileMetadataService, ProfileChannel2Repository profileChannel2Repository, ProfileProgressTracker profileProgressTracker, ProfileTimestampTracker profileTimestampTracker, MeterProfileTimestampProgressRepository meterProfileTimestampProgressRepository, ProfileTimestampCacheService cacheService, MeterProfileStateService stateService, ProfileTimestampResolver profileTimestampResolver, MeterProfileStateRepository meterProfileStateRepository, MeterReadAdapter readAdapter) {
+                       @Lazy ProfileMetadataService profileMetadataService,
+                       ProfileChannel2Repository profileChannel2Repository,
+                       ProfileProgressTracker profileProgressTracker,
+                       ProfileTimestampTracker profileTimestampTracker,
+                       MeterProfileTimestampProgressRepository meterProfileTimestampProgressRepository,
+                       ProfileTimestampCacheService cacheService, MeterProfileStateService stateService,
+                       ProfileTimestampResolver profileTimestampResolver,
+                       MeterProfileStateRepository meterProfileStateRepository,
+                       MeterReadAdapter readAdapter,
+                       RequestResponseService requestResponseService) {
         this.sessionManager = sessionManager;
         this.repository = repository;
         this.metadataCache = metadataCache;
@@ -74,6 +85,7 @@ public class DlmsService {
         this.stateService = stateService;
         this.profileTimestampResolver = profileTimestampResolver;
         this.readAdapter = readAdapter;
+        this.requestResponseService = requestResponseService;
     }
 
     public static final DateTimeFormatter GLOBAL_TS_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
@@ -97,7 +109,7 @@ public class DlmsService {
         log.info("AARQ (hex): {}", GXCommon.toHex(aarq[0]));
 
         //Send to meter
-        byte[] response = RequestResponseService.sendCommand(serial, aarq[0]);
+        byte[] response = requestResponseService.sendCommand(serial, aarq[0]);
         GXByteBuffer reply = new GXByteBuffer(response);
 
         //3. Parse AARE Response from Meter
@@ -133,7 +145,7 @@ public class DlmsService {
         GXReplyData replyClock = new GXReplyData();
         String strclock;
         GXDateTime clockDateTime = new GXDateTime();
-        byte[] responseClock = RequestResponseService.sendCommand(serial, readClockRequest[0]);
+        byte[] responseClock = requestResponseService.sendCommand(serial, readClockRequest[0]);
 
         boolean hasData = dlmsClient.getData(responseClock, replyClock, null);
 
@@ -156,7 +168,7 @@ public class DlmsService {
         byte[] disconnectFrame = dlmsClient.disconnectRequest();
         if (disconnectFrame != null && disconnectFrame.length > 0) {
             log.info("📤 Disconnect Frame: {}", GXCommon.toHex(disconnectFrame));
-            byte[] disconnectResponse = RequestResponseService.sendCommand(serial, disconnectFrame);
+            byte[] disconnectResponse = requestResponseService.sendCommand(serial, disconnectFrame);
 
             // Some meters return nothing on disconnect, avoid NullPointerException
             if (disconnectResponse != null && disconnectResponse.length > 0) {
@@ -246,7 +258,7 @@ public class DlmsService {
             }
 
             byte[][] scalerUnitRequest = client.read(obj, index);
-            byte[] response = RequestResponseService.sendCommand(meterSerial, scalerUnitRequest[0]);
+            byte[] response = requestResponseService.sendCommand(meterSerial, scalerUnitRequest[0]);
             if (readAdapter.isAssociationLost(response)) {
                 throw new AssociationLostException();
             }
@@ -448,7 +460,7 @@ public class DlmsService {
 
             // Read capture objects (attribute 3)
             byte[][] request = client.read(profile, 3);
-            byte[] response = RequestResponseService.sendCommand(serial, request[0]);
+            byte[] response = requestResponseService.sendCommand(serial, request[0]);
 
             if ( readAdapter.isAssociationLost(response)) {
                 sessionManager.removeSession(serial);

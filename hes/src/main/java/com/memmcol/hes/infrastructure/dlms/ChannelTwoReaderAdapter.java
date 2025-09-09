@@ -3,6 +3,7 @@ package com.memmcol.hes.infrastructure.dlms;
 import com.memmcol.hes.application.port.out.PartialProfileRecoveryPort;
 import com.memmcol.hes.application.port.out.ProfileDataReaderPort;
 import com.memmcol.hes.application.port.out.ProfileReadException;
+import com.memmcol.hes.application.port.out.TxRxService;
 import com.memmcol.hes.domain.profile.ProfileMetadataResult;
 import com.memmcol.hes.domain.profile.ProfileRow;
 import com.memmcol.hes.domain.profile.ProfileTimestamp;
@@ -38,6 +39,7 @@ public class ChannelTwoReaderAdapter implements ProfileDataReaderPort<ProfileRow
     private final SessionManager sessionManager;           // your existing component
     private final DlmsPartialDecoder partialDecoder;       // -> create wrapper for existing parser
     private final DlmsTimestampDecoder timestampDecoder;   // util for timestamp bytes
+    private final TxRxService txRxService;
 
     // Optional: if you later need scalers, you can inject a resolver:
     // private final ProfileScalerResolver scalerResolver;
@@ -113,7 +115,7 @@ public class ChannelTwoReaderAdapter implements ProfileDataReaderPort<ProfileRow
                 byte[] firstFrame = reqFrames[0];
 //            byte[] resp1 = RequestResponseService.sendCommandWithRetry(meterSerial, firstFrame);
 //                byte[] resp1 = RequestResponseService.sendOnceListen(meterSerial, firstFrame, 4000, 16000, 100);
-                byte[] resp1 = RequestResponseService.sendReceiveWithContext(meterSerial, firstFrame, 20000);
+                byte[] resp1 = txRxService.sendReceiveWithContext(meterSerial, firstFrame, 20000);
                 if (sessionManager.isAssociationLost(resp1)) {
                     throw new AssociationLostException("Association lost on first frame");
                 }
@@ -128,7 +130,7 @@ public class ChannelTwoReaderAdapter implements ProfileDataReaderPort<ProfileRow
                     if (nextReq == null) break;
 
 //                byte[] resp = RequestResponseService.sendCommandWithRetry(meterSerial, nextReq);
-                    byte[] resp = RequestResponseService.sendReceiveWithContext(meterSerial, nextReq, 20000);
+                    byte[] resp = txRxService.sendReceiveWithContext(meterSerial, nextReq, 20000);
                     client.getData(resp, reply, null);
                     updateProfileBufferOnBlock(client, profile, profileObis, meterSerial, reply);
                 }

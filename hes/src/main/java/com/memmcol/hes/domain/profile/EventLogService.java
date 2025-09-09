@@ -3,19 +3,18 @@ package com.memmcol.hes.domain.profile;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import com.memmcol.hes.application.port.out.CapturePeriodPort;
-import com.memmcol.hes.application.port.out.ProfileMetricsPort;
-import com.memmcol.hes.application.port.out.ProfileReadException;
-import com.memmcol.hes.application.port.out.ProfileStatePort;
+import com.memmcol.hes.application.port.out.*;
+import com.memmcol.hes.domain.profile.mappers.EventLogMapper;
+import com.memmcol.hes.dto.EventLogDTO;
 import com.memmcol.hes.infrastructure.dlms.DlmsReaderUtils;
 import com.memmcol.hes.infrastructure.dlms.ProfileMetadataProvider;
-import com.memmcol.hes.model.ProfileRowDTO;
+import com.memmcol.hes.infrastructure.persistence.EventLogPersistenceAdapter;
+import com.memmcol.hes.nettyUtils.RequestResponseService;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.io.File;
 import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -30,15 +29,23 @@ public class EventLogService {
     private final ProfileMetricsPort metricsPort;
     private final ProfileStatePort statePort;
     private final ProfileMetadataProvider metadataProvider;
+    private final EventLogPersistenceAdapter eventLogPersistenceAdapter;
+    private final EventLogMapper eventLogMapper;
 
     @Transactional
-    public void readProfileAndSave(String model, String meterSerial, String profileObis, int batchSize) {
+    public void readProfileAndSave(String model, String meterSerial, String profileObis, int batchSize, boolean testMode) {
+
         try {
             //Step 1: Get last timestamp read from the meter or default to yesterday
             ProfileTimestamp cursor = new ProfileTimestamp(
                     timestampPort.resolveLastTimestamp(meterSerial, profileObis)
             );
 
+            /*TODO:
+            *  1. Remove batch size and iteration from this method.
+            *  2. Remove test mode
+            *  3. Add plus(cp(1)) before the next timestamp start
+            * */
             LocalDateTime now = LocalDateTime.now();
             int iteration = 0;
             while (cursor.value().isBefore(now)) {
@@ -49,7 +56,7 @@ public class EventLogService {
                     break;
                 }
                 LocalDateTime from = cursor.value();
-                LocalDateTime to = from.plusDays(1);
+                LocalDateTime to = from.plusDays(10);
 
                 if (to.isAfter(now)) to = now;
 
@@ -60,7 +67,12 @@ public class EventLogService {
                 List<ProfileRowGeneric> rawRows;
 
                 try {
-                    rawRows = dlmsReaderUtils.readRange(model, meterSerial, profileObis, captureObjects, from, to, true);
+
+                    if (testMode) {
+                        rawRows = dlmsReaderUtils.mockReadRange(model, meterSerial, profileObis, captureObjects, from, to, true);
+                    } else {
+                        rawRows = dlmsReaderUtils.readRange(model, meterSerial, profileObis, captureObjects, from, to, true);
+                    }
                 } catch (Exception e) {
                     log.warn("Range read failed; attempting recovery meter={} profile={} cause={}",
                             meterSerial, profileObis, e.getMessage());
@@ -79,16 +91,23 @@ public class EventLogService {
                 if (rawRows == null || rawRows.isEmpty()) {
                     log.info("No rows, no exception — advancing cursor, meter={} profile={}", meterSerial, profileObis);
                     cursor = new ProfileTimestamp(to);
-                    statePort.upsertState(meterSerial, profileObis, new ProfileTimestamp(to), new CapturePeriod(0));
+                    statePort.upsertState(meterSerial, profileObis, new ProfileTimestamp(to), new CapturePeriod(1));
                     continue;
                 }
 
-                savePartialToJson(rawRows);
+//                savePartialToJson(rawRows);
 
-                //Next iteration
-                cursor = new ProfileTimestamp(to);
+                List<EventLogDTO> eventDtos = eventLogMapper.toDTOs(rawRows, meterSerial);
+
+                ProfileSyncResult syncResult = eventLogPersistenceAdapter.saveBatch(meterSerial, profileObis, eventDtos);
+
+                long t1 = System.currentTimeMillis() - t0;
+                metricsPort.recordBatch(meterSerial, profileObis, syncResult.getInsertedCount(), t1);
+
+                // Persist new cursor (Next iteration)
+                cursor = ProfileTimestamp.ofNullable(syncResult.getAdvanceTo()).plus(new CapturePeriod(1));
+                statePort.upsertState(meterSerial, profileObis, cursor, new CapturePeriod(1));
             }
-
 
         } catch (Exception ex) {
             // Final safety: log and exit WITHOUT re-throwing.
@@ -131,4 +150,10 @@ public class EventLogService {
             log.warn("⚠️ Could not save partial profile data", e);
         }
     }
+
+
+
+//    public static void main(String[] args) {
+//        readProfileAndSave("MMX-313-CT", "202006001314", "0.0.99.98.0.255", 3);
+//    }
 }

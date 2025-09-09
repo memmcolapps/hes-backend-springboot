@@ -14,6 +14,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.boot.test.mock.mockito.SpyBean;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -33,6 +34,7 @@ import static org.mockito.Mockito.when;
 
 @SpringBootTest
 @Testcontainers
+@ActiveProfiles("test")
 class DailyBillingServiceIntegrationTest {
 
     // Start a PostgreSQL container for the test
@@ -45,9 +47,9 @@ class DailyBillingServiceIntegrationTest {
     // Wire container properties into Spring Boot datasource
     @DynamicPropertySource
     static void configureDataSource(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", postgres::getJdbcUrl);
-        registry.add("spring.datasource.username", postgres::getUsername);
-        registry.add("spring.datasource.password", postgres::getPassword);
+        registry.add("TEST_DB_URL", postgres::getJdbcUrl);
+        registry.add("TEST_DB_USERNAME", postgres::getUsername);
+        registry.add("TEST_DB_PASSWORD", postgres::getPassword);
         registry.add("spring.jpa.hibernate.ddl-auto", () -> "update"); // or validate if schema SQL is applied
     }
 

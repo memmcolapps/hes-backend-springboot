@@ -1,0 +1,105 @@
+Event ID,Event Channel,Event Code,Event Name,Event Description
+4,Control log,62,Remote Disconnection,Indicates that the disconnector has been remotely disconnected.
+4,Control log,63,Remote Connection,Indicates that the disconnector has been remotely connected.
+4,Control log,64,Local Disconnection,Indicates that the disconnector has been locally disconnected (i.e. via the limiter or current suppervision monitors).
+4,Control log,68,Disconnect/Connect Failed,Indicates that the a failure of disconnection or reconnection has happened.
+4,Control log,69,Local Connection,Indicates that the disconnector has been locally connected (i.e. via the limiter or current supervision monitors).
+3,Fraud log,40,Terminal Cover Removed,Indicates that the terminal cover has been removed.  
+3,Fraud log,41,Terminal Cover Closed,Indicates that the terminal cover has been closed.
+3,Fraud log,42,Strong DC Field Detected,Indicates that a strong magnetic DC field has been detected.
+3,Fraud log,43,Strong DC Field Disappeared,Indicates that the strong magnetic DC field has disappeared.    
+3,Fraud log,44,Meter Cover Removed,Indicates that the meter cover has been removed.  
+3,Fraud log,45,Meter Cover Closed,Indicates that the meter cover has been closed.
+3,Fraud log,46,Failed Login Attempt,Indicates that a user tried to gain access with wrong authentication credentials  (intrusion detection) 
+3,Fraud log,47,Parameters Modification ,Indicates that meter parameterization has been changed
+3,Fraud log,51,FW Verification Failed,Indicates that the Firmware verification failed.  
+3,Fraud log,53,Module Cover Removed,Indicates that the module cover has been removed.  
+3,Fraud log,54,Module Cover Closed,Indicates that the module cover has been closed.
+3,Fraud log,55,Meter Box Cover Removed,Indicates that the meter box cover has been removed.  
+3,Fraud log,56,Meter Box Cover Closed,Indicates that the meter box cover has been closed.
+2,Power Grid log,1,Power Down,Indicates a complete power down of the device.Please note that this is related to the device and not necessarily to the network.
+2,Power Grid log,2,Power Up,Indicates that the device is powered again after a complete power down.
+2,Power Grid log,76,L1 Under Voltage (Sag),Indicates that the voltage on L1 phase has fallen below the Uunder  threshold for longer than the time delay.
+2,Power Grid log,77,L2 Under Voltage (Sag),Indicates that the voltage on L2 phase has fallen below the Uunder  threshold for longer than the time delay.
+2,Power Grid log,78,L3 Under Voltage (Sag),Indicates that the voltage on  L3 phase has fallen below the Uunder  threshold for longer than the time delay.
+2,Power Grid log,79,L1 Over Voltage (Swell),Indicates that the voltage on L1 phase has risen higher the Umax  threshold for longer than the time delay.
+2,Power Grid log,80,L2 Over Voltage (Swell),Indicates that the voltage on L2 phase has risen higher the Umax  threshold for longer than the time delay.
+2,Power Grid log,81,L3 Over Voltage (Swell),Indicates that the voltage on L3 phase has risen higher the Umax  threshold for longer than the time delay.
+2,Power Grid log,82,L1 Phase Failure,Indicates that the voltage on L1 phase has fallen below the Umin  threshold for longer than the time delay.
+2,Power Grid log,83,L2 Phase Failure,Indicates that the voltage on L2 phase has fallen below the Umin  threshold for longer than the time delay.
+2,Power Grid log,84,L3 Phase Failure,Indicates that the voltage on  L3 phase has fallen below the Umin  threshold for longer than the time delay.
+2,Power Grid log,85,Voltage Imbalance,Indicates that the three phase voltage is imbalance for longer than the time delay.
+2,Power Grid log,86,Current Imbalance,Indicates that the three phase current is imbalance for longer than the time delay.
+2,Power Grid log,87,Low Power Factor,Indicates that the mains power factor has fallen below the PFmin  threshold for longer than the time delay.
+2,Power Grid log,88,Phase Sequence Reversal,Indicates wrong mains wiring connection. Usually indicates fraud or wrong installation.For poly phase connection only!
+2,Power Grid log,89,Missing Neutral,Indicates that the neutral connection from the supplier to the meter is interrupted (but the neutral connection to the load prevails). The phase voltages measured by the meter may differ from their nominal values  
+2,Power Grid log,90,Current Bypass,Indicates that External Earthing for All or part of the loads
+2,Power Grid log,91,L1 Current (Polarity) Reverse (Energy Reverse),Indicates that the current on L1 phase is reverse for longer than the time delay.
+2,Power Grid log,92,L2 Current (Polarity) Reverse (Energy Reverse),Indicates that the current on L2 phase is reverse for longer than the time delay.
+2,Power Grid log,93,L3 Current (Polarity) Reverse (Energy Reverse),Indicates that the current on L3 phase is reverse for longer than the time delay.
+2,Power Grid log,94,Current (Polarity) Reverse (Energy Reverse),Indicates that the current on any phase is reverse for longer than the time delay.
+2,Power Grid log,95,L1 Over Current,Indicates that the current on L1 phase has risen higher the Imax  threshold for longer than the time delay.
+2,Power Grid log,96,L2 Over Current,Indicates that the current on L2 phase has risen higher the Imax  threshold for longer than the time delay.
+2,Power Grid log,97,L3 Over Current,Indicates that the current on L3 phase has risen higher the Imax  threshold for longer than the time delay.
+2,Power Grid log,98,Over Current,Indicates that the current on any phase has risen higher the Imax  threshold for longer than the time delay.
+2,Power Grid log,99,Over Power (Overloading),Indicates that the power on total phase  has risen higher the Pmax  threshold for longer than the time delay.
+2,Power Grid log,176,High Current THD,Indicates that the high current THD on any phase has risen higher the THD max  threshold for longer than the time delay.
+2,Power Grid log,177,High Current THD End,Indicates that the high current THD on any phase has risen higher the THD max  threshold for longer than the time delay was ended.
+2,Power Grid log,178,High Voltage THD ,Indicates that the high voltage THD on any phase has risen higher the THD max  threshold for longer than the time delay.
+2,Power Grid log,179,High Voltage THD End,Indicates that the high voltage THD on any phase has risen higher the THD max  threshold for longer than the time delay was ended.
+2,Power Grid log,186,CT Open,Indicates that the current transformer on any phase has been open for longer than the time delay.
+2,Power Grid log,187,CT Open End,Indicates that the current transformer on any phase has been open for longer than the time delay was ended.
+2,Power Grid log,196,Earth Fault,Indicates that the earth fault has been happend for longer than the time delay.
+2,Power Grid log,197,Earth Fault End,Indicates that the earth fault has been happend for longer than the time delay was ended.
+2,Power Grid log,201,L1 Under Voltage End (Sag End),Indicates that the voltage on L1 phase has fallen below the Uunder  threshold for longer than the time delay was ended
+2,Power Grid log,202,L2 Under Voltage End (Sag End),Indicates that the voltage on L2 phase has fallen below the Uunder  threshold for longer than the time delay was ended
+2,Power Grid log,203,L3 Under Voltage End (Sag End),Indicates that the voltage on  L3 phase has fallen below the Uunder  threshold for longer than the time delay was ended
+2,Power Grid log,204,L1 Over Voltage End (Swell End),Indicates that the voltage on L1 phase has risen higher the Umax  threshold for longer than the time delay was ended
+2,Power Grid log,205,L2 Over Voltage End (Swell End),Indicates that the voltage on L2 phase has risen higher the Umax  threshold for longer than the time delay was ended
+2,Power Grid log,206,L3 Over Voltage End (Swell End),Indicates that the voltage on L3 phase has risen higher the Umax  threshold for longer than the time delay was ended
+2,Power Grid log,207,L1 Phase Failure End,Indicates that the voltage on at least L1 phase has fallen below the Umin  threshold for longer than the time delay was ended.
+2,Power Grid log,208,L2 Phase Failure End,Indicates that the voltage on at least L2 phase has fallen below the Umin  threshold for longer than the time delay was ended.
+2,Power Grid log,209,L3 Phase Failure End ,Indicates that the voltage on at least L3 phase has fallen below the Umin  threshold for longer than the time delay was ended.
+2,Power Grid log,210,Voltage Imbalance End,Indicates that the three phase voltage is imbalance for longer than the time delay was ended.
+2,Power Grid log,211,Current Imbalance End,Indicates that the three phase current is imbalance for longer than the time delay was ended.
+2,Power Grid log,212,Low Power Factor End,Indicates that the mains power factor has fallen below the PFmin  threshold for longer than the time delay was ended
+2,Power Grid log,213,Phase Sequence Reversal End,Indicates wrong mains wiring connection was ended.
+2,Power Grid log,214,Missing Neutral End,Indicates that the neutral was interrupted was ended.
+2,Power Grid log,215,Current Bypass End,Indicates that External Earthing for All or part of the loads was ended.
+2,Power Grid log,216,L1 Current (Polarity) Reverse End (Energy Reverse End),Indicates that the current on L1 phase is reverse for longer than the time delay was ended.
+2,Power Grid log,217,L2 Current (Polarity) Reverse End (Energy Reverse End),Indicates that the current on L2 phase is reverse for longer than the time delay was ended.
+2,Power Grid log,218,L3 Current (Polarity) Reverse End (Energy Reverse End),Indicates that the current on L3 phase is reverse for longer than the time delay was ended.
+2,Power Grid log,219,Current (Polarity) Reverse End (Energy Reverse End),Indicates that the current on any phase is reverse for longer than the time delay was ended.
+2,Power Grid log,220,L1 Over Current End,Indicates that the current on L1 phase has risen higher the Imax  threshold for longer than the time delay was ended.
+2,Power Grid log,221,L2 Over Current End,Indicates that the current on L2 phase has risen higher the Imax  threshold for longer than the time delay was ended.
+2,Power Grid log,222,L3 Over Current End,Indicates that the current on L3 phase has risen higher the Imax  threshold for longer than the time delay was ended.
+2,Power Grid log,223,Over Current End,Indicates that the current on any phase has risen higher the Imax  threshold for longer than the time delay was ended.
+2,Power Grid log,224,Over Power End  (Overloading End) ,Indicates that the power on total phase  has risen higher the Pmax  threshold for longer than the time delay was ended.
+2,Power Grid log,225,Power Imbalance,Indicates that the three phase power is imbalance for longer than the time delay.
+2,Power Grid log,226,Power Imbalance End,Indicates that the three phase power is imbalance for longer than the time delay was ended.
+2,Power Grid log,243,L1 Loss Voltage,Indicates that the voltage on L1 phase has fallen below the loss voltage  threshold for longer than the time delay.
+2,Power Grid log,244,L1 Loss Voltage End,Indicates that the voltage on L1 phase has fallen below the loss voltage  threshold for longer than the time delay was ended.
+2,Power Grid log,245,L2 Loss Voltage,Indicates that the voltage on L2 phase has fallen below the loss voltage  threshold for longer than the time delay.
+2,Power Grid log,246,L2 Loss Voltage End,Indicates that the voltage on L2 phase has fallen below the loss voltage  threshold for longer than the time delay was ended.
+2,Power Grid log,247,L3 Loss Voltage ,Indicates that the voltage on L3 phase has fallen below the loss voltage  threshold for longer than the time delay.
+2,Power Grid log,248,L3 Loss Voltage End,Indicates that the voltage on L3 phase has fallen below the loss voltage  threshold for longer than the time delay was ended.
+2,Power Net log,168,Neutral Disturbance,Indicates that the neutral disturbance is happened
+2,Power Net log,169,Neutral Disturbance End,Indicates that the neutral disturbance is over
+1,Standard log,4,Clock Adjusted (Old Date/Time),Indicates that the clock has been adjusted. The date/time that is stored in the event log is the old date/time before adjusting the clock.
+1,Standard log,5,Clock Adjusted (New Date/Time) ,Indicates that the clock has been adjusted. The date/time that is stored in the event log is the new date/time after adjusting the clock.
+1,Standard log,6,Clock Invalid,Indicates that the current clock is invalid.
+1,Standard log,7,Replace Battery,Indicates that the battery must be exchanged due to the expected end of life time.
+1,Standard log,8,Battery Voltage Low,Indicates that the current battery voltage is low.
+1,Standard log,12,Dataflash Memory Error (SPI Error),Indicates a physical or a logical error in the Dataflash memory.
+1,Standard log,14,EEPROM Memory Error (IIC Error),Indicates a physical or a logical error in the EEPROM memory.
+1,Standard log,15,Watchdog Error (CPU Reset),Indicates a watch dog reset or a hardware reset of the microcontroller.
+1,Standard log,20,FW Upgrate Successfully ,Indicates that the first selfcheck after a firmwareupdate was performed succesfully. 
+1,Standard log,22,MD Reset,Indicates that MDReset
+1,Standard log,23,Meter Error,Indicates that there are some errors in the meter
+1,Standard log,25,Recharged by Token,Indicates that the meter have been recharged via token
+1,Standard log,26,Programed by Token,Indicates that the meter have been programed via token
+1,Standard log,227,Meter High Temperature,Indicates that the temperatue of the meter  is higher than Temp_max for longer than the time delay.
+1,Standard log,228,Meter High Temperature End,Indicates that the temperatue of the meter  is higher than Temp_max for longer than the time delay was ended.
+1,Standard log,255,Event Log Cleared,"Indicates that the event log was cleared. This is always the 
+first entry in an event log. It is only stored in the affected 
+event log. "

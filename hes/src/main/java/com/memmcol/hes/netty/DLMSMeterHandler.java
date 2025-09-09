@@ -89,7 +89,10 @@ public class DLMSMeterHandler extends SimpleChannelInboundHandler<byte[]> {
 
         if (System.currentTimeMillis() > context.getExpiryTime()) {
             inflightRequests.remove(correlationId);
-            log.warn("⚠️ Expired response for CID={} (Meter={}) — discarded", correlationId, context.getMeterId());
+            long overdue = context.getOverdueDelay();
+            long duration = context.getDuration();
+            log.warn("⚠️ Expired response for CID={} (Meter={}) — total duration={} ms (overdue by {} ms)",
+                    correlationId, context.getMeterId(), duration, overdue);
             return;
         }
 
