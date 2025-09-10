@@ -53,7 +53,7 @@ public class ChannelTwoService implements ProfileSyncUseCase {
         return model + "-" + serial + "-" + profileObis;
     }
 
-    private void doSync(String model, String serial, String profileObis, int batchSize) throws ProfileReadException {
+    private void doSync(String model, String serial, String profileObis, int batchSize) throws Exception {
 //        ProfileState state = statePort.loadState(serial, profileObis); //Check DB only. I will add
 //        ProfileTimestamp cursor = (state != null && state.lastTimestamp() != null)
 //                ? state.lastTimestamp()

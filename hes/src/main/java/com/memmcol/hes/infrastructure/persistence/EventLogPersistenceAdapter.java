@@ -6,10 +6,11 @@ import com.memmcol.hes.domain.profile.CapturePeriod;
 import com.memmcol.hes.domain.profile.ProfileState;
 import com.memmcol.hes.domain.profile.ProfileSyncResult;
 import com.memmcol.hes.domain.profile.ProfileTimestamp;
-import com.memmcol.hes.dto.DailyBillingProfileDTO;
+import com.memmcol.hes.entities.EventCodeLookup;
 import com.memmcol.hes.dto.EventLogDTO;
 import com.memmcol.hes.entities.EventLog;
 import com.memmcol.hes.entities.EventType;
+import com.memmcol.hes.repository.EventCodeLookupRepository;
 import com.memmcol.hes.repository.EventLogCustomRepository;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
@@ -19,6 +20,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.hibernate.Session;
 import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
@@ -35,10 +38,15 @@ public class EventLogPersistenceAdapter {
     @PersistenceContext
     private final EntityManager entityManager;
     private final EventCodeLookupCacheService lookupCacheService;
+    private final EventCodeLookupRepository eventCodeLookupRepository;
     private final ProfileStatePort statePort;
     private static final int FLUSH_BATCH = 100;
     private final EventLogCustomRepository customRepository;
 
+    /*TODO:
+     *  1.  Add to other profiles saveBatch method: @Transactional(propagation = Propagation.REQUIRES_NEW)
+     * */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public ProfileSyncResult saveBatch(String meterSerial,
                                        String profileOBIS, List<EventLogDTO> dtos) {
         ProfileState st = statePort.loadState(meterSerial, profileOBIS); // or null if you dropped obis
@@ -58,7 +66,7 @@ public class EventLogPersistenceAdapter {
         List<EventLogDTO> filteredRows = dedupeInMemory(dtos);
         List<EventLogDTO> filteredRows2 = deduplicateEventLogs(meterSerial, filteredRows);
         //Insert filtered rows
-        int inserted = persistReadings(filteredRows2);
+        int inserted = persistReadings(filteredRows2, profileOBIS);
         int duplicate = total - inserted;
 
         LocalDateTime incomingMax = dtos.stream()
@@ -74,7 +82,7 @@ public class EventLogPersistenceAdapter {
         boolean advanced = previousLast == null || advanceTo.isAfter(previousLast);
 
         if (advanceTo != null) {
-            statePort.upsertState(meterSerial, profileOBIS, new ProfileTimestamp(advanceTo), new CapturePeriod(1));
+            statePort.upsertState(meterSerial, profileOBIS, new ProfileTimestamp(advanceTo).plus(new CapturePeriod(1)), new CapturePeriod(1));
         }
 
         log.info("Batch persisted meter={} total={} inserted={} dup={} start={} end={} advanceTo={}",
@@ -83,47 +91,31 @@ public class EventLogPersistenceAdapter {
         return new ProfileSyncResult(total, inserted, duplicate, previousLast, incomingMax, advanceTo, advanced);
     }
 
-    private int persistReadings(List<EventLogDTO> dtos) {
+    private int persistReadings(List<EventLogDTO> dtos, String profileOBIS) {
         Session session = entityManager.unwrap(Session.class);
         int count = 0;
 
         for (EventLogDTO dto : dtos) {
-            // Get EventType from cache
-            EventType type = lookupCacheService.getEventTypeByCode(dto.getEventCode());
+            // 1. Get EventTypeId from OBIS
+            Long eventTypeId = lookupCacheService.getEventTypeIdByObis(profileOBIS);
 
-            // Get description from cache
-            String description = lookupCacheService.getDescriptionByCode(dto.getEventCode());
+            // 2. Get EventName from cache (fallback → "Undefined Event")
+            String eventName = lookupCacheService.getEventName(eventTypeId, dto.getEventCode())
+                    .orElse("Undefined Event");
 
             // 4️⃣ Map DTO to Entity
             EventLog logEntry = EventLog.builder()
                     .meterSerial(dto.getMeterSerial())
-                    .eventType(type)
+                    .eventType(eventTypeId)
                     .eventCode(dto.getEventCode())
                     .eventTime(dto.getEventTime().truncatedTo(ChronoUnit.SECONDS))
                     .phase(dto.getPhase())
-                    .details(description)
+                    .eventName(eventName)
                     .build();
 
             // 5️⃣ Persist entity
-            try {
-                session.persist(logEntry);
-                count++;
-            } catch (PersistenceException ex) {
-                Throwable cause = ex.getCause();
-                if (cause instanceof ConstraintViolationException cve) {
-                    log.warn("⚠️ Duplicate event skipped: meter={}, code={}, time={}",
-                            logEntry.getMeterSerial(),
-                            logEntry.getEventCode(),
-                            logEntry.getEventTime());
-                    // skip this one
-                } else if (cause instanceof org.postgresql.util.PSQLException psqlEx &&
-                        "23505".equals(psqlEx.getSQLState())) {
-                    log.warn("⚠️ Duplicate event skipped (constraint violation).");
-                } else {
-                    throw ex; // rethrow if it’s another kind of DB error
-                }
-            }
-
+            session.persist(logEntry);
+            count++;
 
             if (count % FLUSH_BATCH == 0) {
                 session.flush();
@@ -161,7 +153,7 @@ public class EventLogPersistenceAdapter {
         Set<String> existingKeys = existing.stream()
                 .map(row -> {
                     String eventCode = String.valueOf(row[0]);
-                    LocalDateTime eventTime = (row[1] instanceof Timestamp ts) ? ts.toLocalDateTime():(LocalDateTime) row[1];
+                    LocalDateTime eventTime = (row[1] instanceof Timestamp ts) ? ts.toLocalDateTime() : (LocalDateTime) row[1];
                     return eventCode + "|" + eventTime.truncatedTo(ChronoUnit.SECONDS);
                 })
                 .collect(Collectors.toSet());

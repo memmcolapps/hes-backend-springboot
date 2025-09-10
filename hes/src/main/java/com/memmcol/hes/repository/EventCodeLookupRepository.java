@@ -10,4 +10,4 @@ import java.util.Optional;
 @Repository
 public interface EventCodeLookupRepository extends JpaRepository<EventCodeLookup, Long> {
     Optional<EventCodeLookup> findByEventTypeAndCode(EventType eventType, Integer code);
-}
+    }

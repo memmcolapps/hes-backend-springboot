@@ -24,9 +24,8 @@ public class EventLog {
     @Column(name = "meter_serial", nullable = false, length = 50)
     private String meterSerial;
 
-    @ManyToOne(optional = false, fetch = FetchType.LAZY)
-    @JoinColumn(name = "event_type_id", nullable = false)
-    private EventType eventType;
+    @Column(name = "event_type_id", nullable = false)
+    private Long eventType;
 
     @Column(name = "event_code", nullable = false)
     private Integer eventCode;
@@ -38,7 +37,7 @@ public class EventLog {
     private String phase;   // optional (L1, L2, L3, N)
 
     @Column(length = 255)
-    private String details;   // <-- just the event description
+    private String eventName;   // <-- just the event name
 
     @Column(name = "created_at", insertable = false, updatable = false)
     private LocalDateTime createdAt;

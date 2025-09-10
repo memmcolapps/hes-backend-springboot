@@ -3,6 +3,7 @@ package com.memmcol.hes.csv;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Component;
 
+//@Component
 public class CsvDataLoader implements CommandLineRunner {
 
     private final EventCodeLoaderService loaderService;

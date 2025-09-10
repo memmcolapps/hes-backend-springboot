@@ -35,15 +35,14 @@ public class EventLogMapper {
 
             // Everything else goes into details (from position 3 onward)
             // details now holds your description (since you pivoted away from JSONB)
-            String details = null; // Set later from lookup
+            String eventName = null; // Set later from lookup
 
-            assert eventTime != null;
             return EventLogDTO.builder()
                     .meterSerial(meterSerial)
                     .eventCode(eventCode)
                     .eventTime(eventTime)
                     .phase(phase)
-                    .details(details) // ✅ avoid {}
+                    .eventName(eventName) // ✅ avoid {}
                     .build();
         }).toList();
     }
