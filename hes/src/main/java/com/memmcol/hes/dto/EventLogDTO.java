@@ -15,5 +15,5 @@ public class EventLogDTO {
     private Integer eventCode;
     private LocalDateTime eventTime;
     private String phase; // optional
-    private String details;
+    private String eventName;
 }

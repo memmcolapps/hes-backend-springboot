@@ -2,6 +2,7 @@ package com.memmcol.hes.cache;
 
 import com.memmcol.hes.entities.EventCodeLookup;
 import com.memmcol.hes.entities.EventType;
+import com.memmcol.hes.model.DlmsObisMapper;
 import com.memmcol.hes.repository.EventCodeLookupRepository;
 import com.memmcol.hes.repository.EventTypeRepository;
 import jakarta.annotation.PostConstruct;
@@ -12,9 +13,7 @@ import org.springframework.cache.CacheManager;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -28,80 +27,49 @@ public class EventCodeLookupCacheService {
 
     private EventType undefinedEventType; // cached reference
 
+    // Cache maps
+    private final Map<String, Long> obisToEventTypeId = new HashMap<>();
+    private final Map<String, String> eventCodeMap = new HashMap<>();
+
     @PostConstruct
     public void loadCacheAtStartup() {
-        Cache cache = cacheManager.getCache("eventCodeLookup");
-        if (cache != null) {
-            List<EventCodeLookup> allLookups = eventCodeLookupRepository.findAll();
+        // Load event types
+        for (EventType type : eventTypeRepository.findAll()) {
+            obisToEventTypeId.put(type.getObisCode(), type.getId());
+        }
 
-            // Map code -> EventType
-            Map<Integer, EventType> typeMap = allLookups.stream()
-                    .collect(Collectors.toMap(EventCodeLookup::getCode, EventCodeLookup::getEventType));
-
-            // Map code -> description
-            Map<Integer, String> descMap = allLookups.stream()
-                    .collect(Collectors.toMap(EventCodeLookup::getCode, EventCodeLookup::getDescription));
-
-            cache.put("typeMap", typeMap);
-            cache.put("descMap", descMap);
-
-            log.info("✅ EventCodeLookup cache initialized with {} entries", typeMap.size());
+        // Load event code lookups
+        for (EventCodeLookup lookup : eventCodeLookupRepository.findAll()) {
+            String key = compositeKey(lookup.getEventType().getId(), lookup.getCode());
+            eventCodeMap.put(key, lookup.getEventName());
         }
 
         // preload Undefined EventType (id=5)
         undefinedEventType = eventTypeRepository.findById(5L)
                 .orElseThrow(() -> new IllegalStateException("Undefined EventType (id=5) missing in DB"));
+
+        log.info("✅ EventCodeLookup cache initialized with Loaded event types {} and event codes {} entries",
+                obisToEventTypeId.size(),  eventCodeMap.size());
     }
 
-    @SuppressWarnings("unchecked")
-    public Map<Integer, EventType> getTypeMap() {
-        Cache cache = cacheManager.getCache("eventCodeLookup");
-        if (cache != null) {
-            return cache.get("typeMap", Map.class);
-        }
-        return Collections.emptyMap();
+    public Long getEventTypeIdByObis(String obisCode) {
+        return obisToEventTypeId.getOrDefault(obisCode, undefinedEventType.getId());
     }
 
-    @SuppressWarnings("unchecked")
-    public Map<Integer, String> getDescriptionMap() {
-        Cache cache = cacheManager.getCache("eventCodeLookup");
-        if (cache != null) {
-            return cache.get("descMap", Map.class);
-        }
-        return Collections.emptyMap();
+    public Optional<String> getEventName(Long eventTypeId, int eventCode) {
+        String key = compositeKey(eventTypeId, eventCode);
+        return Optional.ofNullable(eventCodeMap.get(key));
     }
 
-    public EventType getEventTypeByCode(Integer code) {
-        EventType type = getTypeMap().get(code);
-        if (type == null) {
-            log.warn("⚠️ Undefined event code encountered: {}", code);
-            return undefinedEventType;
-        }
-        return type;
+    private String compositeKey(Long eventTypeId, int eventCode) {
+        return eventTypeId + "_" + eventCode;
     }
 
-    public String getDescriptionByCode(Integer code) {
-        return getDescriptionMap().getOrDefault(code, "Undefined Event");
-    }
-
-    // Optional: refresh cache manually or via scheduled task
+    // ✅ Refresh cache
     public void refreshCache() {
-        log.info("♻️ Refreshing EventCodeLookup cache...");
-        List<EventCodeLookup> allLookups = eventCodeLookupRepository.findAll();
-
-        Map<Integer, EventType> typeMap = allLookups.stream()
-                .collect(Collectors.toMap(EventCodeLookup::getCode, EventCodeLookup::getEventType));
-
-        Map<Integer, String> descMap = allLookups.stream()
-                .collect(Collectors.toMap(EventCodeLookup::getCode, EventCodeLookup::getDescription));
-
-        Cache cache = cacheManager.getCache("eventCodeLookup");
-        if (cache != null) {
-            cache.put("typeMap", typeMap);
-            cache.put("descMap", descMap);
-        }
-
-        log.info("✅ EventCodeLookup cache refreshed with {} entries", typeMap.size());
+        obisToEventTypeId.clear();
+        eventCodeMap.clear();
+        loadCacheAtStartup();
     }
 
     @Scheduled(cron = "0 0 2 * * ?") // daily at 2 AM

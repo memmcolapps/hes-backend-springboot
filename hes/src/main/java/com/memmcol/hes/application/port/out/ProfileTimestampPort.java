@@ -15,5 +15,5 @@ public interface ProfileTimestampPort {
      * @param profileObis Profile OBIS code.
      * @return The last known timestamp (or fallback timestamp).
      */
-    LocalDateTime resolveLastTimestamp(String meterSerial, String profileObis);
+    LocalDateTime resolveLastTimestamp(String meterSerial, String profileObis) throws Exception;
 }

@@ -161,10 +161,10 @@ public class DlmsReaderUtils {
                                                  ProfileMetadataResult metadataResult,
                                                  LocalDateTime from, LocalDateTime to, boolean mdMeter) throws Exception {
         List<String> rxFrames = List.of(
-                "00 01 00 01 00 01 00 C2 C4 02 C1 00 00 00 00 01 00 82 00 B6 01 25 02 02 09 0C 07 E9 07 19 05 11 37 20 FF FF C4 00 16 02 02 02 09 0C 07 E9 07 19 05 11 37 20 FF FF C4 00 16 01 02 02 09 0C 07 E9 07 19 05 11 37 23 FF FF C4 00 16 02 02 02 09 0C 07 E9 07 19 05 11 37 26 FF FF C4 00 16 58 02 02 09 0C 07 E9 07 19 05 11 37 26 FF FF C4 00 16 59 02 02 09 0C 07 E9 07 1B 07 07 29 11 FF FF C4 00 16 EC 02 02 09 0C 07 E9 07 1B 07 07 29 11 FF FF C4 00 16 ED 02 02 09 0C 07 E9 07 1B 07 07 29 11 FF FF C4 00 16 01 02 02 09 0C 07 E9 07 1B 07 08 02 0B FF FF C4 00 16 02 02 02 09 0C 07 E9 07 1B 07 08 02 0E FF FF C4 00 16 58",
-                "00 01 00 01 00 01 00 C0 C4 02 C1 00 00 00 00 02 00 82 00 B4 02 02 09 0C 07 E9 07 1B 07 08 02 0E FF FF C4 00 16 59 02 02 09 0C 07 E9 07 1B 07 0E 29 32 FF FF C4 00 16 EC 02 02 09 0C 07 E9 07 1B 07 0E 29 32 FF FF C4 00 16 ED 02 02 09 0C 07 E9 07 1B 07 0E 29 32 FF FF C4 00 16 01 02 02 09 0C 07 E9 07 1B 07 0E 2A 0C FF FF C4 00 16 02 02 02 09 0C 07 E9 07 1B 07 0E 2A 0F FF FF C4 00 16 58 02 02 09 0C 07 E9 07 1B 07 0E 2A 0F FF FF C4 00 16 59 02 02 09 0C 07 E9 07 1C 01 0A 0D 0D FF FF C4 00 16 EC 02 02 09 0C 07 E9 07 1C 01 0A 0D 0D FF FF C4 00 16 ED 02 02 09 0C 07 E9 07 1C 01 0A 0D 0D FF FF C4 00 16 01",
-                "00 01 00 01 00 01 00 C0 C4 02 C1 00 00 00 00 03 00 82 00 B4 02 02 09 0C 07 E9 07 1C 01 0A 0D 1D FF FF C4 00 16 02 02 02 09 0C 07 E9 07 1C 01 0A 0D 1D FF FF C4 00 16 01 02 02 09 0C 07 E9 07 1C 01 0A 0D 37 FF FF C4 00 16 02 02 02 09 0C 07 E9 07 1C 01 0A 0D 3A FF FF C4 00 16 58 02 02 09 0C 07 E9 07 1C 01 0A 0D 3A FF FF C4 00 16 59 02 02 09 0C 07 E9 07 1F 04 0C 2D 16 FF FF C4 00 16 EC 02 02 09 0C 07 E9 07 1F 04 0C 2D 16 FF FF C4 00 16 ED 02 02 09 0C 07 E9 07 1F 04 0C 2D 16 FF FF C4 00 16 01 02 02 09 0C 07 E9 07 1F 04 0C 2D 20 FF FF C4 00 16 02 02 02 09 0C 07 E9 07 1F 04 0C 2D 23 FF FF C4 00 16 58",
-                "00 01 00 01 00 01 00 8A C4 02 C1 01 00 00 00 04 00 82 00 7E 02 02 09 0C 07 E9 07 1F 04 0C 2D 23 FF FF C4 00 16 59 02 02 09 0C 07 E9 08 01 05 0F 37 38 FF FF C4 00 16 EC 02 02 09 0C 07 E9 08 01 05 0F 37 38 FF FF C4 00 16 ED 02 02 09 0C 07 E9 08 01 05 0F 37 38 FF FF C4 00 16 01 02 02 09 0C 07 E9 08 01 05 10 35 05 FF FF C4 00 16 02 02 02 09 0C 07 E9 08 01 05 10 35 08 FF FF C4 00 16 58 02 02 09 0C 07 E9 08 01 05 10 35 08 FF FF C4 00 16 59"
+                "00 01 00 01 00 01 00 C2 C4 02 C1 00 00 00 00 01 00 82 00 B6 01 26 02 02 09 0C 07 E9 07 1B 07 0E 2A 0F FF FF C4 00 16 59 02 02 09 0C 07 E9 07 1C 01 0A 0D 0D FF FF C4 00 16 EC 02 02 09 0C 07 E9 07 1C 01 0A 0D 0D FF FF C4 00 16 ED 02 02 09 0C 07 E9 07 1C 01 0A 0D 0D FF FF C4 00 16 01 02 02 09 0C 07 E9 07 1C 01 0A 0D 1D FF FF C4 00 16 02 02 02 09 0C 07 E9 07 1C 01 0A 0D 1D FF FF C4 00 16 01 02 02 09 0C 07 E9 07 1C 01 0A 0D 37 FF FF C4 00 16 02 02 02 09 0C 07 E9 07 1C 01 0A 0D 3A FF FF C4 00 16 58 02 02 09 0C 07 E9 07 1C 01 0A 0D 3A FF FF C4 00 16 59 02 02 09 0C 07 E9 07 1F 04 0C 2D 16 FF FF C4 00 16 EC",
+                "00 01 00 01 00 01 00 C0 C4 02 C1 00 00 00 00 02 00 82 00 B4 02 02 09 0C 07 E9 07 1F 04 0C 2D 16 FF FF C4 00 16 ED 02 02 09 0C 07 E9 07 1F 04 0C 2D 16 FF FF C4 00 16 01 02 02 09 0C 07 E9 07 1F 04 0C 2D 20 FF FF C4 00 16 02 02 02 09 0C 07 E9 07 1F 04 0C 2D 23 FF FF C4 00 16 58 02 02 09 0C 07 E9 07 1F 04 0C 2D 23 FF FF C4 00 16 59 02 02 09 0C 07 E9 08 01 05 0F 37 38 FF FF C4 00 16 EC 02 02 09 0C 07 E9 08 01 05 0F 37 38 FF FF C4 00 16 ED 02 02 09 0C 07 E9 08 01 05 0F 37 38 FF FF C4 00 16 01 02 02 09 0C 07 E9 08 01 05 10 35 05 FF FF C4 00 16 02 02 02 09 0C 07 E9 08 01 05 10 35 08 FF FF C4 00 16 58",
+                "00 01 00 01 00 01 00 C0 C4 02 C1 00 00 00 00 03 00 82 00 B4 02 02 09 0C 07 E9 08 01 05 10 35 08 FF FF C4 00 16 59 02 02 09 0C 07 E9 08 04 01 09 19 1A FF FF C4 00 16 EC 02 02 09 0C 07 E9 08 04 01 09 19 1A FF FF C4 00 16 ED 02 02 09 0C 07 E9 08 04 01 09 19 1A FF FF C4 00 16 01 02 02 09 0C 07 E9 08 04 01 09 19 2F FF FF C4 00 16 02 02 02 09 0C 07 E9 08 04 01 09 19 2F FF FF C4 00 16 01 02 02 09 0C 07 E9 08 04 01 09 19 32 FF FF C4 00 16 02 02 02 09 0C 07 E9 08 04 01 09 19 32 FF FF C4 00 16 01 02 02 09 0C 07 E9 08 04 01 09 19 36 FF FF C4 00 16 02 02 02 09 0C 07 E9 08 04 01 09 19 39 FF FF C4 00 16 58",
+                "00 01 00 01 00 01 00 9C C4 02 C1 01 00 00 00 04 00 82 00 90 02 02 09 0C 07 E9 08 04 01 09 19 39 FF FF C4 00 16 59 02 02 09 0C 07 E9 08 04 01 0D 2D 30 FF FF C4 00 16 2F 02 02 09 0C 07 E9 08 04 01 11 2F 1C FF FF C4 00 16 EC 02 02 09 0C 07 E9 08 04 01 11 2F 1C FF FF C4 00 16 ED 02 02 09 0C 07 E9 08 04 01 11 2F 1C FF FF C4 00 16 01 02 02 09 0C 07 E9 08 04 01 11 2F 32 FF FF C4 00 16 02 02 02 09 0C 07 E9 08 04 01 11 2F 35 FF FF C4 00 16 58 02 02 09 0C 07 E9 08 04 01 11 2F 35 FF FF C4 00 16 59"
         );
 
         MockRequestResponseService mockRequestResponseService = new MockRequestResponseService(rxFrames);
@@ -318,37 +318,33 @@ public class DlmsReaderUtils {
         }
     }
 
-    private void updateProfileBufferOnBlock(GXDLMSClient client, GXDLMSProfileGeneric profile, String profileObis, String meterSerial, GXReplyData reply) {
+    private void updateProfileBufferOnBlock(GXDLMSClient client, GXDLMSProfileGeneric profile, String profileObis, String meterSerial, GXReplyData reply) throws Exception {
         Object val = reply.getValue() != null ? reply.getValue() : reply.getData();
 
-        try {
-            // Only update if val is not a raw GXByteBuffer (which is invalid for profile buffer)
-            if (!(val instanceof GXByteBuffer)) {
-                client.updateValue(profile, 2, val);
+        // Only update if val is not a raw GXByteBuffer (which is invalid for profile buffer)
+        if (!(val instanceof GXByteBuffer)) {
+            client.updateValue(profile, 2, val);
 
-                List<List<Object>> buf = partialDecoder.normalizeProfileBuffer(profile.getBuffer());
-                if (buf != null && !buf.isEmpty()) {
+            List<List<Object>> buf = partialDecoder.normalizeProfileBuffer(profile.getBuffer());
+            if (buf != null && !buf.isEmpty()) {
+                // Accumulate after each new chunk
+                partialDecoder.accumulate(meterSerial, profileObis, buf);
+                log.debug("Accumulated {} Object[] rows so far.", buf.size());
+            }
+        }
+
+        if (val instanceof GXByteBuffer buf) {    // If raw buffer, decode once.
+            GXDataInfo info = new GXDataInfo();
+            buf.position(0);
+            val = GXCommon.getData(null, buf, info);
+            if (val instanceof List<?> rows) {
+                List<List<Object>> buf2 = partialDecoder.normalizeProfileBuffer(val);
+                if (buf2 != null && !buf2.isEmpty()) {
                     // Accumulate after each new chunk
-                    partialDecoder.accumulate(meterSerial, profileObis, buf);
-                    log.debug("Accumulated {} Object[] rows so far.", buf.size());
+                    partialDecoder.accumulate(meterSerial, profileObis, buf2);
+                    log.debug("Accumulated {} GXByteBuffer rows so far.", buf.size());
                 }
             }
-
-            if (val instanceof GXByteBuffer buf) {    // If raw buffer, decode once.
-                GXDataInfo info = new GXDataInfo();
-                buf.position(0);
-                val = GXCommon.getData(null, buf, info);
-                if (val instanceof List<?> rows) {
-                    List<List<Object>> buf2 = partialDecoder.normalizeProfileBuffer(val);
-                    if (buf2 != null && !buf2.isEmpty()) {
-                        // Accumulate after each new chunk
-                        partialDecoder.accumulate(meterSerial, profileObis, buf2);
-                        log.debug("Accumulated {} GXByteBuffer rows so far.", buf.size());
-                    }
-                }
-            }
-        } catch (Exception e) {
-            log.debug("Silent buffer update issue (not fatal) meter={} obis={} msg={}", meterSerial, profileObis, e.getMessage());
         }
     }
 

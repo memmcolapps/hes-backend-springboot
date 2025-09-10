@@ -49,7 +49,7 @@ public class ChannelOneService implements ProfileSyncUseCase {
      * @param batchSize
      * @throws ProfileReadException
      */
-    private void doSync(String model, String meterSerial, String profileObis, int batchSize) throws ProfileReadException {
+    private void doSync(String model, String meterSerial, String profileObis, int batchSize) throws Exception {
         //Step 1: Get last timestamp read from the meter or default to yesterday
         ProfileTimestamp cursor = new ProfileTimestamp(timestampPort.resolveLastTimestamp(meterSerial, profileObis)); // fallback seed
         //Step 2: Get profile capture period

@@ -34,7 +34,7 @@ public class ProfileTimestampPortImpl implements ProfileTimestampPort {
 
     @Override
     @Transactional
-    public LocalDateTime resolveLastTimestamp(String meterSerial, String profileObis) {
+    public LocalDateTime resolveLastTimestamp(String meterSerial, String profileObis) throws Exception {
         String key = cacheKey(meterSerial, profileObis);
 
         // 1. Cache lookup
@@ -54,20 +54,20 @@ public class ProfileTimestampPortImpl implements ProfileTimestampPort {
         }
 
         // 3. Meter read
-        try {
-            String msg = String.format("Reading first timestamp from meter=%s obis=%s", meterSerial, profileObis);
-            log.info(msg);
-            logTx(meterSerial, msg);
+//        try {
+        String msg = String.format("Reading first timestamp from meter=%s obis=%s", meterSerial, profileObis);
+        log.info(msg);
+        logTx(meterSerial, msg);
 
-            LocalDateTime fromMeter = readFirstTimestampFromMeter(meterSerial, profileObis);
-            if (fromMeter != null) {
-                upsertLastTimestamp(meterSerial, profileObis, fromMeter);
-                getCache().put(key, fromMeter);
-                return fromMeter;
-            }
-        } catch (Exception ex) {
-            log.error("Failed to read first timestamp from meter={} obis={}: {}", meterSerial, profileObis, ex.getMessage());
+        LocalDateTime fromMeter = readFirstTimestampFromMeter(meterSerial, profileObis);
+        if (fromMeter != null) {
+            upsertLastTimestamp(meterSerial, profileObis, fromMeter);
+            getCache().put(key, fromMeter);
+            return fromMeter;
         }
+//        } catch (Exception ex) {
+//            log.error("Failed to read first timestamp from meter={} obis={}: {}", meterSerial, profileObis, ex.getMessage());
+//        }
 
         // 4. Fallback default to Yesterday
         LocalDateTime fallback = new ProfileTimestamp(LocalDateTime.now().minusDays(1)).value();
@@ -114,7 +114,7 @@ public class ProfileTimestampPortImpl implements ProfileTimestampPort {
 
             // Step 1: Read Capture Objects (Attribute 3)
             byte[][] captureRequest1 = client.read(profile, 3);
-            GXReplyData captureReply1 =  dlmsReaderUtils.readDataBlock(client, meterSerial, captureRequest1[0]);
+            GXReplyData captureReply1 = dlmsReaderUtils.readDataBlock(client, meterSerial, captureRequest1[0]);
             client.updateValue(profile, 3, captureReply1.getValue());
 
             // Read only the first row (1 record)
@@ -153,7 +153,7 @@ public class ProfileTimestampPortImpl implements ProfileTimestampPort {
             log.info(msg);
             logTx(meterSerial, msg);
 
-             fromMeter = readFirstTimestampFromMeter(meterSerial, profileObis);
+            fromMeter = readFirstTimestampFromMeter(meterSerial, profileObis);
             if (fromMeter != null) {
                 upsertLastTimestamp(meterSerial, profileObis, fromMeter);
                 getCache().put(key, fromMeter);

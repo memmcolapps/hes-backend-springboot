@@ -32,7 +32,8 @@ public class EventLogService {
     private final EventLogPersistenceAdapter eventLogPersistenceAdapter;
     private final EventLogMapper eventLogMapper;
 
-    @Transactional
+    /*TODO:
+    *  1. Remove @Transactional from all other profiles readProfileAndSave method*/
     public void readProfileAndSave(String model, String meterSerial, String profileObis, int batchSize, boolean testMode) {
 
         try {
@@ -106,7 +107,6 @@ public class EventLogService {
 
                 // Persist new cursor (Next iteration)
                 cursor = ProfileTimestamp.ofNullable(syncResult.getAdvanceTo()).plus(new CapturePeriod(1));
-                statePort.upsertState(meterSerial, profileObis, cursor, new CapturePeriod(1));
             }
 
         } catch (Exception ex) {
