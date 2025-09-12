@@ -25,7 +25,6 @@ jobs:
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
           restore-keys: |
             ${{ runner.os }}-maven-
-
       - name: Make mvnw executable
         run: chmod +x hes/mvnw
 
@@ -59,9 +58,22 @@ jobs:
           source: "*.jar"
           target: "/home/${{ secrets.SERVER_USER }}/hes-app/"
 
-      - name: Run app on server
-        run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} << 'EOF'
-            pkill -f '/home/memmcol/hes-app/*.jar' || true
-            nohup java -jar /home/memmcol/hes-app/*.jar > /home/memmcol/hes-app/app.log 2>&1 &
-          EOF
+      - name: Restart HES Application
+        uses: appleboy/ssh-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            echo "🔹 Stopping old process (if running)..."
+            pkill -f "hes-service" || true
+            echo "🔹 Starting new process with prod profile..."
+            cd /home/${{ secrets.SERVER_USER }}/hes-app
+            java -jar \
+              -Dspring.profiles.active=prod \
+              -DDB_USERNAME=${{ secrets.DB_USERNAME }} \
+              -DDB_PASSWORD=${{ secrets.DB_PASSWORD }} \
+              -DSPRING_SECURITY_USER=${{ secrets.SPRING_SECURITY_USER }} \
+              -DSPRING_SECURITY_PASSWORD=${{ secrets.SPRING_SECURITY_PASSWORD }} \
+              hes-0.0.1-SNAPSHOT.jar > app.log 2>&1 &
+             
