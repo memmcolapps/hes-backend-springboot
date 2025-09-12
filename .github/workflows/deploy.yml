@@ -77,7 +77,7 @@ jobs:
               -DDB_PASSWORD=${{ secrets.DB_PASSWORD }} \
               -DSPRING_SECURITY_USER=${{ secrets.SPRING_SECURITY_USER }} \
               -DSPRING_SECURITY_PASSWORD=${{ secrets.SPRING_SECURITY_PASSWORD }} \
-              hes-0.0.1-SNAPSHOT.jar > app.log 2>&1 < /dev/null &
+              hes-0.0.1-SNAPSHOT.jar > nohup.out 2>&1 < /dev/null &
 
               echo " Waiting 5s, then checking process..."
               sleep 5
