@@ -33,15 +33,12 @@ jobs:
         run: ./mvnw clean package -DskipTests
         working-directory: hes
 
-      - name: Rename Jar
-        run: |
-           mv hes/target/*.jar hes/hes-app/*.jar
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: hes-app
-          path: hes/hes-app/*.jar
+          path: hes/target/*.jar
 
   deploy:
     runs-on: ubuntu-latest
@@ -73,10 +70,11 @@ jobs:
             pkill -f "hes-service" || true
 
             echo "🔹 Starting new process with prod profile..."
+            cd /home/${{ secrets.SERVER_USER }}/hes-app
             nohup java -jar \
               -Dspring.profiles.active=prod \
               -DDB_USERNAME=${{ secrets.DB_USERNAME }} \
               -DDB_PASSWORD=${{ secrets.DB_PASSWORD }} \
               -DSPRING_SECURITY_USER=${{ secrets.SPRING_SECURITY_USER }} \
               -DSPRING_SECURITY_PASSWORD=${{ secrets.SPRING_SECURITY_PASSWORD }} \
-              /home/${{ secrets.SERVER_USER }}/hes-app/*.jar > app.log 2>&1 &
+              *.jar > app.log 2>&1 &
