@@ -8,6 +8,7 @@ import com.memmcol.hes.job.SampleCronJob;
 import com.memmcol.hes.job.SimpleJob;
 import com.memmcol.hes.model.SchedulerJobInfo;
 import com.memmcol.hes.repository.SchedulerRepository;
+import lombok.AllArgsConstructor;
 import org.quartz.JobBuilder;
 import org.quartz.JobDetail;
 import org.quartz.JobKey;

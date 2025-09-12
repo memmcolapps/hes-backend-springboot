@@ -3,7 +3,7 @@ package com.memmcol.hes.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import com.memmcol.hes.application.port.out.TxRxService;
+import com.memmcol.hes.domain.limiters.LimiterHelper;
 import com.memmcol.hes.model.*;
 import com.memmcol.hes.nettyUtils.RequestResponseService;
 import com.memmcol.hes.nettyUtils.SessionManager;
@@ -59,6 +59,7 @@ public class DlmsService {
     private final ProfileTimestampResolver profileTimestampResolver;
     private final MeterReadAdapter readAdapter;
     private final RequestResponseService requestResponseService;
+    private final LimiterHelper limiterHelper;
 
     public DlmsService(SessionManager sessionManager,
                        DlmsObisObjectRepository repository,
@@ -72,7 +73,7 @@ public class DlmsService {
                        ProfileTimestampResolver profileTimestampResolver,
                        MeterProfileStateRepository meterProfileStateRepository,
                        MeterReadAdapter readAdapter,
-                       RequestResponseService requestResponseService) {
+                       RequestResponseService requestResponseService, LimiterHelper limiterHelper) {
         this.sessionManager = sessionManager;
         this.repository = repository;
         this.metadataCache = metadataCache;
@@ -86,6 +87,7 @@ public class DlmsService {
         this.profileTimestampResolver = profileTimestampResolver;
         this.readAdapter = readAdapter;
         this.requestResponseService = requestResponseService;
+        this.limiterHelper = limiterHelper;
     }
 
     public static final DateTimeFormatter GLOBAL_TS_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
@@ -354,7 +356,7 @@ public class DlmsService {
 //                    unit = reg.getUnit() != null ? reg.getUnit().toString() : "";
 
                     // Read value
-                    result =  readAdapter.readAttribute(client, meterSerial, reg, attributeIndex);
+                    result = readAdapter.readAttribute(client, meterSerial, reg, attributeIndex);
                     if (result instanceof Number) {
                         result = BigDecimal.valueOf(((Number) result).doubleValue())
                                 .setScale(2, RoundingMode.HALF_UP)
@@ -376,7 +378,7 @@ public class DlmsService {
                     unit = dr.getUnit();
 
                     // Read value
-                    result =  readAdapter.readAttribute(client, meterSerial, dr, attributeIndex);
+                    result = readAdapter.readAttribute(client, meterSerial, dr, attributeIndex);
                     if (result instanceof Number) {
                         result = BigDecimal.valueOf(((Number) result).doubleValue())
                                 .setScale(2, RoundingMode.HALF_UP)
@@ -389,7 +391,7 @@ public class DlmsService {
                     GXDLMSClock clk = new GXDLMSClock();
                     clk.setLogicalName(obisCode);
                     GXDateTime clockDateTime;
-                    Object raw =  readAdapter.readAttribute(client, meterSerial, clk, attributeIndex);
+                    Object raw = readAdapter.readAttribute(client, meterSerial, clk, attributeIndex);
                     if (raw instanceof GXDateTime dt) {
                         clockDateTime = dt;
                     } else if (raw instanceof byte[] array) {
@@ -410,10 +412,20 @@ public class DlmsService {
                     unit = null;
                 }
 
+                case LIMITER -> {
+                    GXDLMSLimiter limiter = new GXDLMSLimiter();
+                    limiter.setLogicalName(obisCode);
+                    LimiterHelper.Threshold active = limiterHelper.getScaledThresholdWithUnit(limiter, "active", client, meterSerial, attributeIndex);
+                    result = active.getActualValue();
+                    scaler = active.getScaledValue();
+                    unit = active.getUnit();
+                    object = limiter;
+                }
+
                 case DATA -> {
                     GXDLMSData data = new GXDLMSData();
                     data.setLogicalName(obisCode);
-                    result =  readAdapter.readAttribute(client, meterSerial, data, attributeIndex);
+                    result = readAdapter.readAttribute(client, meterSerial, data, attributeIndex);
                     object = data;
                     unit = null;
                 }
@@ -421,7 +433,7 @@ public class DlmsService {
                 default -> {
                     object = GXDLMSClient.createObject(type);
                     object.setLogicalName(obisCode);
-                    result =  readAdapter.readAttribute(client, meterSerial, object, attributeIndex);
+                    result = readAdapter.readAttribute(client, meterSerial, object, attributeIndex);
                     unit = null;
                 }
 //                default -> throw new IllegalArgumentException("Unsupported object type: " + type);
@@ -433,6 +445,7 @@ public class DlmsService {
             response.put("attributeIndex", attributeIndex);
             response.put("dataIndex", dataIndex);
             response.put("value", result);
+            response.put("scaler", scaler);
             if (unit != null) {
                 response.put("unit", getUnitSymbol(unit)); // your mapping function
             }
@@ -462,7 +475,7 @@ public class DlmsService {
             byte[][] request = client.read(profile, 3);
             byte[] response = requestResponseService.sendCommand(serial, request[0]);
 
-            if ( readAdapter.isAssociationLost(response)) {
+            if (readAdapter.isAssociationLost(response)) {
                 sessionManager.removeSession(serial);
                 getProfileCaptureColumns(client, serial, obisCode);
                 throw new AssociationLostException();
@@ -505,7 +518,7 @@ public class DlmsService {
         byte[][] request = client.read(association, 2);
 
         // Read using block reader
-        GXReplyData reply =  readAdapter.readDataBlock(client, meterSerial, request[0]);
+        GXReplyData reply = readAdapter.readDataBlock(client, meterSerial, request[0]);
 
         // Update value in association object
         client.updateValue(association, 2, reply.getValue());
@@ -551,7 +564,6 @@ public class DlmsService {
     }
 
 
-
     static String getUnitSymbol(Unit unit) {
         return switch (unit) {
             case VOLTAGE -> "V";
@@ -583,12 +595,12 @@ public class DlmsService {
 
         // Step 1: Read Capture Objects (Attribute 3)
         byte[][] captureRequest = client.read(profile, 3);
-        GXReplyData captureReply =  readAdapter.readDataBlock(client, meterSerial, captureRequest[0]);
+        GXReplyData captureReply = readAdapter.readDataBlock(client, meterSerial, captureRequest[0]);
         client.updateValue(profile, 3, captureReply.getValue());
 
         // Step 2: Read Entries in Use (Attribute 2)
         byte[][] entryRequest = client.read(profile, 2);
-        GXReplyData entryReply =  readAdapter.readDataBlock(client, meterSerial, entryRequest[0]);
+        GXReplyData entryReply = readAdapter.readDataBlock(client, meterSerial, entryRequest[0]);
         client.updateValue(profile, 2, entryReply.getValue());
 
         int totalEntries = profile.getEntriesInUse();
@@ -598,7 +610,7 @@ public class DlmsService {
 
         // Step 3: Read profile buffer using readRowsByEntry
         byte[][] readRequest = client.readRowsByEntry(profile, startIndex, entryCount);
-        GXReplyData reply =  readAdapter.readDataBlock(client, meterSerial, readRequest[0]);
+        GXReplyData reply = readAdapter.readDataBlock(client, meterSerial, readRequest[0]);
         client.updateValue(profile, 4, reply.getValue());
 
         // Step 4: Parse buffer
@@ -974,28 +986,28 @@ public class DlmsService {
 
         // 🔎 Read attribute 7: current entries in use
         byte[][] captureRequest = client.read(profile, 7);
-        GXReplyData captureReply =  readAdapter.readDataBlock(client, serial, captureRequest[0]);
+        GXReplyData captureReply = readAdapter.readDataBlock(client, serial, captureRequest[0]);
         client.updateValue(profile, 7, captureReply.getValue());
         int bufferCount = profile.getEntriesInUse(); // entriesInUse = attribute 7
         log.info("📦 Meter entries in use (attribute 7) = {}", bufferCount);
 
         // 🔎 Read attribute 4: max buffer size
         byte[][] bufferSize = client.read(profile, 4);
-        GXReplyData bufferSizeReply =  readAdapter.readDataBlock(client, serial, bufferSize[0]);
+        GXReplyData bufferSizeReply = readAdapter.readDataBlock(client, serial, bufferSize[0]);
         client.updateValue(profile, 4, bufferSizeReply.getValue());
         int bufferCapacity = profile.getProfileEntries();
         log.info("🧮 Meter buffer capacity (attribute 4) = {}", bufferCapacity);
 
         // 🔎 Read attribute 8: capture period in seconds (optional)
         byte[][] captureSize = client.read(profile, 8);
-        GXReplyData captureSizeReply =  readAdapter.readDataBlock(client, serial, captureSize[0]);
+        GXReplyData captureSizeReply = readAdapter.readDataBlock(client, serial, captureSize[0]);
         client.updateValue(profile, 8, captureSizeReply.getValue());
         Long capturePeriod = profile.getCapturePeriod();
         log.info("⏱️ Capture period (attribute 8) = {} seconds", capturePeriod);
 
         // 📨 Read rows from the meter using date range
         byte[][] readRequest = client.readRowsByRange(profile, DlmsUtils.toGXDateTime(resumeFrom), DlmsUtils.toGXDateTime(resumeAfter)); // null = up to latest
-        GXReplyData reply =  readAdapter.readDataBlock(client, serial, readRequest[0]);
+        GXReplyData reply = readAdapter.readDataBlock(client, serial, readRequest[0]);
         client.updateValue(profile, 2, reply.getValue());
 
         // Step 4: Parse the buffer
@@ -1244,7 +1256,7 @@ public class DlmsService {
 
         // Step 1: Read Attribute 3 (Capture Object definitions)
         byte[][] captureRequest = client.read(profile, 3);
-        GXReplyData captureReply =  readAdapter.readDataBlock(client, serial, captureRequest[0]);
+        GXReplyData captureReply = readAdapter.readDataBlock(client, serial, captureRequest[0]);
 
         Object[] captureArray = (Object[]) captureReply.getValue(); // ⚠️ Attribute 3 is always an array of GXStructures
         ProfileMetadataDTO metadataDTO = new ProfileMetadataDTO();
@@ -1268,7 +1280,7 @@ public class DlmsService {
         // Step 2: Optionally read Attribute 2 (EntriesInUse)
         try {
             byte[][] entryRequest = client.read(profile, 2);
-            GXReplyData entryReply =  readAdapter.readDataBlock(client, serial, entryRequest[0]);
+            GXReplyData entryReply = readAdapter.readDataBlock(client, serial, entryRequest[0]);
             client.updateValue(profile, 2, entryReply.getValue());
             metadataDTO.setEntriesInUse(profile.getEntriesInUse());
         } catch (Exception e) {
@@ -1340,7 +1352,7 @@ public class DlmsService {
 
             // Read attribute 3 (CaptureObjects)
             byte[][] request = client.read(profile, 3);
-            GXReplyData reply =  readAdapter.readDataBlock(client, meterModel, request[0]);
+            GXReplyData reply = readAdapter.readDataBlock(client, meterModel, request[0]);
             client.updateValue(profile, 3, reply.getValue());
 
             List<ModelProfileMetadata> result = new ArrayList<>();
@@ -1431,13 +1443,12 @@ public class DlmsService {
         LocalDateTime initialTs = DlmsDateUtils.parseTimestampLdt(firstVal);
 
         // ✅ Fetch capture period
-         // 🔎 Read attribute 8: capture period in seconds (optional)
+        // 🔎 Read attribute 8: capture period in seconds (optional)
         byte[][] captureSize = client.read(profile, 8);
         GXReplyData captureSizeReply = readAdapter.readDataBlock(client, serial, captureSize[0]);
         client.updateValue(profile, 8, captureSizeReply.getValue());
         Long capturePeriodSec = profile.getCapturePeriod();
         log.info("⏱️ Capture period (attribute 8) = {} seconds", capturePeriodSec);
-
 
 
         // ✅ Save to DB
@@ -1448,8 +1459,6 @@ public class DlmsService {
 
         log.info("Initial timestamp for {} [{}] = {}, capturePeriodSec={}", serial, obis, initialTs, capturePeriodSec);
     }
-
-
 
 
 //    7. Putting It All Together in Your Read Service
@@ -1486,7 +1495,7 @@ public class DlmsService {
 
             // 📨 Read rows from the meter using date range
             byte[][] readRequest = client.readRowsByRange(profile, fromGX, toGX); // null = up to latest
-            GXReplyData reply =  readAdapter.readDataBlock(client, serial, readRequest[0]);
+            GXReplyData reply = readAdapter.readDataBlock(client, serial, readRequest[0]);
             client.updateValue(profile, 2, reply.getValue());
 
             // Apply result to profile buffer

@@ -2,11 +2,14 @@ package com.memmcol.hes.controller;
 
 import java.util.List;
 
+import com.memmcol.hes.job.JobRunner;
 import com.memmcol.hes.model.Message;
 import com.memmcol.hes.model.SchedulerJobInfo;
 import com.memmcol.hes.service.SchedulerJobService;
 import org.quartz.SchedulerException;
 import org.quartz.SchedulerMetaData;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RestController;
@@ -21,6 +24,7 @@ import lombok.extern.slf4j.Slf4j;
 public class JobController {
 
     private final SchedulerJobService scheduleJobService;
+    private final JobRunner jobRunner;
 
     @RequestMapping(value = "/saveOrUpdate", method = { RequestMethod.GET, RequestMethod.POST })
     public Object saveOrUpdate( SchedulerJobInfo job) {
@@ -102,5 +106,12 @@ public class JobController {
             log.error("deleteJob ex:", e);
         }
         return message;
+    }
+
+
+    @PostMapping("/load-profile1")
+    public ResponseEntity<String> triggerLoadProfile1() {
+        jobRunner.runNow();
+        return ResponseEntity.ok("LoadProfileChannel1Job triggered manually");
     }
 }

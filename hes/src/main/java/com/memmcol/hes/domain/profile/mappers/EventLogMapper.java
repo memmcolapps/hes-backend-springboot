@@ -27,10 +27,16 @@ public class EventLogMapper {
             // Event code -> position 1
             Integer eventCode = (values.size() > 1) ? parseEventCode(values.get(1)) : null;
 
-            // Phase -> position 2 (optional)
-            String phase = null;
+            // currentThreshold -> position 2 (optional)
+            double currentThreshold = 0.00;
             if (values.size() > 2 && values.get(2) != null && !values.get(2).toString().isBlank()) {
-                phase = values.get(2).toString();
+                try {
+                    currentThreshold = Double.parseDouble(values.get(2).toString());
+                } catch (NumberFormatException e) {
+                    // Log and fallback to 0.00 if parsing fails
+                    log.error("⚠️ Unable to parse currentThreshold: {}", values.get(2));
+                    currentThreshold = 0.00;
+                }
             }
 
             // Everything else goes into details (from position 3 onward)
@@ -41,7 +47,7 @@ public class EventLogMapper {
                     .meterSerial(meterSerial)
                     .eventCode(eventCode)
                     .eventTime(eventTime)
-                    .phase(phase)
+                    .currentThreshold(currentThreshold)
                     .eventName(eventName) // ✅ avoid {}
                     .build();
         }).toList();
