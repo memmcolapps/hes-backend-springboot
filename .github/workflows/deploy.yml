@@ -38,7 +38,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: hes-app
-          path: hes/target/*.jar
+          path: hes/*.jar
 
   deploy:
     runs-on: ubuntu-latest
