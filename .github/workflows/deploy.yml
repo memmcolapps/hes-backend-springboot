@@ -62,6 +62,6 @@ jobs:
       - name: Run app on server
         run: |
           ssh -o StrictHostKeyChecking=no ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} << 'EOF'
-            pkill -f '/home/hes-app/*.jar' || true
-            nohup java -jar /home/hes-app/*.jar > /home/hes-app/app.log 2>&1 &
+            pkill -f '/home/memmcol/hes-app/*.jar' || true
+            nohup java -jar /home/memmcol/hes-app/*.jar > /home/memmcol/hes-app/app.log 2>&1 &
           EOF
