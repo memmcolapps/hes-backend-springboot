@@ -38,7 +38,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: hes-app
-          path: hes/*.jar
+          path: hes/target/*.jar
 
   deploy:
     runs-on: ubuntu-latest
@@ -71,10 +71,10 @@ jobs:
 
             echo "🔹 Starting new process with prod profile..."
             cd /home/${{ secrets.SERVER_USER }}/hes-app
-            nohup java -jar \
+            setsid nohup java -jar \
               -Dspring.profiles.active=prod \
               -DDB_USERNAME=${{ secrets.DB_USERNAME }} \
               -DDB_PASSWORD=${{ secrets.DB_PASSWORD }} \
               -DSPRING_SECURITY_USER=${{ secrets.SPRING_SECURITY_USER }} \
               -DSPRING_SECURITY_PASSWORD=${{ secrets.SPRING_SECURITY_PASSWORD }} \
-              hes-0.0.1-SNAPSHOT.jar > app.log 2>&1 &
+              hes-0.0.1-SNAPSHOT.jar > app.log 2>&1 < /dev/null &
