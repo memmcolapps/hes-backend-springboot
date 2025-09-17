@@ -44,9 +44,20 @@ public class SchedulerJobInfo {
     @Column(name = "interface_name")
     private String interfaceName;
 
-    @Column(name = "repeat_time")
+    @Column(name = "repeat_time") // fallback, optional
     private Long repeatTime;
 
     @Column(name = "cron_job")
     private Boolean cronJob;
+
+    @Column(name = "repeat_seconds")
+    private Integer repeatSeconds;
+
+    @Column(name = "repeat_minutes")
+    private Integer repeatMinutes;
+
+    @Column(name = "repeat_hours")
+    private Integer repeatHours;
+
+
 }

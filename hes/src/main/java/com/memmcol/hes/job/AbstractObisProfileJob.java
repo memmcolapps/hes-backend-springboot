@@ -11,21 +11,29 @@ import org.quartz.JobExecutionContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.quartz.QuartzJobBean;
 
+import java.io.PrintStream;
+
 @Slf4j
 @DisallowConcurrentExecution
-@RequiredArgsConstructor
 public abstract class AbstractObisProfileJob extends QuartzJobBean {
-    protected final RequestResponseService txRxService;
-    protected final MeterRepository meterRepo; // To fetch meters
-
-    protected abstract void executeProfile(JobExecutionContext context);
-
     @Override
     protected void executeInternal(JobExecutionContext context) {
+        String model = context.getMergedJobDataMap().getString("model");
+        String serial = context.getMergedJobDataMap().getString("meterSerial");
+        String profileObis = context.getMergedJobDataMap().getString("profileObis");
+        int batchSize = context.getMergedJobDataMap().getInt("batchSize");
+
+        log.info("▶ [{}] triggered for meter={}, model={}, obis={}",
+                this.getClass().getSimpleName(), serial, model, profileObis);
+
         try {
-            executeProfile(context);
-        } catch (Exception e) {
-            log.error("Error executing job {}: {}", context.getJobDetail().getKey(), e.getMessage(), e);
+            runProfileJob(model, serial, profileObis, batchSize, context);
+        } catch (Exception ex) {
+            log.error("❌ Error in [{}] for meter {}: {}",
+                    this.getClass().getSimpleName(), serial, ex.getMessage());
         }
     }
+
+    protected abstract void runProfileJob(
+            String model, String serial, String profileObis, int batchSize, JobExecutionContext context);
 }

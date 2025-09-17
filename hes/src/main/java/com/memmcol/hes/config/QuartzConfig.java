@@ -1,62 +1,38 @@
 package com.memmcol.hes.config;
 
-import com.memmcol.hes.job.LoadProfileChannel1Job;
-import jakarta.annotation.PostConstruct;
-import org.quartz.*;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.config.PropertiesFactoryBean;
+import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.scheduling.quartz.SchedulerFactoryBean;
 
+import javax.sql.DataSource;
+import java.io.IOException;
+import java.util.Objects;
 
 @Configuration
 public class QuartzConfig {
-    private final SchedulerFactoryBean schedulerFactoryBean;
 
-    @Value("${quartz.profiles.load1}")
-    private String load1Cron;
+    @Bean
+    public SchedulerFactoryBean schedulerFactoryBean(
+            DataSource dataSource,
+            ApplicationContext applicationContext
+    ) throws IOException {
+        SchedulerFactoryBean factory = new SchedulerFactoryBean();
 
-    public QuartzConfig(SchedulerFactoryBean schedulerFactoryBean) {
-        this.schedulerFactoryBean = schedulerFactoryBean;
-    }
-    @Value("${quartz.profiles.load2}")
-    private String load2Cron;
+        factory.setDataSource(dataSource);
+        factory.setApplicationContext(applicationContext);
 
-    @Value("${quartz.profiles.event}")
-    private String eventCron;
+        // Load quartz.properties from classpath
+        PropertiesFactoryBean propertiesFactoryBean = new PropertiesFactoryBean();
+        propertiesFactoryBean.setLocation(new ClassPathResource("/quartz.properties"));
+        propertiesFactoryBean.afterPropertiesSet();
+        factory.setQuartzProperties(Objects.requireNonNull(propertiesFactoryBean.getObject()));
 
-    @Value("${quartz.profiles.dailyBilling}")
-    private String dailyBillingCron;
+        // Optional: startup delay
+        factory.setStartupDelay(5);
 
-    @Value("${quartz.profiles.monthlyBilling}")
-    private String monthlyBillingCron;
-
-    @PostConstruct
-    public void scheduleJobs() throws SchedulerException {
-        Scheduler scheduler = schedulerFactoryBean.getScheduler();
-
-        // ✅ Define JobDetail
-        JobDetail load1JobDetail = JobBuilder.newJob(LoadProfileChannel1Job.class)
-                .withIdentity("load1Job", "HES_JOBS")
-                .storeDurably()
-                .build();
-
-        // ✅ Define Trigger
-        TriggerKey triggerKey = new TriggerKey("load1Trigger", "HES_TRIGGERS");
-
-        Trigger load1Trigger = TriggerBuilder.newTrigger()
-                .forJob(load1JobDetail)
-                .withIdentity("load1Trigger", "HES_TRIGGERS")
-                .withSchedule(CronScheduleBuilder.cronSchedule(load1Cron))
-                .build();
-
-        // ✅ Register job + trigger
-        if (!scheduler.checkExists(load1JobDetail.getKey())) {
-            // First time → save job + trigger
-            scheduler.scheduleJob(load1JobDetail, load1Trigger);
-        } else {
-            // Job already exists → reschedule trigger using existing TriggerKey
-            scheduler.rescheduleJob(triggerKey, load1Trigger);
-        }
+        return factory;
     }
 }
