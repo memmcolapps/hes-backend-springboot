@@ -65,14 +65,19 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           script: |
-            
+            if pgrep -f "hes-0.0.1-SNAPSHOT.jar" >/dev/null; then 
+               echo " Found old process, killing..."
+               pkil -f "hes-0.0.1-SNAPSHOT.jar"
+            else
+              echo "No old process running."
+            fi
             echo "🔹 Starting new process with prod profile..."
             cd /home/${{ secrets.SERVER_USER }}/hes-app
-            nohup /usr/bin/java -jar \
+            nohup /usr/bin/java \
               -Dspring.profiles.active=prod \
               -DDB_USERNAME=${{ secrets.DB_USERNAME }} \
               -DDB_PASSWORD=${{ secrets.DB_PASSWORD }} \
               -DSPRING_SECURITY_USER=${{ secrets.SPRING_SECURITY_USER }} \
               -DSPRING_SECURITY_PASSWORD=${{ secrets.SPRING_SECURITY_PASSWORD }} \
-              hes-0.0.1-SNAPSHOT.jar > app.log 2>&1 &
+              -jar hes-0.0.1-SNAPSHOT.jar > app.log 2>&1 &
              
