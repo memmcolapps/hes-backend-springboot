@@ -69,7 +69,7 @@ jobs:
             pkill -f "hes-0.0.1-SNAPSHOT.jar" || true
             echo "🔹 Starting new process with prod profile..."
             cd /home/${{ secrets.SERVER_USER }}/hes-app
-            nohup /usr/bin/java java -jar \
+            nohup /usr/bin/java -jar \
               -Dspring.profiles.active=prod \
               -DDB_USERNAME=${{ secrets.DB_USERNAME }} \
               -DDB_PASSWORD=${{ secrets.DB_PASSWORD }} \
