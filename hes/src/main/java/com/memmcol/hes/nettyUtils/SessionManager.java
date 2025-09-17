@@ -1,5 +1,6 @@
 package com.memmcol.hes.nettyUtils;
 
+import com.memmcol.hes.application.port.out.TxRxService;
 import com.memmcol.hes.service.MeterConnections;
 import com.memmcol.hes.service.MeterSession;
 import gurux.dlms.GXByteBuffer;
@@ -21,8 +22,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
-import static com.memmcol.hes.nettyUtils.RequestResponseService.TRACKER;
-import static com.memmcol.hes.nettyUtils.RequestResponseService.inflightRequests;
+import static com.memmcol.hes.nettyUtils.RequestResponseService.*;
 
 @Service
 @Slf4j
@@ -30,6 +30,11 @@ public class SessionManager {
     private final Map<String, MeterSession> sessionMap = new ConcurrentHashMap<>();
     // Session timeout for inactive meters (e.g., 5 minutes)
     private final Duration SESSION_TIMEOUT = Duration.ofMinutes(3);
+    private final TxRxService txRxService;
+
+    public SessionManager(TxRxService txRxService) {
+        this.txRxService = txRxService;
+    }
 
     @PostConstruct
     public void init() {
@@ -54,28 +59,21 @@ public class SessionManager {
                 Authentication.LOW,
                 "12345678",
                 InterfaceType.WRAPPER);
-
         try {
+            String msg = String.format("Setting up DLMS Association for meter=%s", serial);
+            log.info(msg);
+            logTx(serial, msg);
             byte[][] aarq = dlmsClient.aarqRequest();
-            log.debug("AARQ (hex): {}", GXCommon.toHex(aarq[0]));
-
-//            byte[] response = RequestResponseService.sendCommand(serial, aarq[0]);
-//            byte[] response = RequestResponseService.sendCommandWithRetry(serial, aarq[0]);
-//            byte[] response = RequestResponseService.sendOnceListen(serial, aarq[0], 15000, 5000, 200);
-//            byte[] response = RequestResponseService.sendCommandWithRetryListenFirst(serial, aarq[0], 10000, 10000, 200, 2);
-            byte[] response = RequestResponseService.sendReceiveWithContext(serial, aarq[0], 20000);
-
+            byte[] response = txRxService.sendReceiveWithContext(serial, aarq[0], 20000);
             byte[] payload = Arrays.copyOfRange(response, 8, response.length);
             GXByteBuffer replyBuffer = new GXByteBuffer(payload);
-
             try {
                 dlmsClient.parseAareResponse(replyBuffer);
             } catch (IllegalArgumentException e) {
                 log.warn("⚠️ AARE parse failed: {}", e.getMessage());
-                log.debug("Assuming AARQ accepted externally.");
             }
             log.info("✅ DLMS Association established for {}", serial);
-            MeterSession meterSession = new MeterSession(serial, channel, dlmsClient);
+            MeterSession meterSession = new MeterSession(serial, channel, dlmsClient, txRxService);
             meterSession.setAssociated(true);
             sessionMap.put(serial, meterSession);
         } catch (Exception e) {
@@ -104,18 +102,6 @@ public class SessionManager {
         }
         return client;
     }
-
-    /**
-     * Remove expired sessions (run on a schedule).
-     */
-//    @Scheduled(fixedDelay = 60000)
-//    public void cleanupExpiredSessions() {
-//        log.debug("🔍 Cleaning up expired sessions...");
-//        int before = sessions.size();
-//        sessions.entrySet().removeIf(entry -> entry.getValue().isExpired(SESSION_TIMEOUT));
-//        int after = sessions.size();
-//        log.debug("🔍 Cleaned up expired sessions: {} removed, {} remaining", before - after, after);
-//    }
 
     /**
      * Optional: forcibly clear session if needed.

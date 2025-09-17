@@ -1,6 +1,5 @@
 package com.memmcol.hes.api.controller;
 
-import com.memmcol.hes.domain.profile.APIClientService;
 import com.memmcol.hes.domain.profile.InstantaneousReadService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -14,7 +13,6 @@ import java.util.Map;
 @RequestMapping("/api/meters")
 public class InstanteneousReadController {
     private final InstantaneousReadService instantaneousReadService;
-    private final APIClientService clientService;
 
     @GetMapping("/{serial}/read-vc")
     public ResponseEntity<?> readVoltageAndCurrent(@PathVariable("serial") String meterSerial,

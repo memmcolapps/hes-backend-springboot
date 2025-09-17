@@ -2,6 +2,7 @@ package com.memmcol.hes.controller;
 
 import com.memmcol.hes.netty.NettyChannelInitializer;
 import com.memmcol.hes.netty.NettyServerHolder;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -11,7 +12,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 
 import java.util.Map;
 
-
+@Tag(name = "Netty APIs", description = "APIs to monitor and control Netty server")
 @RestController
 @RequestMapping("/api/netty")
 public class NettyStatusController {

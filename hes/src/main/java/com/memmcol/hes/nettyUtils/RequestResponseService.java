@@ -1,5 +1,6 @@
 package com.memmcol.hes.nettyUtils;
 
+import com.memmcol.hes.application.port.out.TxRxService;
 import com.memmcol.hes.netty.NettyBufferUtils;
 import com.memmcol.hes.service.MeterConnections;
 import gurux.dlms.internal.GXCommon;
@@ -12,39 +13,28 @@ import org.slf4j.MDC;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.time.LocalDateTime;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.*;
 
 import static com.memmcol.hes.nettyUtils.DLMSRequestTracker.serialToKey;
 
 @Slf4j
 @Service
-public final class RequestResponseService {
+public final class RequestResponseService implements TxRxService {
+
+    private static final Logger DLMS_LOG = LoggerFactory.getLogger("DLMS-TXRX");
 
     private static final Map<String, BlockingQueue<byte[]>> meterResponseQueues = new ConcurrentHashMap<>();
     private static final Map<String, String> commandKeyMap = new ConcurrentHashMap<>();
     public static final ConcurrentHashMap<String, DlmsRequestContext> inflightRequests = new ConcurrentHashMap<>();
     public static final ConcurrentMap<String, BlockingQueue<byte[]>> TRACKER = new ConcurrentHashMap<>();
 
-//    public String sendRequest(String meterId, Channel channel, byte[] requestPayload) {
-//        String correlationId = meterId + "-" + System.nanoTime();
-//        long expiryTime = System.currentTimeMillis() + 20000; // 20s wait
-//
-//        DlmsRequestContext context = new DlmsRequestContext(meterId, correlationId, expiryTime, channel);
-//        inflightRequests.put(correlationId, context);
-//
-//        // Attach correlationId to channel for response matching
-//        channel.attr(AttributeKey.valueOf("CID")).set(correlationId);
-//
-//        // Send request
-//        channel.writeAndFlush(requestPayload);
-//        log.info("🚀 Sent request to meter={}, CID={}", meterId, correlationId);
-//
-//        return correlationId;
-//    }
 
-    public static byte[] sendReceiveWithContext(
+    public byte[] sendReceiveWithContext1(
             String meterId,
             byte[] requestData,
             long timeoutMs
@@ -63,6 +53,7 @@ public final class RequestResponseService {
             try {
                 log.info("Sending DLMS request to {}, corrId={}", context.getMeterId(), correlationId);
                 log.info("TX: {} : {}", context.getMeterId(), GXCommon.toHex(requestData));
+                logTx(context.getMeterId(), requestData);
                 // Attach correlationId to channel for response matching
                 channel.attr(AttributeKey.valueOf("CID")).set(correlationId);
                 channel.writeAndFlush(requestData);
@@ -113,7 +104,7 @@ public final class RequestResponseService {
         meterResponseQueues.remove(serial);
     }
 
-    public static byte[] sendCommand(String serial, byte[] command) {
+    public byte[] sendCommand(String serial, byte[] command) {
         log.info("TX: {} : {}", serial, GXCommon.toHex(command));
         Channel channel = MeterConnections.getChannel(serial);
         if (channel != null && channel.isActive()) {
@@ -134,7 +125,7 @@ public final class RequestResponseService {
         }
     }
 
-    public static byte[] sendCommandWithRetry(String serial, byte[] command, int maxRetries, long delayMs) {
+    public byte[] sendCommandWithRetry(String serial, byte[] command, int maxRetries, long delayMs) {
         int attempt = 0;
         while (attempt < maxRetries) {
             try {
@@ -154,7 +145,7 @@ public final class RequestResponseService {
         throw new IllegalStateException("DLMS command failed after " + maxRetries + " retries");
     }
 
-    public static byte[] sendCommandWithRetry(String serial, byte[] command) {
+    public byte[] sendCommandWithRetry(String serial, byte[] command) {
         Channel channel = MeterConnections.getChannel(serial);
         if (channel == null || !channel.isActive()) {
             throw new IllegalStateException("Inactive or missing channel for " + serial);
@@ -192,7 +183,7 @@ public final class RequestResponseService {
         throw new IllegalStateException("Unexpected failure in sendCommandWithRetry()");
     }
 
-    public static byte[] sendCommandWithRetryListenFirst(String serial, byte[] command, long initialTimeoutMs, long lateListenMs, long pollIntervalMs, int maxRetries) throws ReadTimeoutException {
+    public byte[] sendCommandWithRetryListenFirst(String serial, byte[] command, long initialTimeoutMs, long lateListenMs, long pollIntervalMs, int maxRetries) throws ReadTimeoutException {
 
         Channel channel = MeterConnections.getChannel(serial);
         if (channel == null || !channel.isActive()) {
@@ -278,7 +269,7 @@ public final class RequestResponseService {
      * @return
      * @throws ReadTimeoutException
      */
-    public static byte[] sendOnceListen(String serial, byte[] command, long initialTimeoutMs, long lateListenMs, long pollIntervalMs) throws ReadTimeoutException {
+    public byte[] sendOnceListen(String serial, byte[] command, long initialTimeoutMs, long lateListenMs, long pollIntervalMs) throws ReadTimeoutException {
 
         Channel channel = MeterConnections.getChannel(serial);
         if (channel == null || !channel.isActive()) {
@@ -328,7 +319,7 @@ public final class RequestResponseService {
     }
 
     //Supporting Helper: Late Window Poll for SendOnce
-    private static byte[] waitLateWindow2(CompletableFuture<byte[]> future, long totalMs, long intervalMs) {
+    private byte[] waitLateWindow2(CompletableFuture<byte[]> future, long totalMs, long intervalMs) {
 
         long waited = 0;
         while (waited < totalMs) {
@@ -351,7 +342,7 @@ public final class RequestResponseService {
 
 
     //Supporting Helper: Late Window Poll
-    private static byte[] waitLateWindow(CompletableFuture<byte[]> fut, long lateListenMs, long pollIntervalMs) {
+    private byte[] waitLateWindow(CompletableFuture<byte[]> fut, long lateListenMs, long pollIntervalMs) {
         final long deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(lateListenMs);
         for (; ; ) {
             byte[] val = fut.getNow(null);
@@ -362,7 +353,7 @@ public final class RequestResponseService {
     }
 
     //Sleep helper
-    private static void sleepQuiet(long ms) {
+    private void sleepQuiet(long ms) {
         try {
             Thread.sleep(ms);
         } catch (InterruptedException ie) {
@@ -380,4 +371,84 @@ public final class RequestResponseService {
     }
 
 
+    public static void logTx(String meterSerial, String msg) {
+        try {
+            MDC.put("meter", meterSerial);   // <-- used by logback discriminator
+            DLMS_LOG.info("[MSG]:{}", msg);
+        } finally {
+            MDC.remove("meter");
+        }
+    }
+
+    public static void logTx(String meterSerial, byte[] frame) {
+        try {
+            MDC.put("meter", meterSerial);   // <-- used by logback discriminator
+            DLMS_LOG.info("[TX]:{}: {}", meterSerial, toHex(frame));
+        } finally {
+            MDC.remove("meter");
+        }
+    }
+
+    public static void logRx(String meterSerial, byte[] frame) {
+        try {
+            MDC.put("meter", meterSerial);
+            DLMS_LOG.info("[RX]:{}: {}", meterSerial,toHex(frame));
+        } finally {
+            MDC.remove("meter");
+        }
+    }
+
+    private static String toHex(byte[] data) {
+        StringBuilder sb = new StringBuilder();
+        for (byte b : data) {
+            sb.append(String.format("%02X ", b));
+        }
+        return sb.toString().trim();
+    }
+
+    @Override
+    public byte[] sendReceiveWithContext(String meterId, byte[] requestData, long timeoutMs) throws Exception {
+        Channel channel = MeterConnections.getChannel(meterId);
+        if (channel != null && channel.isActive()) {
+            DlmsRequestContext context = new DlmsRequestContext(meterId, channel, timeoutMs);
+
+            String correlationId = context.getCorrelationId();
+            TRACKER.put(correlationId, new LinkedBlockingQueue<>(1)); // track expected RX
+
+            inflightRequests.put(correlationId, context);
+            // Add correlationId to MDC for traceability
+//        MDC.put("CID", correlationId);
+
+            try {
+                log.info("Sending DLMS request to {}, corrId={}", context.getMeterId(), correlationId);
+                log.info("TX: {} : {}", context.getMeterId(), GXCommon.toHex(requestData));
+                logTx(context.getMeterId(), requestData);
+                // Attach correlationId to channel for response matching
+                channel.attr(AttributeKey.valueOf("CID")).set(correlationId);
+                channel.writeAndFlush(requestData);
+
+                // Await response
+                BlockingQueue<byte[]> responseQueue = TRACKER.get(correlationId);
+                byte[] response = responseQueue.poll(timeoutMs, TimeUnit.MILLISECONDS);
+
+                if (response == null) {
+                    context.markTimeout();
+                    log.warn("DLMS timeout for meter={}, correlationId={}, duration={}ms",
+                            context.getMeterId(), correlationId, context.getDuration());
+                    throw new ReadTimeoutException("DLMS read timeout");
+                }
+
+                // Response received on time
+                log.info("✅ DLMS success: meter={}, CID={}, duration={}ms",
+                        context.getMeterId(), correlationId, context.getDuration());
+                return response;
+
+            } finally {
+                TRACKER.remove(correlationId); // cleanup to avoid memory leak
+//            MDC.remove("CID"); // cleanup MDC
+            }
+        } else {
+            throw new IllegalStateException("Inactive or missing channel for " + meterId);
+        }
+    }
 }

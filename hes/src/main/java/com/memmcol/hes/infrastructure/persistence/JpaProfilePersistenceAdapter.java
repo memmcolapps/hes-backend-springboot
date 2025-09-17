@@ -27,7 +27,7 @@ import java.util.Objects;
 @Component
 @RequiredArgsConstructor
 @Slf4j
-public class JpaProfilePersistenceAdapter implements ProfilePersistencePort {
+public class JpaProfilePersistenceAdapter implements ProfilePersistencePort<ProfileRow> {
 
     @PersistenceContext
     private final EntityManager em;
@@ -45,8 +45,8 @@ public class JpaProfilePersistenceAdapter implements ProfilePersistencePort {
                 e.setMeterSerial(meterSerial);
                 e.setModelNumber(model);
                 e.setEntryTimestamp(r.timestamp().value());
-                e.setActiveEnergy(r.activeKwh());
-                e.setReactiveEnergy(r.reactiveKvarh());
+                e.setImportActiveEnergy(r.activeKwh());
+                e.setExportActiveEnergy(r.reactiveKvarh());
                 e.setRawData(r.rawHex());
                 e.setReceivedAt(LocalDateTime.now());
 
@@ -94,7 +94,7 @@ public class JpaProfilePersistenceAdapter implements ProfilePersistencePort {
                                                        String obis,
                                                        List<ProfileRow> rows,
                                                        CapturePeriod capturePeriodSeconds,
-                                                       Map<String, Double> scalers) {
+                                                       ProfileMetadataResult metadataResult) {
 
         ProfileState st = statePort.loadState(meterSerial, obis); // or null if you dropped obis
         LocalDateTime previousLast = (st != null && st.lastTimestamp() != null)
@@ -109,7 +109,7 @@ public class JpaProfilePersistenceAdapter implements ProfilePersistencePort {
         }
 
         int total = rows.size();
-        int inserted = doBatchInsertHibernate(meterSerial, meterModel, rows, scalers);
+        int inserted = doBatchInsertHibernate(meterSerial, meterModel, rows, metadataResult);
         int duplicate = total - inserted;
 
         LocalDateTime incomingMax = rows.stream()
@@ -136,8 +136,13 @@ public class JpaProfilePersistenceAdapter implements ProfilePersistencePort {
         return new ProfileSyncResult(total, inserted, duplicate, previousLast, incomingMax, advanceTo, advanced);
     }
 
+    @Override
+    public ProfileSyncResult saveBatchAndAdvanceCursor(String meterSerial, String meterModel, String obis, List<ProfileRow> rows, CapturePeriod capturePeriodSeconds) {
+        return null;
+    }
+
     @Transactional
-    public int doBatchInsertHibernate(String meterSerial, String meterModel, List<ProfileRow> rows, Map<String, Double> scalers) {
+    public int doBatchInsertHibernate(String meterSerial, String meterModel, List<ProfileRow> rows, ProfileMetadataResult metadataResult) {
         int saved = 0;
 
         Session session = em.unwrap(Session.class);
@@ -169,8 +174,8 @@ public class JpaProfilePersistenceAdapter implements ProfilePersistencePort {
             entity.setModelNumber(meterModel);
             entity.setEntryIndex(-1);
             entity.setEntryTimestamp(ts);
-            entity.setActiveEnergy(safeParseDouble(r.activeKwh(), "1.0.1.8.0.255", scalers));
-            entity.setReactiveEnergy(safeParseDouble(r.reactiveKvarh(), "1.0.2.8.0.255", scalers));
+            entity.setImportActiveEnergy(safeParseDouble(r.activeKwh(), "1.0.1.8.0.255", metadataResult));
+            entity.setExportActiveEnergy(safeParseDouble(r.reactiveKvarh(), "1.0.2.8.0.255", metadataResult));
             entity.setRawData(r.rawHex());
             entity.setReceivedAt(LocalDateTime.now());
 
@@ -196,11 +201,17 @@ public class JpaProfilePersistenceAdapter implements ProfilePersistencePort {
         return total;
     }
 
-    private Double safeParseDouble(Object val, String obis, Map<String, Double> scalers) {
+    private Double safeParseDouble(Object val, String obis, ProfileMetadataResult metadataResult) {
         double result = (double) val;
 
+        ProfileMetadataResult.ProfilePersistenceInfo persistence = metadataResult.forPersistence(obis);
+//        if (persistence != null) {
+//            log.info("Scaler: {}", persistence.getScaler());
+//            log.info("MultiplyBy: {}", persistence.getMultiplyBy());
+//        }
+
         if (val instanceof Number) {
-            double scaler = scalers.getOrDefault(obis, 1.0);
+            double scaler = persistence.getScaler();
             result = ((Number) val).doubleValue() * scaler;
             result = BigDecimal.valueOf(((Number) result).doubleValue())
                     .setScale(2, RoundingMode.HALF_UP)

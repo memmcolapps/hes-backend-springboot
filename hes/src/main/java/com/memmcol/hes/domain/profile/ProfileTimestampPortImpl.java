@@ -18,6 +18,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.Optional;
 
+import static com.memmcol.hes.nettyUtils.RequestResponseService.logTx;
+
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -32,7 +34,7 @@ public class ProfileTimestampPortImpl implements ProfileTimestampPort {
 
     @Override
     @Transactional
-    public LocalDateTime resolveLastTimestamp(String meterSerial, String profileObis) {
+    public LocalDateTime resolveLastTimestamp(String meterSerial, String profileObis) throws Exception {
         String key = cacheKey(meterSerial, profileObis);
 
         // 1. Cache lookup
@@ -52,18 +54,22 @@ public class ProfileTimestampPortImpl implements ProfileTimestampPort {
         }
 
         // 3. Meter read
-        try {
-            LocalDateTime fromMeter = readFirstTimestampFromMeter(meterSerial, profileObis);
-            if (fromMeter != null) {
-                upsertLastTimestamp(meterSerial, profileObis, fromMeter);
-                getCache().put(key, fromMeter);
-                return fromMeter;
-            }
-        } catch (Exception ex) {
-            log.error("Failed to read first timestamp from meter={} obis={}: {}", meterSerial, profileObis, ex.getMessage());
-        }
+//        try {
+        String msg = String.format("Reading first timestamp from meter=%s obis=%s", meterSerial, profileObis);
+        log.info(msg);
+        logTx(meterSerial, msg);
 
-        // 4. Fallback default
+        LocalDateTime fromMeter = readFirstTimestampFromMeter(meterSerial, profileObis);
+        if (fromMeter != null) {
+            upsertLastTimestamp(meterSerial, profileObis, fromMeter);
+            getCache().put(key, fromMeter);
+            return fromMeter;
+        }
+//        } catch (Exception ex) {
+//            log.error("Failed to read first timestamp from meter={} obis={}: {}", meterSerial, profileObis, ex.getMessage());
+//        }
+
+        // 4. Fallback default to Yesterday
         LocalDateTime fallback = new ProfileTimestamp(LocalDateTime.now().minusDays(1)).value();
         log.warn("Unable to determine last timestamp for meter={} obis={}, using fallback={}", meterSerial, profileObis, fallback);
         return fallback;
@@ -73,7 +79,6 @@ public class ProfileTimestampPortImpl implements ProfileTimestampPort {
         return CACHE_PREFIX + meterSerial + "::" + obis;
     }
 
-    @Transactional
     protected void upsertLastTimestamp(String meterSerial,
                                        String profileObis,
                                        LocalDateTime ts) {
@@ -109,7 +114,7 @@ public class ProfileTimestampPortImpl implements ProfileTimestampPort {
 
             // Step 1: Read Capture Objects (Attribute 3)
             byte[][] captureRequest1 = client.read(profile, 3);
-            GXReplyData captureReply1 =  dlmsReaderUtils.readDataBlock(client, meterSerial, captureRequest1[0]);
+            GXReplyData captureReply1 = dlmsReaderUtils.readDataBlock(client, meterSerial, captureRequest1[0]);
             client.updateValue(profile, 3, captureReply1.getValue());
 
             // Read only the first row (1 record)
@@ -136,6 +141,28 @@ public class ProfileTimestampPortImpl implements ProfileTimestampPort {
     private void putCache(String meterSerial, String profileObis, int cp) {
         Cache cache = getCache();
         if (cache != null) cache.put(cacheKey(meterSerial, profileObis), cp);
+    }
+
+    @Transactional
+    public LocalDateTime refreshLastTimestamp(String meterSerial, String profileObis) {
+        String key = cacheKey(meterSerial, profileObis);
+        LocalDateTime fromMeter = LocalDateTime.now().minusDays(1);
+        // 3. Meter read
+        try {
+            String msg = String.format("Reading first timestamp from meter=%s obis=%s", meterSerial, profileObis);
+            log.info(msg);
+            logTx(meterSerial, msg);
+
+            fromMeter = readFirstTimestampFromMeter(meterSerial, profileObis);
+            if (fromMeter != null) {
+                upsertLastTimestamp(meterSerial, profileObis, fromMeter);
+                getCache().put(key, fromMeter);
+                return fromMeter;
+            }
+        } catch (Exception ex) {
+            log.error("Failed to read first timestamp from meter={} obis={}: {}", meterSerial, profileObis, ex.getMessage());
+        }
+        return fromMeter;
     }
 
 }

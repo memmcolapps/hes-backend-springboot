@@ -1,10 +1,7 @@
 package com.memmcol.hes.netty;
 
-import com.memmcol.hes.nettyUtils.DLMSRequestTracker;
 import com.memmcol.hes.nettyUtils.DlmsRequestContext;
-import com.memmcol.hes.nettyUtils.RequestResponseService;
 import com.memmcol.hes.service.*;
-import gurux.dlms.internal.GXCommon;
 import io.netty.channel.*;
 import io.netty.handler.timeout.ReadTimeoutException;
 import io.netty.util.AttributeKey;
@@ -12,20 +9,16 @@ import lombok.extern.slf4j.Slf4j;
 import java.net.SocketException;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
-import java.util.Queue;
 import java.util.concurrent.BlockingQueue;
 
-import static com.memmcol.hes.nettyUtils.RequestResponseService.TRACKER;
-import static com.memmcol.hes.nettyUtils.RequestResponseService.inflightRequests;
+import static com.memmcol.hes.nettyUtils.RequestResponseService.*;
 
 @Slf4j
 public class DLMSMeterHandler extends SimpleChannelInboundHandler<byte[]> {
     private final MeterStatusService meterStatusService;
-    private final DlmsService dlmsService;
 
     public DLMSMeterHandler(MeterStatusService meterStatusService, DlmsService dlmsService) {
         this.meterStatusService = meterStatusService;
-        this.dlmsService = dlmsService;
     }
 
     @Override
@@ -60,13 +53,6 @@ public class DLMSMeterHandler extends SimpleChannelInboundHandler<byte[]> {
 //        Queue<byte[]> inbound = MeterConnections.getInboundQueue(ctx.channel());
 //        log.info("Inbound queue size={} for serial={}", inbound.size(), serial);
 
-        // Optional: very light RX logging to avoid log flood
-        if (serial != null) {
-            log.info("RX: {} : {}", serial, GXCommon.toHex(msg));
-        } else {
-            log.info("RX (unbound channel): {}", GXCommon.toHex(msg));
-        }
-
         // Message classification
         if (isLoginMessage(msg)) {
             handleLoginRequest(ctx, msg);
@@ -76,6 +62,12 @@ public class DLMSMeterHandler extends SimpleChannelInboundHandler<byte[]> {
         if (isHeartMessage(msg)) {
             handleHeartRequest(ctx, msg);
             return;
+        }
+
+        // Optional: very light RX logging to avoid log flood
+        if (serial != null) {
+            log.info("RX: {} : {}", serial, formatHex(msg));
+            logRx(serial, msg);
         }
 
         // Normal DLMS application response
@@ -97,7 +89,10 @@ public class DLMSMeterHandler extends SimpleChannelInboundHandler<byte[]> {
 
         if (System.currentTimeMillis() > context.getExpiryTime()) {
             inflightRequests.remove(correlationId);
-            log.warn("⚠️ Expired response for CID={} (Meter={}) — discarded", correlationId, context.getMeterId());
+            long overdue = context.getOverdueDelay();
+            long duration = context.getDuration();
+            log.warn("⚠️ Expired response for CID={} (Meter={}) — total duration={} ms (overdue by {} ms)",
+                    correlationId, context.getMeterId(), duration, overdue);
             return;
         }
 
@@ -150,6 +145,7 @@ public class DLMSMeterHandler extends SimpleChannelInboundHandler<byte[]> {
         int calcCRCResponse;
         byte[] meterIdBytes = Arrays.copyOfRange(msg, 11, 23); // 12 bytes
         String meterId = new String(meterIdBytes, StandardCharsets.US_ASCII);
+        log.info("RX: LOGIN: {} : {}", meterId, formatHex(msg));
 
         //add meter to connection pool
         Channel channel = ctx.channel();
@@ -168,12 +164,7 @@ public class DLMSMeterHandler extends SimpleChannelInboundHandler<byte[]> {
         response[24] = (byte) ((calcCRCResponse >> 8) & 0xFF);
         response[25] = (byte) (calcCRCResponse & 0xFF);
 
-        log.debug("About to send login response ");
-
-        // Log using your specified format
-        log.info("TX (Response to meter): {}", formatHex(response));
-        log.info("Meter No: {}", meterId);
-        log.info("Message type: LOGIN");
+        log.info("TX: LOGIN: {} : {}", meterId, formatHex(response));
 
         ctx.writeAndFlush(response)
                 .addListener((ChannelFutureListener) future -> {
@@ -183,8 +174,6 @@ public class DLMSMeterHandler extends SimpleChannelInboundHandler<byte[]> {
                         log.warn("🔴 Write failed: {}", future.cause().getMessage(), future.cause());
                     }
                 });
-
-        log.debug("Login response sent!");
     }
 
     private boolean isHeartMessage(byte[] msg) {
@@ -195,13 +184,14 @@ public class DLMSMeterHandler extends SimpleChannelInboundHandler<byte[]> {
         int calcCRCResponse;
         byte[] meterIdBytes = Arrays.copyOfRange(msg, 11, 23); // 12 bytes
         String meterId = new String(meterIdBytes, StandardCharsets.US_ASCII);
-
+        log.info("RX: HEART {} : {}", meterId, formatHex(msg));
 
         //add meter to connection pool
         //add meter to connection pool
         Channel channel = ctx.channel();
         MeterConnections.bind(channel, meterId);
         meterStatusService.broadcastMeterOnline(meterId);  //Broadcast online
+
 
         byte[] response = new byte[25];
         System.arraycopy(msg, 0, response, 0, 8); // Copy header
@@ -214,18 +204,8 @@ public class DLMSMeterHandler extends SimpleChannelInboundHandler<byte[]> {
         response[23] = (byte) ((calcCRCResponse >> 8) & 0xFF);
         response[24] = (byte) (calcCRCResponse & 0xFF);
 
-        // Log using your specified format
-        log.info("TX (Response to meter): {}", formatHex(response));
-        log.info("Meter No: {}", meterId);
-
-
-
-
-
-
-        log.info("Message type: HEART");
-
         ctx.writeAndFlush(response);
+        log.info("TX: HEART {} : {}", meterId, formatHex(response));
     }
 
     private String formatHex(byte[] bytes) {

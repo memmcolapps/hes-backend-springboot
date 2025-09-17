@@ -1,5 +1,6 @@
 package com.memmcol.hes.domain.profile;
 
+import com.memmcol.hes.application.port.out.TxRxService;
 import com.memmcol.hes.nettyUtils.RequestResponseService;
 import com.memmcol.hes.nettyUtils.SessionManager;
 import com.memmcol.hes.service.AssociationLostException;
@@ -21,6 +22,7 @@ import java.util.*;
 @Slf4j
 public class ReadCTPT {
     private final SessionManager sessionManager;
+    private final TxRxService txRxService;
 
     public MeterRatios readMeterRatios(String model, String meterSerial) throws Exception {
         List<Map.Entry<GXDLMSObject, Integer>> ratioObisList = new ArrayList<>();
@@ -39,7 +41,7 @@ public class ReadCTPT {
             // Prepare read list request
             byte[][] readListReq = client.readList(ratioObisList);
             GXReplyData reply = new GXReplyData();
-            byte[] response = RequestResponseService.sendReceiveWithContext(
+            byte[] response = txRxService.sendReceiveWithContext(
                     meterSerial,
                     readListReq[0],
                     20000

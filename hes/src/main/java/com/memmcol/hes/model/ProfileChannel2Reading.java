@@ -41,11 +41,11 @@ public class ProfileChannel2Reading {
     @Column(name = "entry_timestamp", nullable = false)
     private LocalDateTime entryTimestamp;  // ← Usually in captureObject or computed
 
-    @Column(name = "reactive_energy_kvarh")
-    private Double reactiveEnergy;
+    @Column(name = "total_export_active_energy")
+    private Double exportActiveEnergy;
 
-    @Column(name = "active_energy_kwh")
-    private Double activeEnergy;
+    @Column(name = "total_import_active_energy")
+    private Double importActiveEnergy;
 
     @Column(name = "raw_data", columnDefinition = "TEXT")
     private String rawData;

@@ -1,5 +1,7 @@
 package com.memmcol.hes.service;
 
+import com.memmcol.hes.domain.profile.ObisMappingService;
+import com.memmcol.hes.domain.profile.ObisObjectType;
 import com.memmcol.hes.infrastructure.dlms.DlmsReaderUtils;
 import com.memmcol.hes.model.ModelProfileMetadata;
 import com.memmcol.hes.nettyUtils.SessionManager;
@@ -12,10 +14,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.CacheManager;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Objects;
+import java.util.*;
+
+import static com.memmcol.hes.nettyUtils.RequestResponseService.logTx;
 
 @Slf4j
 @Service
@@ -27,6 +28,7 @@ public class ProfileMetadataService {
     private final ModelProfileMetadataRepository repo;             // ← JPA
     private final SessionManager sessionManager;
     private final DlmsReaderUtils dlmsReaderUtils;
+    private final ObisMappingService obisMappingService;
 
     /**
      * Return metadata for a given meter model & profile OBIS.
@@ -47,7 +49,7 @@ public class ProfileMetadataService {
 
         // ② DB
         List<ModelProfileMetadata> dbRows =
-                repo.findByMeterModelAndProfileObis(meterModel, profileObis);
+                repo.findByMeterModelAndProfileObisOrderByCaptureIndexAsc(meterModel, profileObis);
         if (!dbRows.isEmpty()) {
             log.info("📙 Loaded {} rows from DB for {}", dbRows.size(), key);
             Objects.requireNonNull(cacheManager.getCache(CACHE)).put(key, dbRows);
@@ -68,15 +70,21 @@ public class ProfileMetadataService {
      * Reads attribute-3 of the ProfileGeneric *and* scaler/unit of each Register-type
      * capture object, then persists the list.
      *
-     * @param sampleSerial  an online meter of this model (used once)
+     * @param meterSerial  an online meter of this model (used once)
      */
     public List<ModelProfileMetadata> loadFromMeterAndPersist(
-            String sampleSerial,
+            String meterSerial,
             String meterModel,
             String profileObis) {
 
         try {
-            GXDLMSClient client = sessionManager.getOrCreateClient(sampleSerial);
+            String msg = String.format(
+                    "Reading capture objects, scaler and units for model=%s meter=%s obis=%s",
+                    meterModel, meterSerial, profileObis);
+            log.info(msg);
+            logTx(meterSerial, msg);
+
+            GXDLMSClient client = sessionManager.getOrCreateClient(meterSerial);
             if (client == null) throw new IllegalStateException("DLMS session not available");
 
             GXDLMSProfileGeneric profile = new GXDLMSProfileGeneric();
@@ -84,39 +92,53 @@ public class ProfileMetadataService {
 
             // ── 1. Read capture-objects list ──────────────────────────────────────
             byte[][] req = client.read(profile, 3);
-            GXReplyData rep = dlmsReaderUtils.readDataBlock(client, sampleSerial, req[0]);
+            GXReplyData rep = dlmsReaderUtils.readDataBlock(client, meterSerial, req[0]);
             client.updateValue(profile, 3, rep.getValue());
 
             List<ModelProfileMetadata> rows = new ArrayList<>();
+            List<Map.Entry<GXDLMSObject, GXDLMSCaptureObject>> captureObjects = profile.getCaptureObjects();
 
-            for (var coEntry : profile.getCaptureObjects()) {
-                GXDLMSObject obj = coEntry.getKey();
-                GXDLMSCaptureObject co = coEntry.getValue();
+            for (int i = 0; i < captureObjects.size(); i++) {
+                var entry = captureObjects.get(i);
+                GXDLMSObject obj = entry.getKey();
+                GXDLMSCaptureObject co = entry.getValue();
 
                 double scaler = 1.0;
                 String unit = "N/A";
 
                 // ── 2. If Register-like, read attribute-3 once to get scaler/unit
                 if (obj instanceof GXDLMSRegister) {
-                    dlmsReaderUtils.readScalerUnit(client, sampleSerial, obj, 3);
+                    dlmsReaderUtils.readScalerUnit(client, meterSerial, obj, 3);
                     scaler = DlmsScalerUnitHelper.extractScaler(obj);
                     unit = DlmsScalerUnitHelper.extractUnit(obj);
                 }
 
-                if (obj instanceof GXDLMSExtendedRegister || obj instanceof GXDLMSDemandRegister) {
-                    dlmsReaderUtils.readScalerUnit(client, sampleSerial, obj, 4);
+                if (obj instanceof GXDLMSExtendedRegister || obj instanceof GXDLMSDemandRegister || obj instanceof GXDLMSLimiter) {
+                    dlmsReaderUtils.readScalerUnit(client, meterSerial, obj, 3);
                     scaler = DlmsScalerUnitHelper.extractScaler(obj);
                     unit = DlmsScalerUnitHelper.extractUnit(obj);
                 }
+
+                int captureIndex = i; // Index in the capture object list
+                String obis = obj.getLogicalName();
+                String multiplyBy = "CTPT"; // can later be determined per meter model if needed
+                ObisColumnDto dto = obisMappingService.getDescriptionAndColumnName(obis, meterModel);
+                String descriptionName = dto.getDescription(); // e.g., "Voltage (V)"
+                String columnName = dto.getColumnName();  // e.g., "voltage"
 
                 ModelProfileMetadata row = ModelProfileMetadata.builder()
                         .meterModel(meterModel)
                         .profileObis(profileObis)
-                        .captureObis(obj.getLogicalName())
+                        .captureObis(obis)
                         .classId(obj.getObjectType().getValue())
                         .attributeIndex(co.getAttributeIndex())
                         .scaler(scaler)
                         .unit(unit)
+                        .captureIndex(captureIndex)
+                        .columnName(columnName)
+                        .description(descriptionName)
+                        .multiplyBy(multiplyBy)
+                        .type(ObisObjectType.NONE)
                         .build();
 
                 rows.add(row);
@@ -128,8 +150,8 @@ public class ProfileMetadataService {
 
 
         } catch (AssociationLostException ex) {
-            sessionManager.removeSession(sampleSerial);
-            log.error("Association lost with meter number: {}", sampleSerial);
+            sessionManager.removeSession(meterSerial);
+            log.error("Association lost with meter number: {}", meterSerial);
             return Collections.emptyList();
         } catch (Exception ex) {
             log.error("❌ Metadata load failed", ex);
