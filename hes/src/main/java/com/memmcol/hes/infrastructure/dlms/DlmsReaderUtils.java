@@ -15,6 +15,7 @@ import com.memmcol.hes.nettyUtils.SessionManager;
 import com.memmcol.hes.service.DlmsUtils;
 import com.memmcol.hes.service.GuruxObjectFactory;
 import gurux.dlms.*;
+import gurux.dlms.enums.Unit;
 import gurux.dlms.internal.GXCommon;
 import gurux.dlms.internal.GXDataInfo;
 import gurux.dlms.objects.*;
@@ -563,5 +564,21 @@ public class DlmsReaderUtils {
         }
 
         return null;
+    }
+
+    public String getUnitSymbol(Unit unit) {
+        return switch (unit) {
+            case VOLTAGE -> "V";
+            case CURRENT -> "A";
+            case ACTIVE_POWER -> "kW";
+            case APPARENT_POWER -> "kVA";
+            case REACTIVE_POWER -> "kVar";
+            case ACTIVE_ENERGY -> "kWh";
+            case APPARENT_ENERGY -> "kVAh";
+            case REACTIVE_ENERGY -> "kvarh";
+            case FREQUENCY -> "Hz";
+            // Add more cases as needed
+            default -> unit.name(); // fallback to enum name
+        };
     }
 }

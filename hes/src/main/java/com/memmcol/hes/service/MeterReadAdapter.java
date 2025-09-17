@@ -54,7 +54,7 @@ public class MeterReadAdapter {
         GXReplyData reply = new GXReplyData();
 
         // Send initial request
-        byte[] response = requestResponseService.sendCommand(serial, firstRequest);
+        byte[] response = requestResponseService.sendReceiveWithContext(serial, firstRequest, 20000);
         if (isAssociationLost(response)) {
             sessionManager.removeSession(serial);
             throw new AssociationLostException("Association lost with " + serial);
@@ -78,7 +78,7 @@ public class MeterReadAdapter {
 
             if (nextRequest == null) break; // Safety
 
-            response = requestResponseService.sendCommand(serial, nextRequest);
+            response = requestResponseService.sendReceiveWithContext(serial, nextRequest, 20000);
 
             if (isAssociationLost(response)) {
                 sessionManager.removeSession(serial);
@@ -105,7 +105,7 @@ public class MeterReadAdapter {
         int blockCounter = 0;
 
         // ---- First block ----
-        byte[] resp = requestResponseService.sendCommand(serial, initialRequest);
+        byte[] resp = requestResponseService.sendReceiveWithContext(serial, initialRequest, 20000);
         if (isAssociationLost(resp)) {
             sessionManager.removeSession(serial);
             throw new AssociationLostException("Association lost on initial request.");
@@ -125,7 +125,7 @@ public class MeterReadAdapter {
             byte[] nextReq = client.receiverReady(reply);
             if (nextReq == null) break;
 
-            byte[] blockResp = requestResponseService.sendCommand(serial, nextReq);
+            byte[] blockResp = requestResponseService.sendReceiveWithContext(serial, nextReq, 20000);
             if (isAssociationLost(blockResp)) {
                 sessionManager.removeSession(serial);
                 throw new AssociationLostException("Association lost mid-transfer.");
@@ -187,7 +187,7 @@ public class MeterReadAdapter {
 
     public Object readAttribute(GXDLMSClient client, String serial, GXDLMSObject obj, int index) throws Exception {
         byte[][] request = client.read(obj, index);
-        byte[] response = requestResponseService.sendCommand(serial, request[0]);
+        byte[] response = requestResponseService.sendReceiveWithContext(serial, request[0], 20000);
         if (isAssociationLost(response)) {
             sessionManager.removeSession(serial);
             throw new AssociationLostException();
@@ -206,7 +206,7 @@ public class MeterReadAdapter {
 
     private double readScaler(GXDLMSClient client, String serial, GXDLMSObject obj, int index) throws Exception {
         byte[][] scalerUnitRequest = client.read(obj, index);
-        byte[] response = requestResponseService.sendCommand(serial, scalerUnitRequest[0]);
+        byte[] response = requestResponseService.sendReceiveWithContext(serial, scalerUnitRequest[0], 20000);
         if (isAssociationLost(response)) {
             sessionManager.removeSession(serial);
             throw new AssociationLostException();
@@ -235,7 +235,7 @@ public class MeterReadAdapter {
 
     public void readScalerUnit(GXDLMSClient client, String serial, GXDLMSObject obj, int index) throws Exception {
         byte[][] scalerUnitRequest = client.read(obj, index);
-        byte[] response = requestResponseService.sendCommand(serial, scalerUnitRequest[0]);
+        byte[] response = requestResponseService.sendReceiveWithContext(serial, scalerUnitRequest[0], 20000);
         if (isAssociationLost(response)) {
             sessionManager.removeSession(serial);
             throw new AssociationLostException();

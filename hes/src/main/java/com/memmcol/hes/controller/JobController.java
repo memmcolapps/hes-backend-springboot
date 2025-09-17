@@ -1,15 +1,17 @@
 package com.memmcol.hes.controller;
 
 import java.util.List;
+import java.util.Map;
 
+import com.memmcol.hes.job.QuartzJobStatusService;
 import com.memmcol.hes.model.Message;
 import com.memmcol.hes.model.SchedulerJobInfo;
-import com.memmcol.hes.service.SchedulerJobService;
+import com.memmcol.hes.service.SchedulerJobServiceQuartz;
 import org.quartz.SchedulerException;
 import org.quartz.SchedulerMetaData;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestMethod;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -20,87 +22,154 @@ import lombok.extern.slf4j.Slf4j;
 @RequestMapping("/api/job")
 public class JobController {
 
-    private final SchedulerJobService scheduleJobService;
+    private final SchedulerJobServiceQuartz scheduleJobService;
+    private final QuartzJobStatusService jobStatusService;
 
-    @RequestMapping(value = "/saveOrUpdate", method = { RequestMethod.GET, RequestMethod.POST })
-    public Object saveOrUpdate( SchedulerJobInfo job) {
-        log.info("params, job = {}", job);
+    // Create or update a job
+    @PostMapping("/saveOrUpdate")
+    public ResponseEntity<Message> saveOrUpdate(@RequestBody SchedulerJobInfo job) {
+        log.info("saveOrUpdate params: {}", job);
         Message message = Message.failure();
         try {
-            scheduleJobService.saveOrupdate(job);
+            scheduleJobService.scheduleNewJob(job);
             message = Message.success();
+            return ResponseEntity.ok(message);
         } catch (Exception e) {
+            log.error("saveOrUpdate error:", e);
             message.setMsg(e.getMessage());
-            log.error("updateCron ex:", e);
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(message);
         }
-        return message;
     }
 
-    @RequestMapping("/metaData")
-    public Object metaData() throws SchedulerException {
+    // Get Quartz scheduler metadata
+    @GetMapping("/metaData")
+    public ResponseEntity<SchedulerMetaData> metaData() throws SchedulerException {
         SchedulerMetaData metaData = scheduleJobService.getMetaData();
-        return metaData;
+        return ResponseEntity.ok(metaData);
     }
 
-    @RequestMapping("/getAllJobs")
-    public Object getAllJobs() throws SchedulerException {
+    // Get all jobs from scheduler_job_info table
+    @GetMapping("/getAllJobs")
+    public ResponseEntity<List<SchedulerJobInfo>> getAllJobs() {
         List<SchedulerJobInfo> jobList = scheduleJobService.getAllJobList();
-        return jobList;
+        return ResponseEntity.ok(jobList);
     }
 
-    @RequestMapping(value = "/runJob", method = { RequestMethod.GET, RequestMethod.POST })
-    public Object runJob(SchedulerJobInfo job) {
-        log.info("params, job = {}", job);
+    // Trigger a job immediately
+    @PostMapping("/runJob")
+    public ResponseEntity<Message> runJob(@RequestBody SchedulerJobInfo job) {
+        log.info("runJob params: {}", job);
         Message message = Message.failure();
         try {
             scheduleJobService.startJobNow(job);
             message = Message.success();
+            return ResponseEntity.ok(message);
         } catch (Exception e) {
+            log.error("runJob error:", e);
             message.setMsg(e.getMessage());
-            log.error("runJob ex:", e);
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(message);
         }
-        return message;
     }
 
-    @RequestMapping(value = "/pauseJob", method = { RequestMethod.GET, RequestMethod.POST })
-    public Object pauseJob(SchedulerJobInfo job) {
-        log.info("params, job = {}", job);
+    // Pause a job
+    @PostMapping("/pauseJob")
+    public ResponseEntity<Message> pauseJob(@RequestBody SchedulerJobInfo job) {
+        log.info("pauseJob params: {}", job);
         Message message = Message.failure();
         try {
             scheduleJobService.pauseJob(job);
             message = Message.success();
+            return ResponseEntity.ok(message);
         } catch (Exception e) {
+            log.error("pauseJob error:", e);
             message.setMsg(e.getMessage());
-            log.error("pauseJob ex:", e);
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(message);
         }
-        return message;
     }
 
-    @RequestMapping(value = "/resumeJob", method = { RequestMethod.GET, RequestMethod.POST })
-    public Object resumeJob(SchedulerJobInfo job) {
-        log.info("params, job = {}", job);
+    // Resume a paused job
+    @PostMapping("/resumeJob")
+    public ResponseEntity<Message> resumeJob(@RequestBody SchedulerJobInfo job) {
+        log.info("resumeJob params: {}", job);
         Message message = Message.failure();
         try {
             scheduleJobService.resumeJob(job);
             message = Message.success();
+            return ResponseEntity.ok(message);
         } catch (Exception e) {
+            log.error("resumeJob error:", e);
             message.setMsg(e.getMessage());
-            log.error("resumeJob ex:", e);
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(message);
         }
-        return message;
     }
 
-    @RequestMapping(value = "/deleteJob", method = { RequestMethod.GET, RequestMethod.POST })
-    public Object deleteJob(SchedulerJobInfo job) {
-        log.info("params, job = {}", job);
+    // Delete a job
+    @PostMapping("/deleteJob")
+    public ResponseEntity<Message> deleteJob(@RequestBody SchedulerJobInfo job) {
+        log.info("deleteJob params: {}", job);
         Message message = Message.failure();
         try {
             scheduleJobService.deleteJob(job);
             message = Message.success();
+            return ResponseEntity.ok(message);
         } catch (Exception e) {
+            log.error("deleteJob error:", e);
             message.setMsg(e.getMessage());
-            log.error("deleteJob ex:", e);
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(message);
         }
-        return message;
     }
+
+    // New: Get job status (RUNNING, PAUSED, COMPLETED)
+    @GetMapping("/status")
+    public ResponseEntity<Message> getJobStatus(@RequestParam String jobName, @RequestParam String jobGroup) {
+        Message message = Message.failure();
+        try {
+            String status = jobStatusService.getJobStatus(jobName, jobGroup);
+            message = Message.success();
+            message.setMsg(status);
+            return ResponseEntity.ok(message);
+        } catch (Exception e) {
+            log.error("getJobStatus error:", e);
+            message.setMsg(e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(message);
+        }
+    }
+
+    @GetMapping("/quartz/status/all")
+    public Map<String, String> getAllJobStatuses() throws SchedulerException {
+        return jobStatusService.getAllJobStatuses();
+    }
+
+    @PostMapping("/quartz/pause/{jobGroup}/{jobName}")
+    public String pauseJob(
+            @PathVariable String jobGroup,
+            @PathVariable String jobName) throws SchedulerException {
+        jobStatusService.pauseJob(jobName, jobGroup);
+        return "Job paused: " + jobGroup + "." + jobName;
+    }
+
+    @PostMapping("/quartz/resume/{jobGroup}/{jobName}")
+    public String resumeJob(
+            @PathVariable String jobGroup,
+            @PathVariable String jobName) throws SchedulerException {
+        jobStatusService.resumeJob(jobName, jobGroup);
+        return "Job resumed: " + jobGroup + "." + jobName;
+    }
+
+    @DeleteMapping("/quartz/delete/{jobGroup}/{jobName}")
+    public String deleteJob(
+            @PathVariable String jobGroup,
+            @PathVariable String jobName) throws SchedulerException {
+        jobStatusService.deleteJob(jobName, jobGroup);
+        return "Job deleted: " + jobGroup + "." + jobName;
+    }
+
+    @PostMapping("/quartz/trigger/{jobGroup}/{jobName}")
+    public String triggerNow(
+            @PathVariable String jobGroup,
+            @PathVariable String jobName) throws SchedulerException {
+        jobStatusService.triggerNow(jobName, jobGroup);
+        return "Job triggered immediately: " + jobGroup + "." + jobName;
+    }
+
 }

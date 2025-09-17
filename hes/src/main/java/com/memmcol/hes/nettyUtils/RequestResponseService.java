@@ -33,23 +33,6 @@ public final class RequestResponseService implements TxRxService {
     public static final ConcurrentHashMap<String, DlmsRequestContext> inflightRequests = new ConcurrentHashMap<>();
     public static final ConcurrentMap<String, BlockingQueue<byte[]>> TRACKER = new ConcurrentHashMap<>();
 
-//    public String sendRequest(String meterId, Channel channel, byte[] requestPayload) {
-//        String correlationId = meterId + "-" + System.nanoTime();
-//        long expiryTime = System.currentTimeMillis() + 20000; // 20s wait
-//
-//        DlmsRequestContext context = new DlmsRequestContext(meterId, correlationId, expiryTime, channel);
-//        inflightRequests.put(correlationId, context);
-//
-//        // Attach correlationId to channel for response matching
-//        channel.attr(AttributeKey.valueOf("CID")).set(correlationId);
-//
-//        // Send request
-//        channel.writeAndFlush(requestPayload);
-//        log.info("🚀 Sent request to meter={}, CID={}", meterId, correlationId);
-//
-//        return correlationId;
-//    }
-
 
     public byte[] sendReceiveWithContext1(
             String meterId,

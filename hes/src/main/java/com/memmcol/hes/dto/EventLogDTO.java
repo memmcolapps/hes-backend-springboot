@@ -14,6 +14,6 @@ public class EventLogDTO {
     private String meterSerial;
     private Integer eventCode;
     private LocalDateTime eventTime;
-    private String phase; // optional
+    private Double currentThreshold; // optional
     private String eventName;
 }

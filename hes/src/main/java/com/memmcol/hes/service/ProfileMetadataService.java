@@ -113,7 +113,7 @@ public class ProfileMetadataService {
                     unit = DlmsScalerUnitHelper.extractUnit(obj);
                 }
 
-                if (obj instanceof GXDLMSExtendedRegister || obj instanceof GXDLMSDemandRegister) {
+                if (obj instanceof GXDLMSExtendedRegister || obj instanceof GXDLMSDemandRegister || obj instanceof GXDLMSLimiter) {
                     dlmsReaderUtils.readScalerUnit(client, meterSerial, obj, 3);
                     scaler = DlmsScalerUnitHelper.extractScaler(obj);
                     unit = DlmsScalerUnitHelper.extractUnit(obj);
