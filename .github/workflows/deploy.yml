@@ -81,8 +81,8 @@ jobs:
              -Dspring.profiles.active=prod \
              -DDB_USERNAME=${{ secrets.DB_USERNAME }} \
              -DDB_PASSWORD=${{ secrets.DB_PASSWORD }} \
-             -DSPRING_SECURITY_USER=${{ secrets.SPRING_SECURITY_USER }} \
-             -DSPRING_SECURITY_PASSWORD=${{ secrets.SPRING_SECURITY_PASSWORD }} \
-            -jar hes-0.0.1-SNAPSHOT.jar > app.log 2>&1 &
+              SPRING_SECURITY_USER=${{ secrets.SPRING_SECURITY_USER }} \
+              SPRING_SECURITY_PASSWORD=${{ secrets.SPRING_SECURITY_PASSWORD }} \
+             -jar hes-0.0.1-SNAPSHOT.jar > app.log 2>&1 &
            
              
