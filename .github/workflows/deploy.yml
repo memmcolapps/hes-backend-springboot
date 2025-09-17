@@ -78,7 +78,7 @@ jobs:
                 exit 1
             fi
              nohup java \
-             spring.profiles.active=prod \
+             -Dspring.profiles.active=prod \
              DB_USERNAME=${{ secrets.DB_USERNAME }} \
              DB_PASSWORD=${{ secrets.DB_PASSWORD }} \
              SPRING_SECURITY_USER=${{ secrets.SPRING_SECURITY_USER }} \
