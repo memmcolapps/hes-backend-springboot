@@ -77,11 +77,11 @@ jobs:
                 echo "JAR file not found!"
                 exit 1
             fi
-            nohup java -jar \
+            nohup java -jar *.jar > app.log 2>&1 &\
               spring.profiles.active=prod \
               DB_USERNAME=${{ secrets.DB_USERNAME }} \
               DB_PASSWORD=${{ secrets.DB_PASSWORD }} \
               SPRING_SECURITY_USER=${{ secrets.SPRING_SECURITY_USER }} \
               SPRING_SECURITY_PASSWORD=${{ secrets.SPRING_SECURITY_PASSWORD }} \
-              *.jar > app.log 2>&1 &
+           
              
