@@ -66,7 +66,7 @@ jobs:
           key: ${{ secrets.SERVER_SSH_KEY }}
           script: |
             echo "🔹 Stopping old process (if running)..."
-            pkill -f "hes-service" || true
+            pkill -f "hes-0.0.1-SNAPSHOT.jar" || true
             echo "🔹 Starting new process with prod profile..."
             cd /home/${{ secrets.SERVER_USER }}/hes-app
             java -jar \
