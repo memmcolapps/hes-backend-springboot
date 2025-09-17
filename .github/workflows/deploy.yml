@@ -77,11 +77,11 @@ jobs:
                 echo "JAR file not found!"
                 exit 1
             fi
-            nohup  \
-              java -Dspring.profiles.active=prod \
-              -DDB_USERNAME=${{ secrets.DB_USERNAME }} \
-              -DDB_PASSWORD=${{ secrets.DB_PASSWORD }} \
-              -DSPRING_SECURITY_USER=${{ secrets.SPRING_SECURITY_USER }} \
-              -DSPRING_SECURITY_PASSWORD=${{ secrets.SPRING_SECURITY_PASSWORD }} \
-              -jar hes-0.0.1-SNAPSHOT.jar > app.log 2>&1 &
+            nohup java \
+              spring.profiles.active=prod \
+              DB_USERNAME=${{ secrets.DB_USERNAME }} \
+              DB_PASSWORD=${{ secrets.DB_PASSWORD }} \
+              SPRING_SECURITY_USER=${{ secrets.SPRING_SECURITY_USER }} \
+              SPRING_SECURITY_PASSWORD=${{ secrets.SPRING_SECURITY_PASSWORD }} \
+              -jar *.jar > app.log 2>&1 &
              
