@@ -3,7 +3,7 @@ package com.memmcol.hes.controller;
 import java.util.List;
 
 import com.memmcol.hes.model.SchedulerJobInfo;
-import com.memmcol.hes.service.SchedulerJobService;
+import com.memmcol.hes.schedulers.SchedulerJobService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;

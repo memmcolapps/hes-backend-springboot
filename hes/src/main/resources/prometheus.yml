@@ -1,0 +1,7 @@
+scrape_configs:
+  - job_name: 'hes-app'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['localhost:9060']
+
+
