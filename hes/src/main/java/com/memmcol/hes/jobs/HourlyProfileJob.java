@@ -1,4 +1,4 @@
-package com.memmcol.hes.job;
+package com.memmcol.hes.jobs;
 
 import com.memmcol.hes.domain.profile.MetersLockService;
 import lombok.AllArgsConstructor;

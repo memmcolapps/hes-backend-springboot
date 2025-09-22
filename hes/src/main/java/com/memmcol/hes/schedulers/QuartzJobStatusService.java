@@ -1,4 +1,4 @@
-package com.memmcol.hes.job;
+package com.memmcol.hes.schedulers;
 
 import org.quartz.JobKey;
 import org.quartz.Scheduler;

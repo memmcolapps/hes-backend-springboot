@@ -11,6 +11,8 @@ import lombok.Getter;
 import lombok.Setter;
 import lombok.ToString;
 
+import java.time.LocalDateTime;
+
 @ToString
 @Getter
 @Setter
@@ -59,5 +61,7 @@ public class SchedulerJobInfo {
     @Column(name = "repeat_hours")
     private Integer repeatHours;
 
+    @Column(name = "last_run_time")
+    private LocalDateTime lastRunTime;
 
 }

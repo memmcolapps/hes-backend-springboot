@@ -1,8 +1,5 @@
-package com.memmcol.hes.config;
+package com.memmcol.hes.jobs.skeleton;
 
-import com.memmcol.hes.schedulers.JobStatusListener;
-import lombok.AllArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.quartz.Scheduler;
 import org.quartz.SchedulerException;
 import org.quartz.spi.TriggerFiredBundle;
@@ -21,13 +18,8 @@ import javax.sql.DataSource;
 import java.io.IOException;
 import java.util.Objects;
 
-@Configuration
-@AllArgsConstructor
-@Slf4j
+//@Configuration
 public class QuartzConfig {
-
-    private final JobStatusListener jobStatusListener;
-
     @Bean
     public SchedulerFactoryBean schedulerFactoryBean(
             DataSource dataSource,
@@ -36,10 +28,8 @@ public class QuartzConfig {
 
         SchedulerFactoryBean factory = new SchedulerFactoryBean();
         factory.setDataSource(dataSource);
-        factory.setApplicationContext(applicationContext);
-        factory.setGlobalJobListeners(jobStatusListener);
 
-        // ✅ Wire Spring's DI into Quartz jobs
+        // Wire Spring's DI into Quartz jobs
         AutowiringSpringBeanJobFactory jobFactory = new AutowiringSpringBeanJobFactory();
         jobFactory.setApplicationContext(applicationContext);
         factory.setJobFactory(jobFactory);
@@ -64,7 +54,7 @@ public class QuartzConfig {
     }
 
     /**
-     * Helper that lets Quartz jobs get Spring-managed beans.
+     * Custom JobFactory to allow Spring @Autowired beans inside Quartz jobs
      */
     private static final class AutowiringSpringBeanJobFactory
             extends SpringBeanJobFactory implements ApplicationContextAware {
@@ -79,8 +69,8 @@ public class QuartzConfig {
         @Override
         protected Object createJobInstance(TriggerFiredBundle bundle) throws Exception {
             Object job = super.createJobInstance(bundle);
-            log.debug("➡ Autowiring {}", job.getClass().getName());
-            beanFactory.autowireBean(job); // inject @Autowired / constructor deps
+            System.out.println("➡ Autowiring " + job.getClass().getName());
+            beanFactory.autowireBean(job);
             return job;
         }
     }
