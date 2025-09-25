@@ -1,25 +1,29 @@
-package com.memmcol.hes.service;
+package com.memmcol.hes.schedulers;
 
 import com.memmcol.hes.model.SchedulerJobInfo;
 import com.memmcol.hes.repository.SchedulerRepository;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.quartz.*;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.quartz.QuartzJobBean;
 import org.springframework.scheduling.quartz.SchedulerFactoryBean;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Slf4j
 @Transactional
 @Service
 @AllArgsConstructor
+@Deprecated
 public class SchedulerJobServiceQuartz {
     private final SchedulerFactoryBean schedulerFactoryBean;
     private final SchedulerRepository schedulerRepository;
+
+    // DTO for request
+    public record JobUpdateRequest(String jobName, String jobGroup, String cronExpression) {}
 
     // ✅ Schedules a new job and persists once
     // ✅ Schedules a new job and persists once
@@ -182,6 +186,51 @@ public class SchedulerJobServiceQuartz {
             log.error("Class not found - {}", jobInfo.getJobClass(), e);
         } catch (SchedulerException e) {
             log.error("Scheduler exception for job [{}]: {}", jobInfo.getJobName(), e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Update job cron expression by pausing, rescheduling, and updating DB.
+     */
+    public boolean updateJobCron(JobUpdateRequest request) {
+        try {
+            Scheduler scheduler = schedulerFactoryBean.getScheduler();
+            JobKey jobKey = new JobKey(request.jobName(), request.jobGroup());
+
+            if (!scheduler.checkExists(jobKey)) {
+                log.warn("⚠️ Job [{}] not found in scheduler.", request.jobName());
+                return false;
+            }
+
+            // Pause job first
+            scheduler.pauseJob(jobKey);
+
+            // Build new trigger
+            TriggerKey triggerKey = new TriggerKey(request.jobName() + "Trigger", request.jobGroup());
+            Trigger newTrigger = TriggerBuilder.newTrigger()
+                    .withIdentity(triggerKey)
+                    .withSchedule(CronScheduleBuilder.cronSchedule(request.cronExpression()))
+                    .build();
+
+            // Reschedule
+            scheduler.rescheduleJob(triggerKey, newTrigger);
+
+            // Update DB
+            schedulerRepository.findByJobNameAndJobGroup(request.jobName(), request.jobGroup())
+                    .ifPresent(info -> {
+                        info.setCronExpression(request.cronExpression());
+                        info.setJobStatus("UPDATED");
+                        info.setLastRunTime(LocalDateTime.now());
+                        schedulerRepository.save(info);
+                    });
+
+            log.info("🔄 Job [{}] rescheduled with new cron [{}].",
+                    request.jobName(), request.cronExpression());
+            return true;
+
+        } catch (SchedulerException e) {
+            log.error("❌ Failed to update job [{}]", request.jobName(), e);
+            return false;
         }
     }
 

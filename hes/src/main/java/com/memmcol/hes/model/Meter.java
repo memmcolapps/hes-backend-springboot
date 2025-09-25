@@ -35,8 +35,8 @@ public class Meter {
     @Column(name = "meter_type", nullable = false)
     private String meterType;
 
-    @Column(name = "status", nullable = false)
-    private Boolean status;
+//    @Column(name = "status", nullable = false)
+//    private String status;
 
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;

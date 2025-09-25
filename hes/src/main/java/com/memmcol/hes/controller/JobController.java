@@ -3,10 +3,11 @@ package com.memmcol.hes.controller;
 import java.util.List;
 import java.util.Map;
 
-import com.memmcol.hes.job.QuartzJobStatusService;
+import com.memmcol.hes.schedulers.QuartzJobStatusService;
 import com.memmcol.hes.model.Message;
 import com.memmcol.hes.model.SchedulerJobInfo;
-import com.memmcol.hes.service.SchedulerJobServiceQuartz;
+import com.memmcol.hes.schedulers.SchedulerJobServiceQuartz;
+import com.memmcol.hes.service.JobManagementService;
 import org.quartz.SchedulerException;
 import org.quartz.SchedulerMetaData;
 import org.springframework.http.HttpStatus;
@@ -22,8 +23,15 @@ import lombok.extern.slf4j.Slf4j;
 @RequestMapping("/api/job")
 public class JobController {
 
+    /*
+    * TODO:
+    *  1. Delete this controller.
+    *  2. Delete JobIndexControler
+    *  3. Deleet Job Management Controller*/
+
     private final SchedulerJobServiceQuartz scheduleJobService;
     private final QuartzJobStatusService jobStatusService;
+    private final JobManagementService jobManagementService;
 
     // Create or update a job
     @PostMapping("/saveOrUpdate")
@@ -119,8 +127,16 @@ public class JobController {
         }
     }
 
+    @PutMapping("/update")
+    public ResponseEntity<String> updateJob(@RequestBody SchedulerJobServiceQuartz.JobUpdateRequest request) {
+        boolean success = scheduleJobService.updateJobCron(request);
+        return success
+                ? ResponseEntity.ok("Job updated successfully")
+                : ResponseEntity.badRequest().body("Failed to update job");
+    }
+
     // New: Get job status (RUNNING, PAUSED, COMPLETED)
-    @GetMapping("/status")
+    @GetMapping("/quartz/status")
     public ResponseEntity<Message> getJobStatus(@RequestParam String jobName, @RequestParam String jobGroup) {
         Message message = Message.failure();
         try {

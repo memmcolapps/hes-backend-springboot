@@ -1,14 +1,13 @@
-package com.memmcol.hes.service;
+package com.memmcol.hes.schedulers;
 
 import java.util.Date;
 import java.util.List;
 
 import com.memmcol.hes.component.JobScheduleCreator;
-import com.memmcol.hes.job.SampleCronJob;
-import com.memmcol.hes.job.SimpleJob;
+import com.memmcol.hes.jobs.SampleCronJob;
+import com.memmcol.hes.jobs.SimpleJob;
 import com.memmcol.hes.model.SchedulerJobInfo;
 import com.memmcol.hes.repository.SchedulerRepository;
-import lombok.AllArgsConstructor;
 import org.quartz.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationContext;
@@ -23,6 +22,7 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 @Transactional
 @Service
+@Deprecated
 public class SchedulerJobService {
 
     @Autowired

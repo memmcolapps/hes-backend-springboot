@@ -1,4 +1,4 @@
-package com.memmcol.hes.job;
+package com.memmcol.hes.schedulers;
 
 import org.quartz.JobKey;
 import org.quartz.Scheduler;
@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Map;
 
 @Service
+@Deprecated
 public class QuartzJobStatusService {
 
     private final Scheduler scheduler;
