@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Map;
 
 @Service
+@Deprecated
 public class QuartzJobStatusService {
 
     private final Scheduler scheduler;

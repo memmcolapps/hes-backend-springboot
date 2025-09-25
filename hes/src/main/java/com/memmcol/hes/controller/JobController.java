@@ -23,6 +23,12 @@ import lombok.extern.slf4j.Slf4j;
 @RequestMapping("/api/job")
 public class JobController {
 
+    /*
+    * TODO:
+    *  1. Delete this controller.
+    *  2. Delete JobIndexControler
+    *  3. Deleet Job Management Controller*/
+
     private final SchedulerJobServiceQuartz scheduleJobService;
     private final QuartzJobStatusService jobStatusService;
     private final JobManagementService jobManagementService;

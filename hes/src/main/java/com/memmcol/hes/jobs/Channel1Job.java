@@ -1,6 +1,7 @@
 package com.memmcol.hes.jobs;
 
 import com.memmcol.hes.domain.profile.MetersLockService;
+import com.memmcol.hes.jobs.services.ProfileExecutionService;
 import com.memmcol.hes.service.MeterConnections;
 import com.memmcol.hes.tasks.Channel1ProfileTask;
 import com.netflix.discovery.converters.Auto;
@@ -24,28 +25,15 @@ import java.util.concurrent.Executors;
 @DisallowConcurrentExecution
 @Component
 public class Channel1Job extends QuartzJobBean {
-    @Autowired
-    private MetersLockService metersLockService;
-    @Autowired
-    @Qualifier("meterReadAdaptiveExecutor")
-    private ExecutorService meterReadExecutor;
+    private final ProfileExecutionService profileExecutionService;
 
-    public Channel1Job() {}
+    public Channel1Job(ProfileExecutionService profileExecutionService) {
+        this.profileExecutionService = profileExecutionService;
+    }
 
     @Override
-    protected void executeInternal(JobExecutionContext context) throws JobExecutionException {
-        log.info("✅ Channel1Job executed at {}", context.getFireTime());
-
-        List<String> activeMeters = new ArrayList<>(MeterConnections.getAllActiveSerials());
-        for (String meter : activeMeters) {
-            meterReadExecutor.submit(() -> {
-                try {
-                    metersLockService.readChannelOneWithLock("model", meter, "profileObis", 10);
-                    log.info("Channel1ProfileTask for {}", meter);
-                } catch (Exception e) {
-                    log.error("❌ Failed to read Channel1 for {}", meter, e);
-                }
-            });
-        }
+    protected void executeInternal(JobExecutionContext context) {
+        log.info("✅ Executing Channel1Job at {}", context.getFireTime());
+        profileExecutionService.readChannelOneForAll(10); // batchSize can be externalized
     }
 }
