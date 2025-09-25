@@ -65,13 +65,7 @@ jobs:
            username: ${{ secrets.SERVER_USER }}
            key: ${{ secrets.SERVER_SSH_KEY }}
            script: |
-            echo "🔄 Checking for existing HES process..."
-            if pgrep -f "hes-0.0.1-SNAPSHOT.jar" > /dev/null; then 
-               echo "🛑 Found old process, killing..."
-               pkill -f "hes-0.0.1-SNAPSHOT.jar"
-            else
-               echo "✅ No old process running."
-            fi
+            
 
             echo "📂 Navigating to app directory..."
             cd /home/${{ secrets.SERVER_USER }}/hes-app || { echo "❌ Directory not found"; exit 1; }
