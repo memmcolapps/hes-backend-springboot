@@ -17,6 +17,7 @@ import java.util.List;
 @Transactional
 @Service
 @AllArgsConstructor
+@Deprecated
 public class SchedulerJobServiceQuartz {
     private final SchedulerFactoryBean schedulerFactoryBean;
     private final SchedulerRepository schedulerRepository;
