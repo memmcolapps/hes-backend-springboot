@@ -76,7 +76,7 @@ public class ProfileExecutionService {
     // === Channel 1 ===
     public int readChannelOneForAll(int batchSize) {
         return executeForAllMeters("Channel1",
-                (serial, size) -> metersLockService.readChannelOneWithLock("model", serial, "0.0.1.0.0.255", size),
+                (serial, size) -> metersLockService.readChannelOneWithLock("MMX-313-CT", serial, "1.0.99.1.0.255", size),
                 batchSize);
     }
 
