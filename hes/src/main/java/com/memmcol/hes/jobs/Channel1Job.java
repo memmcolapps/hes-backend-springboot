@@ -25,15 +25,19 @@ import java.util.concurrent.Executors;
 @DisallowConcurrentExecution
 @Component
 public class Channel1Job extends QuartzJobBean {
-    private final ProfileExecutionService profileExecutionService;
+    @Autowired
+    private ProfileExecutionService profileExecutionService;
 
     public Channel1Job(ProfileExecutionService profileExecutionService) {
         this.profileExecutionService = profileExecutionService;
     }
 
+    //Required by Quartz
+    public Channel1Job() {}
+
     @Override
     protected void executeInternal(JobExecutionContext context) {
         log.info("✅ Executing Channel1Job at {}", context.getFireTime());
-        profileExecutionService.readChannelOneForAll(10); // batchSize can be externalized
+        profileExecutionService.readChannelOneForAll(50); // batchSize can be externalized
     }
 }
