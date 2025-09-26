@@ -69,7 +69,7 @@ jobs:
              cd /home/${{ secrets.SERVER_USER }}/hes-app || { echo "❌ Directory not found"; exit 1; }
 
              echo "🛑 Stopping existing .jar processes in current directory..."
-             PIDS=$(ps aux | grep 'java -jar' | grep "$(pwd)" | awk '{print $2}')
+             PIDS=$(ps -eo pid,cmd | grep 'java -jar' | grep "$(pwd)" | grep -v grep | awk '{print $1}' | grep -v $$)
              [ -n "$PIDS" ] && kill $PIDS && sleep 5
              [ -n "$(ps -p $PIDS -o pid=)" ] && kill -9 $PIDS
 
