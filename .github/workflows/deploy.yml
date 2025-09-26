@@ -65,26 +65,29 @@ jobs:
            username: ${{ secrets.SERVER_USER }}
            key: ${{ secrets.SERVER_SSH_KEY }}
            script: |
-            
+             echo "📂 Navigating to app directory..."
+             cd /home/${{ secrets.SERVER_USER }}/hes-app || { echo "❌ Directory not found"; exit 1; }
 
-            echo "📂 Navigating to app directory..."
-            cd /home/${{ secrets.SERVER_USER }}/hes-app || { echo "❌ Directory not found"; exit 1; }
+             echo "🛑 Stopping existing .jar processes in current directory..."
+             PIDS=$(ps aux | grep 'java -jar' | grep "$(pwd)" | awk '{print $2}')
+             [ -n "$PIDS" ] && kill $PIDS && sleep 5
+             [ -n "$(ps -p $PIDS -o pid=)" ] && kill -9 $PIDS
 
-            if [[ ! -f hes-0.0.1-SNAPSHOT.jar ]]; then
-             echo "❌ JAR file not found!"
-            exit 1
-            fi
+             if [[ ! -f hes-0.0.1-SNAPSHOT.jar ]]; then
+                 echo "❌ JAR file not found!"
+             exit 1
+             fi
 
-            echo "🚀 Starting new process with 'prod' profile..."
+             echo "🚀 Starting new process with 'prod' profile..."
 
-            # Export environment variables for Spring Boot
-            export SPRING_PROFILES_ACTIVE=prod
-            export SPRING_DATASOURCE_USERNAME=${{ secrets.DB_USERNAME }}
-            export SPRING_DATASOURCE_PASSWORD=${{ secrets.DB_PASSWORD }}
-            export SPRING_SECURITY_USER=${{ secrets.SPRING_SECURITY_USER }}
-            export SPRING_SECURITY_PASSWORD=${{ secrets.SPRING_SECURITY_PASSWORD }}
+             # Export environment variables for Spring Boot
+             export SPRING_PROFILES_ACTIVE=prod
+             export SPRING_DATASOURCE_USERNAME=${{ secrets.DB_USERNAME }}
+             export SPRING_DATASOURCE_PASSWORD=${{ secrets.DB_PASSWORD }}
+             export SPRING_SECURITY_USER=${{ secrets.SPRING_SECURITY_USER }}
+             export SPRING_SECURITY_PASSWORD=${{ secrets.SPRING_SECURITY_PASSWORD }}
 
-            nohup java -jar hes-0.0.1-SNAPSHOT.jar > app.log 2>&1 &
+             nohup java -jar hes-0.0.1-SNAPSHOT.jar > app.log 2>&1 &
 
-            echo "✅ Application started."
+             echo "✅ Application started."
              
