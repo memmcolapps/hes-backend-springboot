@@ -65,18 +65,19 @@ jobs:
            username: ${{ secrets.SERVER_USER }}
            key: ${{ secrets.SERVER_SSH_KEY }}
            script: |
-             echo "📂 Navigating to app directory..."
-             cd /home/${{ secrets.SERVER_USER }}/hes-app || { echo "❌ Directory not found"; exit 1; }
+             echo "Navigating to app directory..."
+             cd /home/${{ secrets.SERVER_USER }}/hes-app || { echo "Directory not found"; exit 1; }
+             jar_file=$(ls *.jar)
 
-              echo "🛑 Stopping process on port 9061..."
+              echo "Stopping process on port 9061..."
               lsof -ti tcp:9061 | xargs -r kill -9  
               
              if [[ ! -f hes-0.0.1-SNAPSHOT.jar ]]; then
-                 echo "❌ JAR file not found!"
+                 echo "JAR file not found!"
              exit 1
              fi
 
-             echo "🚀 Starting new process with 'prod' profile..."
+             echo "Starting new process with 'prod' profile..."
 
              # Export environment variables for Spring Boot
              export SPRING_PROFILES_ACTIVE=prod
@@ -85,7 +86,7 @@ jobs:
              export SPRING_SECURITY_USER=${{ secrets.SPRING_SECURITY_USER }}
              export SPRING_SECURITY_PASSWORD=${{ secrets.SPRING_SECURITY_PASSWORD }}
 
-             nohup java -jar hes-0.0.1-SNAPSHOT.jar > app.log 2>&1 &
+             nohup java -jar "$jar_file" > app.log 2>&1 &
 
-             echo "✅ Application started."
+             echo "Application started."
              
