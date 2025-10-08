@@ -21,8 +21,8 @@ public class DailyProfileJob extends AbstractObisProfileJob {
     private final MetersLockService metersLockService;
 
     @Override
-    protected void runProfileJob(String model, String serial, String profileObis, int batchSize, JobExecutionContext context) {
-        metersLockService.readDailyBillWithLock(model, serial, profileObis, batchSize);
+    protected void runProfileJob(String model, String serial, String profileObis, int batchSize, JobExecutionContext context, boolean isMD) {
+        metersLockService.readDailyBillWithLock(model, serial, profileObis, isMD);
         log.info("📅 DailyProfileJob finished for meter {}", serial);
     }
 }

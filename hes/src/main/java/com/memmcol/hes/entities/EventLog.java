@@ -41,7 +41,7 @@ public class EventLog {
     @Column(length = 255)
     private String eventName;   // <-- just the event name
 
-    @Column(name = "created_at", insertable = false, updatable = false)
+    @Column(name = "created_at")
     private LocalDateTime createdAt;
 
 //    @PrePersist

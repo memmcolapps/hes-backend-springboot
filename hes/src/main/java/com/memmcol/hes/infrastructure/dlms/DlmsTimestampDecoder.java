@@ -11,6 +11,7 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import java.util.Date;
 
 /**
@@ -78,6 +79,7 @@ public class DlmsTimestampDecoder {
                 .toLocalDateTime();
     }
 
+    //Final method for Gurux timestamp decoder
     public LocalDateTime decodeTimestamp(Object rawValue){
         LocalDateTime tsInstant;
         switch (rawValue) {
@@ -102,7 +104,7 @@ public class DlmsTimestampDecoder {
                 tsInstant = LocalDateTime.ofInstant(Instant.now(), ZoneId.systemDefault());
             }
         }
-        return tsInstant;
+        return tsInstant.truncatedTo(ChronoUnit.SECONDS);
     }
 
 }

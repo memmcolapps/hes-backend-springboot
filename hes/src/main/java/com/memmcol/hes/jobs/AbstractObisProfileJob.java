@@ -14,12 +14,13 @@ public abstract class AbstractObisProfileJob extends QuartzJobBean {
         String serial = context.getMergedJobDataMap().getString("meterSerial");
         String profileObis = context.getMergedJobDataMap().getString("profileObis");
         int batchSize = context.getMergedJobDataMap().getInt("batchSize");
+        boolean isMD = context.getMergedJobDataMap().getBoolean("isMD");
 
         log.info("▶ [{}] triggered for meter={}, model={}, obis={}",
                 this.getClass().getSimpleName(), serial, model, profileObis);
 
         try {
-            runProfileJob(model, serial, profileObis, batchSize, context);
+            runProfileJob(model, serial, profileObis, batchSize, context, isMD);
         } catch (Exception ex) {
             log.error("❌ Error in [{}] for meter {}: {}",
                     this.getClass().getSimpleName(), serial, ex.getMessage());
@@ -27,5 +28,5 @@ public abstract class AbstractObisProfileJob extends QuartzJobBean {
     }
 
     protected abstract void runProfileJob(
-            String model, String serial, String profileObis, int batchSize, JobExecutionContext context);
+            String model, String serial, String profileObis, int batchSize, JobExecutionContext context, boolean isMD);
 }

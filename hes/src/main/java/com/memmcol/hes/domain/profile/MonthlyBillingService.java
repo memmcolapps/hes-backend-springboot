@@ -34,31 +34,22 @@ public class MonthlyBillingService {
     private final MonthlyBillingPersistenceAdapter monthlyBillingPersistenceAdapter;
 
     @Transactional
-    public void readProfileAndSave(String model, String meterSerial, String profileObis, int batchSize) {
+    public void readProfileAndSave(String model, String meterSerial, String profileObis, boolean isMD) {
         try {
             //Step 1: Get last timestamp read from the meter or default to yesterday
             ProfileTimestamp cursor = new ProfileTimestamp(
                     timestampPort.resolveLastTimestamp(meterSerial, profileObis)
             );
             //Step 2: Get profile capture period
-            CapturePeriod cp = new CapturePeriod(
-                    capturePeriodPort.resolveCapturePeriodSeconds(meterSerial, profileObis)
-            );
+            CapturePeriod cp = new CapturePeriod(1);;
 
             LocalDateTime now = LocalDateTime.now();
 
             while (cursor.value().isBefore(now)) {
                 LocalDateTime from = cursor.value();
                 LocalDateTime to;
+                to = from.plusMonths(12);   // Monthly profile → move by full months
 
-                // Monthly profile → move by full months
-                if ((cp.seconds() == 0 || cp.seconds() == 1) && profileObis.startsWith("0.0.98.1")) {
-                    // advance by <batchSize> months
-                    to = from.plusMonths(1);
-                } else {
-                    // normal (load) profile → advance by seconds
-                    to = from.plusSeconds((long) batchSize * cp.seconds());
-                }
 
                 if (to.isAfter(now)) to = now;
 
@@ -69,7 +60,7 @@ public class MonthlyBillingService {
                 List<ProfileRowGeneric> rawRows;
 
                 try {
-                    rawRows = dlmsReaderUtils.readRange(model, meterSerial, profileObis, metadataResult, from, to, true);
+                    rawRows = dlmsReaderUtils.readRange(model, meterSerial, profileObis, metadataResult, from, to, isMD);
                 } catch (Exception e) {
                     log.warn("Range read failed; attempting recovery meter={} profile={} cause={}",
                             meterSerial, profileObis, e.getMessage());
@@ -87,7 +78,7 @@ public class MonthlyBillingService {
 
                 if (rawRows == null || rawRows.isEmpty()) {
                     log.info("No rows, no exception — advancing cursor, meter={} profile={}", meterSerial, profileObis);
-                    cursor = new ProfileTimestamp(to).plus(cp);
+                    cursor = new ProfileTimestamp(to.plusMonths(1));
                     statePort.upsertState(meterSerial, profileObis, new ProfileTimestamp(to), cp);
                     continue;
                 }
@@ -101,9 +92,8 @@ public class MonthlyBillingService {
                 metricsPort.recordBatch(meterSerial, profileObis, syncResult.getInsertedCount(), t1);
 
                 // Persist new cursor
-                ProfileTimestamp resume = ProfileTimestamp.ofNullable(syncResult.getAdvanceTo());
-                cursor = (resume != null ? resume.plus(cp) : cursor.plus(cp));
-                statePort.upsertState(meterSerial, profileObis, resume, cp);
+                cursor = ProfileTimestamp.ofNullable(syncResult.getAdvanceTo().plusMonths(1));
+//                statePort.upsertState(meterSerial, profileObis, resume, cp);
 
                 // Safety guard to avoid infinite loop if capture period = 0 (should not happen)
                 if (cp.seconds() <= 0) {

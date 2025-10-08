@@ -46,7 +46,7 @@ public class MeterReadAdapter {
      * Reads a DLMS data block, including segmented/multi-frame responses.
      *
      * @param client       DLMS client for protocol interaction
-     * @param serial       Meter serial number (used to route channel/command)
+     * @param serial       MetersEntity serial number (used to route channel/command)
      * @param firstRequest Initial byte request (e.g., from `client.read`)
      * @return GXReplyData containing the full response
      */

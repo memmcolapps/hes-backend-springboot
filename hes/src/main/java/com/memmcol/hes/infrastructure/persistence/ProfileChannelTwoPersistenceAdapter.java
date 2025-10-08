@@ -1,19 +1,16 @@
 package com.memmcol.hes.infrastructure.persistence;
 
 import com.memmcol.hes.application.port.out.ProfileStatePort;
-import com.memmcol.hes.domain.profile.CapturePeriod;
-import com.memmcol.hes.domain.profile.ProfileState;
-import com.memmcol.hes.domain.profile.ProfileSyncResult;
-import com.memmcol.hes.domain.profile.ProfileTimestamp;
-import com.memmcol.hes.dto.DailyBillingProfileDTO;
-import com.memmcol.hes.dto.MonthlyBillingDTO;
+import com.memmcol.hes.domain.profile.*;
+import com.memmcol.hes.dto.ProfileChannelTwoDTO;
 import com.memmcol.hes.entities.*;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.TypedQuery;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.hibernate.Session;
-import org.springframework.stereotype.Repository;
+import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,23 +24,20 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
-@Repository
+@RequiredArgsConstructor
 @Slf4j
-public class DailyBillingPersistenceAdapter {
+@Service
+public class ProfileChannelTwoPersistenceAdapter {
     @PersistenceContext
-    private EntityManager entityManager;
+    private final EntityManager em;
+    private static final int FLUSH_BATCH = 500;
     private final ProfileStatePort statePort;
-    private static final int FLUSH_BATCH = 100;
-
-    public DailyBillingPersistenceAdapter(ProfileStatePort statePort) {
-        this.statePort = statePort;
-    }
 
     /**
      * Creates monthly partition tables for any missing months found in the DTO list.
      */
-    public void createPartitionsIfMissing(List<DailyBillingProfileDTO> filteredRows) {
-        Session session = entityManager.unwrap(Session.class);
+    public void createPartitionsIfMissing(List<ProfileChannelTwoDTO> filteredRows) {
+        Session session = em.unwrap(Session.class);
 
         // 1. Extract unique months (YYYYMM format)
         Set<String> months = filteredRows.stream()
@@ -52,7 +46,7 @@ public class DailyBillingPersistenceAdapter {
 
         // 2. Pre-create missing partitions
         months.forEach(month -> {
-            String partitionName = "daily_billing_profile_" + month;
+            String partitionName = "profile_channel_two_" + month;
             String startDate = month + "01";
             String endDate = YearMonth.parse(month, DateTimeFormatter.ofPattern("yyyyMM"))
                     .plusMonths(1)
@@ -60,7 +54,7 @@ public class DailyBillingPersistenceAdapter {
                     .format(DateTimeFormatter.ISO_LOCAL_DATE);
 
             String sql = String.format(
-                    "CREATE TABLE IF NOT EXISTS %s PARTITION OF daily_billing_profile " +
+                    "CREATE TABLE IF NOT EXISTS %s PARTITION OF profile_channel_two " +
                             "FOR VALUES FROM ('%s') TO ('%s');",
                     partitionName, startDate, endDate
             );
@@ -80,12 +74,48 @@ public class DailyBillingPersistenceAdapter {
         });
     }
 
+    public ProfileTimestamp findLatestTimestamp(String meterSerial, String model) {
+        List<LocalDateTime> list = em.createQuery("""
+                        select r.entryTimestamp from ProfileChannel2Reading r
+                         where r.meterSerial=:ms and r.modelNumber=:mn
+                         order by r.entryTimestamp desc
+                         """, java.time.LocalDateTime.class)
+                .setParameter("ms", meterSerial)
+                .setParameter("mn", model)
+                .setMaxResults(1)
+                .getResultList();
+        return list.isEmpty() ? null : new ProfileTimestamp(list.get(0));
+    }
+
+    /**
+     * Find already existing timestamps for a given meter serial
+     */
+    public List<LocalDateTime> findExistingTimestamps(String serial, List<LocalDateTime> timestamps) {
+        if (timestamps == null || timestamps.isEmpty()) {
+            return List.of();
+        }
+        TypedQuery<LocalDateTime> query = em.createQuery(
+                "SELECT r.entryTimestamp " +
+                        "FROM ProfileChannelTwo r " +
+                        "WHERE r.meterSerial = :serial " +
+                        "AND r.entryTimestamp IN :timestamps",
+                LocalDateTime.class
+        );
+        query.setParameter("serial", serial);
+        query.setParameter("timestamps", timestamps);
+        return query.getResultList();
+    }
+
+
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public ProfileSyncResult saveBatchAndAdvanceCursor(String meterSerial,
-                                                       String profileOBIS,
-                                                       List<DailyBillingProfileDTO> readings,
-                                                       CapturePeriod capturePeriodSeconds) {
-        ProfileState st = statePort.loadState(meterSerial, profileOBIS); // or null if you dropped obis
+                                                       String meterModel,
+                                                       String obis,
+                                                       List<ProfileChannelTwoDTO> readings,
+                                                       CapturePeriod capturePeriodSeconds,
+                                                       ProfileMetadataResult metadataResult) {
+
+        ProfileState st = statePort.loadState(meterSerial, obis); // or null if you dropped obis
         LocalDateTime previousLast = (st != null && st.lastTimestamp() != null)
                 ? st.lastTimestamp().value()
                 : null;
@@ -99,13 +129,12 @@ public class DailyBillingPersistenceAdapter {
 
         int total = readings.size();
         //Deduplication by timestamp only
-        List<DailyBillingProfileDTO> filteredRows = deduplicate(meterSerial, readings);
-        //Insert filtered rows
+        List<ProfileChannelTwoDTO> filteredRows = deduplicate(meterSerial, readings);
         int inserted = persistReadingsByMonth(filteredRows);
         int duplicate = total - inserted;
 
         LocalDateTime incomingMax = readings.stream()
-                .map(DailyBillingProfileDTO::getEntryTimestamp)
+                .map(ProfileChannelTwoDTO::getEntryTimestamp)
                 .filter(Objects::nonNull)
                 .max(LocalDateTime::compareTo)
                 .orElse(previousLast);
@@ -117,7 +146,7 @@ public class DailyBillingPersistenceAdapter {
         boolean advanced = previousLast == null || advanceTo.isAfter(previousLast);
 
         if (advanceTo != null) {
-            statePort.upsertState(meterSerial, profileOBIS, new ProfileTimestamp(advanceTo.plusDays(1)), capturePeriodSeconds);
+            statePort.upsertState(meterSerial, obis, new ProfileTimestamp(advanceTo), capturePeriodSeconds);
         }
 
         log.info("Batch persisted meter={} total={} inserted={} dup={} start={} end={} advanceTo={}",
@@ -129,7 +158,7 @@ public class DailyBillingPersistenceAdapter {
     /**
      * Deduplicate by checking which timestamps already exist in DB
      */
-    private List<DailyBillingProfileDTO> deduplicate(String meterSerial, List<DailyBillingProfileDTO> readings) {
+    private List<ProfileChannelTwoDTO> deduplicate(String meterSerial, List<ProfileChannelTwoDTO> readings) {
         if (readings == null || readings.isEmpty()) {
             log.info("⚠ No readings provided for deduplication.");
             return List.of();
@@ -137,14 +166,14 @@ public class DailyBillingPersistenceAdapter {
 
         // Extract timestamps from incoming readings
         List<LocalDateTime> incomingTimestamps = readings.stream()
-                .map(DailyBillingProfileDTO::getEntryTimestamp)
+                .map(ProfileChannelTwoDTO::getEntryTimestamp)
                 .collect(Collectors.toList());
 
         // Query DB for existing timestamps
         List<LocalDateTime> existingTimestamps = findExistingTimestamps(meterSerial, incomingTimestamps);
 
         // Filter only new readings
-        List<DailyBillingProfileDTO> filteredRows = readings.stream()
+        List<ProfileChannelTwoDTO> filteredRows = readings.stream()
                 .filter(dto -> !existingTimestamps.contains(dto.getEntryTimestamp()))
                 .collect(Collectors.toList());
 
@@ -158,45 +187,26 @@ public class DailyBillingPersistenceAdapter {
     }
 
     /**
-     * Find already existing timestamps for a given meter serial
-     */
-    public List<LocalDateTime> findExistingTimestamps(String serial, List<LocalDateTime> timestamps) {
-        if (timestamps == null || timestamps.isEmpty()) {
-            return List.of();
-        }
-        TypedQuery<LocalDateTime> query = entityManager.createQuery(
-                "SELECT r.entryTimestamp " +
-                        "FROM MonthlyBillingEntity r " +
-                        "WHERE r.meterSerial = :serial " +
-                        "AND r.entryTimestamp IN :timestamps",
-                LocalDateTime.class
-        );
-        query.setParameter("serial", serial);
-        query.setParameter("timestamps", timestamps);
-        return query.getResultList();
-    }
-
-    /**
      * 2️⃣ Rewrite persistReadings with partition pre-creation
      * Since you want to:
      * •	Extract all months from the incoming readings
      * •	Pre-create missing partitions once before persisting
      */
-    public int persistReadingsByMonth(List<DailyBillingProfileDTO> filteredRows) {
-        Session session = entityManager.unwrap(Session.class);
+    public int persistReadingsByMonth(List<ProfileChannelTwoDTO> filteredRows) {
+        Session session = em.unwrap(Session.class);
 
         log.info("💾 Persisting readings to DB....");
         final AtomicInteger saved = new AtomicInteger();
         filteredRows.forEach(dto -> {
-            DailyBillingProfileEntity entity = DailyBillingProfileEntity.toEntity(dto);
+            ProfileChannelTwo entity = ProfileChannelTwoToEntity.toEntity(dto);
 
             // Check if record exists
-            DailyBillingProfileId id = new DailyBillingProfileId(
+            ProfileChannelTwoId id = new ProfileChannelTwoId(
                     entity.getMeterSerial(),
                     entity.getEntryTimestamp()
             );
 
-            DailyBillingProfileEntity existing = session.get(DailyBillingProfileEntity.class, id);
+            ProfileChannelTwo existing = session.get(ProfileChannelTwo.class, id);
 
             if (existing == null) {
                 session.persist(entity); // Insert new
@@ -216,6 +226,4 @@ public class DailyBillingPersistenceAdapter {
         log.info("💾 Saved {} readings to DB.", saved.get());
         return saved.get();
     }
-
-
 }

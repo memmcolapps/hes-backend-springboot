@@ -74,6 +74,7 @@ public class QuartzJobService {
     }
 
     // ---------------- CRUD ----------------
+
     /**
      * Create or update a job.
      * Supports partial updates safely.
@@ -119,6 +120,10 @@ public class QuartzJobService {
             JobDataMap jobDataMap = new JobDataMap();
             jobDataMap.put("description", jobInfo.getDescription());
             jobDataMap.put("interfaceName", jobInfo.getInterfaceName());
+            // ✅ Add OBIS codes (single or multiple)
+            if (jobInfo.getObisCodes() != null && !jobInfo.getObisCodes().isEmpty()) {
+                jobDataMap.put("obisCodes", jobInfo.getObisCodes());
+            }
 
             JobDetail jobDetail = JobBuilder.newJob(jobClazz)
                     .withIdentity(jobInfo.getJobName(), jobInfo.getJobGroup())
@@ -148,9 +153,10 @@ public class QuartzJobService {
                 scheduler.scheduleJob(jobDetail, trigger);
                 jobInfo.setJobStatus("SCHEDULED");
                 schedulerRepository.save(jobInfo);
-                log.info("✅ Job [{}] scheduled (class={}, desc={}, iface={})",
+                log.info("✅ Job [{}] scheduled (class={}, desc={}, interface={}, obis={})",
                         jobInfo.getJobName(), jobInfo.getJobClass(),
-                        jobInfo.getDescription(), jobInfo.getInterfaceName());
+                        jobInfo.getDescription(), jobInfo.getInterfaceName(),
+                        jobInfo.getObisCodes());
             } else {
                 log.warn("⚠️ Job [{}] already exists. Skipping.", jobInfo.getJobName());
             }
@@ -219,7 +225,10 @@ public class QuartzJobService {
         try {
             scheduler.pauseJob(new JobKey(jobName, jobGroup));
             SchedulerJobInfo dbJob = schedulerRepository.findByJobName(jobName);
-            if (dbJob != null) { dbJob.setJobStatus("PAUSED"); schedulerRepository.save(dbJob); }
+            if (dbJob != null) {
+                dbJob.setJobStatus("PAUSED");
+                schedulerRepository.save(dbJob);
+            }
             log.info("⏸️ Job [{}] paused.", jobName);
             return true;
         } catch (SchedulerException e) {
@@ -232,7 +241,10 @@ public class QuartzJobService {
         try {
             scheduler.resumeJob(new JobKey(jobName, jobGroup));
             SchedulerJobInfo dbJob = schedulerRepository.findByJobName(jobName);
-            if (dbJob != null) { dbJob.setJobStatus("RESUMED"); schedulerRepository.save(dbJob); }
+            if (dbJob != null) {
+                dbJob.setJobStatus("RESUMED");
+                schedulerRepository.save(dbJob);
+            }
             log.info("▶️ Job [{}] resumed.", jobName);
             return true;
         } catch (SchedulerException e) {
@@ -245,7 +257,10 @@ public class QuartzJobService {
         try {
             scheduler.triggerJob(new JobKey(jobName, jobGroup));
             SchedulerJobInfo dbJob = schedulerRepository.findByJobName(jobName);
-            if (dbJob != null) { dbJob.setJobStatus("TRIGGERED_NOW"); schedulerRepository.save(dbJob); }
+            if (dbJob != null) {
+                dbJob.setJobStatus("TRIGGERED_NOW");
+                schedulerRepository.save(dbJob);
+            }
             log.info("⚡ Job [{}] triggered now.", jobName);
             return true;
         } catch (SchedulerException e) {
@@ -255,6 +270,7 @@ public class QuartzJobService {
     }
 
     // ---------------- HELPER METHODS ----------------
+
     /**
      * Merge non-null fields from incoming jobInfo into existing job
      */
@@ -316,10 +332,10 @@ public class QuartzJobService {
         List<? extends Trigger> triggers = scheduler.getTriggersOfJob(jobKey);
         if (triggers != null && !triggers.isEmpty()) {
             // pick first trigger (common case)
-            return Optional.of(triggers.get(0).getKey());
+            return Optional.of(triggers.getFirst().getKey());
         }
         // fallback common naming pattern
-        return Optional.ofNullable(TriggerKey.triggerKey(jobKey.getName() + "Trigger", jobKey.getGroup()));
+        return Optional.of(TriggerKey.triggerKey(jobKey.getName() + "Trigger", jobKey.getGroup()));
     }
 
     // ---------- Update interval (milliseconds) ----------
@@ -363,6 +379,8 @@ public class QuartzJobService {
                         info.setRepeatSeconds((int) (intervalMs / 1000L));
                         info.setRepeatMinutes((int) (intervalMs / 1000L / 60L));
                         info.setRepeatHours((int) (intervalMs / 1000L / 3600L));
+                        info.setCronJob(false);
+                        info.setCronExpression("");
                         info.setJobStatus("UPDATED");
                         info.setLastRunTime(LocalDateTime.now());
                         schedulerRepository.save(info);
@@ -408,6 +426,10 @@ public class QuartzJobService {
                     .ifPresent(info -> {
                         info.setCronExpression(cronExpression);
                         info.setCronJob(true);
+                        info.setRepeatTime(0L);
+                        info.setRepeatMinutes(0);
+                        info.setRepeatHours(0);
+                        info.setRepeatSeconds(0);
                         info.setJobStatus("UPDATED");
                         info.setLastRunTime(LocalDateTime.now());
                         schedulerRepository.save(info);
@@ -433,8 +455,75 @@ public class QuartzJobService {
     }
 
     public boolean updateJobIntervalHours(String jobName, String jobGroup, int hours) {
-        long ms = Math.max(1L * 3600L * 1000L, hours * 3600L * 1000L);
+        long ms = Math.max(3600L * 1000L, hours * 3600L * 1000L);
         return updateJobInterval(jobName, jobGroup, ms);
     }
 
+
+    public boolean updateJobObisCodes(String jobName, String jobGroup, String obisCodes) {
+        try {
+            JobKey jobKey = JobKey.jobKey(jobName, jobGroup);
+
+            if (!scheduler.checkExists(jobKey)) {
+                log.warn("Job not found in scheduler: {}/{}", jobGroup, jobName);
+                return false;
+            }
+
+            // ✅ Fetch current JobDetail
+            JobDetail jobDetail = scheduler.getJobDetail(jobKey);
+            JobDataMap jobDataMap = jobDetail.getJobDataMap();
+
+            // ✅ Validate OBIS codes input
+            if (obisCodes == null || obisCodes.trim().isEmpty()) {
+                log.warn("No OBIS codes provided for update on job {}/{}", jobGroup, jobName);
+                return false;
+            }
+
+            // ✅ Update obisCodes in JobDataMap
+            jobDataMap.put("obisCodes", obisCodes);
+
+            // ✅ Rebuild JobDetail with durability to avoid "Jobs added with no trigger" error
+            JobDetail newJobDetail = jobDetail.getJobBuilder()
+                    .usingJobData(jobDataMap)
+                    .storeDurably(true) // ✅ mark as durable so it can exist without a trigger
+                    .build();
+
+            // ✅ Replace existing job definition in the scheduler
+            scheduler.addJob(newJobDetail, true);
+
+            // 🔄 Handle trigger rescheduling if trigger already exists
+            Optional<TriggerKey> optTriggerKey = findExistingTriggerKey(scheduler, jobKey);
+            if (optTriggerKey.isPresent()) {
+                TriggerKey triggerKey = optTriggerKey.get();
+                Trigger oldTrigger = scheduler.getTrigger(triggerKey);
+
+                if (oldTrigger != null) {
+                    Trigger newTrigger = oldTrigger.getTriggerBuilder()
+                            .usingJobData(jobDataMap) // propagate updated OBIS codes into trigger
+                            .build();
+
+                    scheduler.rescheduleJob(triggerKey, newTrigger);
+                    log.info("Rescheduled trigger for job {}/{} with new OBIS codes", jobGroup, jobName);
+                }
+            } else {
+                log.info("No existing trigger found for job {}/{} — only job data updated", jobGroup, jobName);
+            }
+
+            // ✅ Persist OBIS update to DB only after successful scheduler update
+            schedulerRepository.findByJobNameAndJobGroup(jobName, jobGroup)
+                    .ifPresent(info -> {
+                        info.setObisCodes(obisCodes);
+                        info.setJobStatus("UPDATED_OBIS");
+                        info.setLastRunTime(LocalDateTime.now());
+                        schedulerRepository.save(info);
+                    });
+
+            log.info("✅ Successfully updated OBIS codes for job {}/{} -> {}", jobGroup, jobName, obisCodes);
+            return true;
+
+        } catch (Exception e) {
+            log.error("❌ Failed to update OBIS codes for job {}/{}", jobGroup, jobName, e);
+            return false;
+        }
+    }
 }

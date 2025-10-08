@@ -143,7 +143,7 @@ class DailyBillingServiceIT {
 
         // Call service for all OBIS codes
         DAILY_BILLING_OBIS.forEach(obis ->
-                dailyBillingService.readProfileAndSave(meterModel, meterSerial, obis, 1)
+                dailyBillingService.readProfileAndSave(meterModel, meterSerial, obis, true)
         );
 
         // Verify rows in DB

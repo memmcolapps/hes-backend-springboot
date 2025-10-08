@@ -91,13 +91,13 @@ public class DLMSMeterHandler extends SimpleChannelInboundHandler<byte[]> {
             inflightRequests.remove(correlationId);
             long overdue = context.getOverdueDelay();
             long duration = context.getDuration();
-            log.warn("⚠️ Expired response for CID={} (Meter={}) — total duration={} ms (overdue by {} ms)",
+            log.warn("⚠️ Expired response for CID={} (MetersEntity={}) — total duration={} ms (overdue by {} ms)",
                     correlationId, context.getMeterId(), duration, overdue);
             return;
         }
 
         inflightRequests.remove(correlationId);
-        log.debug("✅ Accepted DLMS response: CID={}, Meter={}", correlationId, context.getMeterId());
+        log.debug("✅ Accepted DLMS response: CID={}, MetersEntity={}", correlationId, context.getMeterId());
 
         BlockingQueue<byte[]> queue = TRACKER.get(correlationId);
         if (queue != null) {

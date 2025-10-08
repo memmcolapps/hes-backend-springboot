@@ -53,7 +53,7 @@ public class ProfileTimestampPortImpl implements ProfileTimestampPort {
             return ts;  // return immediately if present
         }
 
-        // 3. Meter read
+        // 3. MetersEntity read
 //        try {
         String msg = String.format("Reading first timestamp from meter=%s obis=%s", meterSerial, profileObis);
         log.info(msg);
@@ -147,7 +147,7 @@ public class ProfileTimestampPortImpl implements ProfileTimestampPort {
     public LocalDateTime refreshLastTimestamp(String meterSerial, String profileObis) {
         String key = cacheKey(meterSerial, profileObis);
         LocalDateTime fromMeter = LocalDateTime.now().minusDays(1);
-        // 3. Meter read
+        // 3. MetersEntity read
         try {
             String msg = String.format("Reading first timestamp from meter=%s obis=%s", meterSerial, profileObis);
             log.info(msg);

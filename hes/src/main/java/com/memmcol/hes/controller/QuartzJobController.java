@@ -25,6 +25,12 @@ public class QuartzJobController {
             String cron
     ) {}
 
+    public record UpdateObisRequest(
+            String jobName,
+            String jobGroup,
+            String obisCodes // comma-separated string, e.g. "1.0.99.1.0.255,1.0.99.2.0.255"
+    ) {}
+
     // ---------------- META ----------------
     @GetMapping("/meta")
     public ResponseEntity<?> getMetaData() {
@@ -144,4 +150,14 @@ public class QuartzJobController {
         boolean ok = quartzJobService.updateJobCron(dto.jobName(), dto.jobGroup(), dto.cron());
         return ok ? ResponseEntity.ok("Updated") : ResponseEntity.status(500).body("Failed");
     }
+
+    @PostMapping("/obis")
+    public ResponseEntity<?> updateObisCodes(@RequestBody UpdateObisRequest dto) {
+        log.info("Received updateObisCodes: {}", dto);
+        boolean ok = quartzJobService.updateJobObisCodes(dto.jobName(), dto.jobGroup(), dto.obisCodes());
+        return ok
+                ? ResponseEntity.ok("OBIS codes updated successfully")
+                : ResponseEntity.status(500).body("Failed to update OBIS codes");
+    }
+
 }
