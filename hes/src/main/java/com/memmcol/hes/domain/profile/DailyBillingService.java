@@ -30,32 +30,29 @@ public class DailyBillingService {
     private final DailyBillingMapper dailyBillingMapper;
     private final DailyBillingPersistenceAdapter dailyBillingPersistenceAdapter;
 
-    @Transactional
-    public void readProfileAndSave(String model, String meterSerial, String profileObis, int batchSize) {
+
+    public void readProfileAndSave(String model, String meterSerial, String profileObis, boolean isMD) {
         try {
+            /*TODO:
+            *  My intention for the initial timestamp for the initial profile reading.
+            *  1. Get the first time login frame was sent to the HES.
+            *  2. Get the date the meter was captured newly.
+            *  3. Yesterday if load profile and event and daily billing
+            *  4. Last month if monthly billing
+            *  5. I don't want to rely on the first timestamp saved on the meter.*/
             //Step 1: Get last timestamp read from the meter or default to yesterday
             ProfileTimestamp cursor = new ProfileTimestamp(
                     timestampPort.resolveLastTimestamp(meterSerial, profileObis)
             );
-            //Step 2: Get profile capture period
-            CapturePeriod cp = new CapturePeriod(
-                    capturePeriodPort.resolveCapturePeriodSeconds(meterSerial, profileObis)
-            );
+            //Dummy capture period
+            CapturePeriod cp = new CapturePeriod(1);
 
             LocalDateTime now = LocalDateTime.now();
 
             while (cursor.value().isBefore(now)) {
                 LocalDateTime from = cursor.value();
                 LocalDateTime to;
-
-                // Daily profile → move by days
-                if ((cp.seconds() == 0 || cp.seconds() == 1) && profileObis.startsWith("0.0.98")) {
-                    // advance by <batchSize> months
-                    to = from.plusDays(1);
-                } else {
-                    // normal (load) profile → advance by seconds
-                    to = from.plusSeconds((long) batchSize * cp.seconds());
-                }
+                to = from.plusDays(15);
 
                 if (to.isAfter(now)) to = now;
 
@@ -66,7 +63,7 @@ public class DailyBillingService {
                 List<ProfileRowGeneric> rawRows;
 
                 try {
-                    rawRows = dlmsReaderUtils.readRange(model, meterSerial, profileObis, captureObjects, from, to, true);
+                    rawRows = dlmsReaderUtils.readRange(model, meterSerial, profileObis, captureObjects, from, to, isMD);
                 } catch (Exception e) {
                     log.warn("Range read failed; attempting recovery meter={} profile={} cause={}",
                             meterSerial, profileObis, e.getMessage());
@@ -84,8 +81,9 @@ public class DailyBillingService {
 
                 if (rawRows == null || rawRows.isEmpty()) {
                     log.info("No rows, no exception — advancing cursor, meter={} profile={}", meterSerial, profileObis);
-                    cursor = new ProfileTimestamp(to).plus(cp);
-                    statePort.upsertState(meterSerial, profileObis, new ProfileTimestamp(to), cp);
+                    cursor = new ProfileTimestamp(to.plusDays(1));
+
+                    statePort.upsertState(meterSerial, profileObis, new ProfileTimestamp(to), new CapturePeriod(1));
                     continue;
                 }
 
@@ -97,9 +95,8 @@ public class DailyBillingService {
                 metricsPort.recordBatch(meterSerial, profileObis, syncResult.getInsertedCount(), t1);
 
                 // Persist new cursor (Next iteration)
-                ProfileTimestamp resume = ProfileTimestamp.ofNullable(syncResult.getAdvanceTo());
-                cursor = (resume != null ? resume.plus(cp) : cursor.plus(cp));
-                statePort.upsertState(meterSerial, profileObis, resume, cp);
+                cursor = ProfileTimestamp.ofNullable(syncResult.getAdvanceTo().plusDays(1));
+//                statePort.upsertState(meterSerial, profileObis, resume, cp);
 
                 // Safety guard to avoid infinite loop if capture period = 0 (should not happen)
                 if (cp.seconds() <= 0) {

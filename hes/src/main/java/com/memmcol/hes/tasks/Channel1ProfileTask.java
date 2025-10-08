@@ -17,7 +17,7 @@ public class Channel1ProfileTask implements Runnable {
         // Load profile channel 1 for all active meters
         List<String> activeMeters = new ArrayList<>(MeterConnections.getAllActiveSerials());
         for (String meter : activeMeters) {
-            metersLockService.readChannelOneWithLock("model", "serial", "profileObis", 50);
+            metersLockService.readChannelOneWithLock("model", "serial", "profileObis", true);
             log.info("Channel1ProfileTask for {} ", meter);
         }
     }

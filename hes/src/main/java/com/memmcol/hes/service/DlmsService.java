@@ -114,7 +114,7 @@ public class DlmsService {
         byte[] response = requestResponseService.sendCommand(serial, aarq[0]);
         GXByteBuffer reply = new GXByteBuffer(response);
 
-        //3. Parse AARE Response from Meter
+        //3. Parse AARE Response from MetersEntity
         log.debug("Parsing AARE response: {}", GXCommon.toHex(response));
 
 // 1. Strip off the 8-byte wrapper header
@@ -159,7 +159,7 @@ public class DlmsService {
 
         if (result instanceof GXDateTime dt) {
             clockDateTime = dt;
-//            log.info("🕒 Meter Clock: {}", dt.toFormatString());
+//            log.info("🕒 MetersEntity Clock: {}", dt.toFormatString());
         } else if (result instanceof byte[] array) {
             clockDateTime = GXCommon.getDateTime(array);
         } else {
@@ -192,9 +192,9 @@ public class DlmsService {
         // Format to "YYYY-MM-DD HH:MM:SS"
         strclock = localDateTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
 
-        strclock = "🕒 Meter Clock for " + serial + ": " + strclock;
+        strclock = "🕒 MetersEntity Clock for " + serial + ": " + strclock;
 
-        log.info("🕒 Meter Clock: {}", strclock);
+        log.info("🕒 MetersEntity Clock: {}", strclock);
 
         return strclock;
     }
@@ -606,7 +606,7 @@ public class DlmsService {
         int totalEntries = profile.getEntriesInUse();
         int startIndex = Math.max(1, totalEntries - entryCount + 1);
 
-        log.info("Meter {} - Reading from entry {} to {}", meterSerial, startIndex, totalEntries);
+        log.info("MetersEntity {} - Reading from entry {} to {}", meterSerial, startIndex, totalEntries);
 
         // Step 3: Read profile buffer using readRowsByEntry
         byte[][] readRequest = client.readRowsByEntry(profile, startIndex, entryCount);
@@ -729,7 +729,7 @@ public class DlmsService {
 
         int nextIndex = startIndex + 1;
 
-        //Read profile columns from cache -> DB -> Meter
+        //Read profile columns from cache -> DB -> MetersEntity
         //List<ModelProfileMetadata>
         List<ModelProfileMetadata> metadataList = profileMetadataService.getOrLoadMetadata(model, profileObis, serial);
 
@@ -753,14 +753,14 @@ public class DlmsService {
         GXReplyData captureReply = readAdapter.readDataBlock(client, serial, captureRequest[0]);
         client.updateValue(profile, 7, captureReply.getValue());
         int bufferCount = profile.getEntriesInUse(); // entriesInUse = attribute 7
-        log.info("📦 Meter entries in use (attribute 7) = {}", bufferCount);
+        log.info("📦 MetersEntity entries in use (attribute 7) = {}", bufferCount);
 
         // 🔎 Read attribute 4: max buffer size
         byte[][] bufferSize = client.read(profile, 4);
         GXReplyData bufferSizeReply = readAdapter.readDataBlock(client, serial, bufferSize[0]);
         client.updateValue(profile, 4, bufferSizeReply.getValue());
         int bufferCapacity = profile.getProfileEntries();
-        log.info("🧮 Meter buffer capacity (attribute 4) = {}", bufferCapacity);
+        log.info("🧮 MetersEntity buffer capacity (attribute 4) = {}", bufferCapacity);
 
         // 🔎 Read attribute 8: capture period in seconds (optional)
         byte[][] captureSize = client.read(profile, 8);
@@ -771,13 +771,13 @@ public class DlmsService {
 
         // 🧠 Rollover Detection Logic
         if (bufferCount == 0) {
-            log.warn("⚠️ Meter buffer is empty — no data to read.");
+            log.warn("⚠️ MetersEntity buffer is empty — no data to read.");
             return;
         }
 
         if (nextIndex > bufferCount) {
             // Likely meter rollover
-            log.warn("🔄 Meter rollover detected for {}, startIndex {} > bufferCount {}. Resetting to 1.",
+            log.warn("🔄 MetersEntity rollover detected for {}, startIndex {} > bufferCount {}. Resetting to 1.",
                     serial, nextIndex, bufferCount);
 
             nextIndex = 1;
@@ -989,14 +989,14 @@ public class DlmsService {
         GXReplyData captureReply = readAdapter.readDataBlock(client, serial, captureRequest[0]);
         client.updateValue(profile, 7, captureReply.getValue());
         int bufferCount = profile.getEntriesInUse(); // entriesInUse = attribute 7
-        log.info("📦 Meter entries in use (attribute 7) = {}", bufferCount);
+        log.info("📦 MetersEntity entries in use (attribute 7) = {}", bufferCount);
 
         // 🔎 Read attribute 4: max buffer size
         byte[][] bufferSize = client.read(profile, 4);
         GXReplyData bufferSizeReply = readAdapter.readDataBlock(client, serial, bufferSize[0]);
         client.updateValue(profile, 4, bufferSizeReply.getValue());
         int bufferCapacity = profile.getProfileEntries();
-        log.info("🧮 Meter buffer capacity (attribute 4) = {}", bufferCapacity);
+        log.info("🧮 MetersEntity buffer capacity (attribute 4) = {}", bufferCapacity);
 
         // 🔎 Read attribute 8: capture period in seconds (optional)
         byte[][] captureSize = client.read(profile, 8);
@@ -1468,7 +1468,7 @@ public class DlmsService {
 
         LocalDateTime startTs = profileTimestampResolver.resolveStartTimestamp(serial, profileObis, model);
         if (startTs == null) {
-            log.warn("Meter {} returned no profile data.", serial);
+            log.warn("MetersEntity {} returned no profile data.", serial);
         } else {
             log.info("Resolved start timestamp for {} ({}) = {}", serial, profileObis, startTs);
         }

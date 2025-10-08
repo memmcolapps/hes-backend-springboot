@@ -78,7 +78,7 @@ public class EventLogPersistenceAdapter {
         boolean advanced = previousLast == null || advanceTo.isAfter(previousLast);
 
         if (advanceTo != null) {
-            statePort.upsertState(meterSerial, profileOBIS, new ProfileTimestamp(advanceTo).plus(new CapturePeriod(1)), new CapturePeriod(1));
+            statePort.upsertState(meterSerial, profileOBIS, new ProfileTimestamp(advanceTo.plusSeconds(10)), new CapturePeriod(10));
         }
 
         log.info("Batch persisted meter={} total={} inserted={} dup={} start={} end={} advanceTo={}",
@@ -107,6 +107,7 @@ public class EventLogPersistenceAdapter {
                     .eventTime(dto.getEventTime().truncatedTo(ChronoUnit.SECONDS))
                     .currentThreshold(dto.getCurrentThreshold())
                     .eventName(eventName)
+                    .createdAt(LocalDateTime.now())
                     .build();
 
             // 5️⃣ Persist entity

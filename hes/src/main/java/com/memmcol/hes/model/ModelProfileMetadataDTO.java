@@ -16,7 +16,7 @@ import lombok.NoArgsConstructor;
 public class ModelProfileMetadataDTO {
 
     /**
-     * Meter model identifier (e.g., MMX-313-CT).
+     * MetersEntity model identifier (e.g., MMX-313-CT).
      */
     private String meterModel;
 

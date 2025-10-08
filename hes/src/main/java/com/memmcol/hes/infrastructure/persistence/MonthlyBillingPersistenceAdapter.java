@@ -13,6 +13,8 @@ import jakarta.persistence.TypedQuery;
 import lombok.extern.slf4j.Slf4j;
 import org.hibernate.Session;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.sql.Statement;
 import java.time.LocalDateTime;
@@ -36,6 +38,7 @@ public class MonthlyBillingPersistenceAdapter {
         this.statePort = statePort;
     }
 
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public ProfileSyncResult saveBatchAndAdvanceCursor(String meterSerial,
                                                        String profileOBIS,
                                                        List<MonthlyBillingDTO> readings,
@@ -72,7 +75,7 @@ public class MonthlyBillingPersistenceAdapter {
         boolean advanced = previousLast == null || advanceTo.isAfter(previousLast);
 
         if (advanceTo != null) {
-            statePort.upsertState(meterSerial, profileOBIS, new ProfileTimestamp(advanceTo), capturePeriodSeconds);
+            statePort.upsertState(meterSerial, profileOBIS, new ProfileTimestamp(advanceTo.plusMonths(1)), capturePeriodSeconds);
         }
 
         log.info("Batch persisted meter={} total={} inserted={} dup={} start={} end={} advanceTo={}",

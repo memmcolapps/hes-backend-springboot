@@ -6,6 +6,7 @@ import com.memmcol.hes.domain.profile.ObisObjectType;
 import com.memmcol.hes.domain.profile.ProfileMetadataResult;
 import com.memmcol.hes.domain.profile.ProfileRowGeneric;
 import com.memmcol.hes.dto.ProfileChannelOneDTO;
+import com.memmcol.hes.dto.ProfileChannelTwoDTO;
 import com.memmcol.hes.infrastructure.dlms.DlmsTimestampDecoder;
 import com.memmcol.hes.service.MeterRatioService;
 import lombok.RequiredArgsConstructor;
@@ -24,24 +25,23 @@ import java.util.stream.Collectors;
 @Slf4j
 @RequiredArgsConstructor
 @Service
-public class ProfileChannelOneMapper implements GenericDtoMappers<ProfileChannelOneDTO> {
+public class ProfileChannelTwoMapper implements GenericDtoMappers<ProfileChannelTwoDTO> {
     private final MeterRatioService ratioService;
     private final DlmsTimestampDecoder dlmsTimestampDecoder;
-//    private final DlmsTimestampDecoder timestampDecoder;
 
     @Override
-    public List<ProfileChannelOneDTO> toDTO(List<ProfileRowGeneric> rawRows, String meterSerial, String modelNumber, boolean mdMeter, ProfileMetadataResult metadataResult) throws Exception {
+    public List<ProfileChannelTwoDTO> toDTO(List<ProfileRowGeneric> rawRows, String meterSerial, String modelNumber, boolean mdMeter, ProfileMetadataResult captureObjects) throws Exception {
         // Pre-fetch meter ratios if MD
         MeterRatios meterRatios = mdMeter ? ratioService.readMeterRatios(modelNumber, meterSerial) : null;
 
         return rawRows.stream()
-                .map(raw -> mapRow(raw, meterSerial, modelNumber, mdMeter, metadataResult, meterRatios))
+                .map(raw -> mapRow(raw, meterSerial, modelNumber, mdMeter, captureObjects, meterRatios))
                 .collect(Collectors.toList());
     }
 
     @Override
-    public ProfileChannelOneDTO mapRow(ProfileRowGeneric raw, String meterSerial, String modelNumber, boolean mdMeter, ProfileMetadataResult metadataResult, MeterRatios meterRatios) {
-        ProfileChannelOneDTO dto = new ProfileChannelOneDTO();
+    public ProfileChannelTwoDTO mapRow(ProfileRowGeneric raw, String meterSerial, String modelNumber, boolean mdMeter, ProfileMetadataResult captureObjects, MeterRatios meterRatios) {
+        ProfileChannelTwoDTO dto = new ProfileChannelTwoDTO();
         dto.setMeterSerial(meterSerial);
         dto.setModelNumber(modelNumber);
 
@@ -51,17 +51,10 @@ public class ProfileChannelOneMapper implements GenericDtoMappers<ProfileChannel
             String obisCode = obisWithAttr.split("-")[0];         // e.g. 1.0.129.6.0.255
             Object rawValue = entry.getValue();
 
-            /*
-            *
-            * String obisWithAttr = entry.getKey();                     // e.g. 1.0.129.6.0.255-2
-            String baseObis     = obisWithAttr.split("-")[0];         // e.g. 1.0.129.6.0.255
-            Object rawValue     = entry.getValue();
-*/
-
             if (rawValue == null) continue;
 
             // Get persistence info (scaler, multiplyBy)
-            ProfileMetadataResult.ProfilePersistenceInfo persistenceInfo = metadataResult.forPersistence(obisCode);
+            ProfileMetadataResult.ProfilePersistenceInfo persistenceInfo = captureObjects.forPersistence(obisCode);
             if (persistenceInfo == null) continue;
 
             double scaler = persistenceInfo.getScaler();
@@ -121,7 +114,7 @@ public class ProfileChannelOneMapper implements GenericDtoMappers<ProfileChannel
                 finalValue = finalValue.setScale(2, RoundingMode.HALF_UP);
 
                 // 5️⃣ Map to DTO
-                ProfileMetadataResult.ProfileMappingInfo mappingInfo = metadataResult.forMapping(obisCode);
+                ProfileMetadataResult.ProfileMappingInfo mappingInfo = captureObjects.forMapping(obisCode);
                 if (mappingInfo != null) {
                     setDtoField(dto, mappingInfo.getColumnName(), finalValue);
                 }
@@ -134,21 +127,11 @@ public class ProfileChannelOneMapper implements GenericDtoMappers<ProfileChannel
     }
 
     @Override
-    public void setDtoField(ProfileChannelOneDTO dto, String columnName, BigDecimal value) {
+    public void setDtoField(ProfileChannelTwoDTO dto, String columnName, BigDecimal value) {
         switch (columnName.toLowerCase()) {
-            case "meter_health_indicator" -> dto.setMeterHealthIndicator(value.intValue());
-            case "total_instantaneous_active_power" -> dto.setTotalInstantaneousActivePower(value.doubleValue());
-            case "total_instantaneous_apparent_power" -> dto.setTotalInstantaneousApparentPower(value.doubleValue());
-            case "l1_current_harmonic_thd" -> dto.setL1CurrentHarmonicThd(value.doubleValue());
-            case "l2_current_harmonic_thd" -> dto.setL2CurrentHarmonicThd(value.doubleValue());
-            case "l3_current_harmonic_thd" -> dto.setL3CurrentHarmonicThd(value.doubleValue());
-            case "l1_voltage_harmonic_thd" -> dto.setL1VoltageHarmonicThd(value.doubleValue());
-            case "l2_voltage_harmonic_thd" -> dto.setL2VoltageHarmonicThd(value.doubleValue());
-            case "l3_voltage_harmonic_thd" -> dto.setL3VoltageHarmonicThd(value.doubleValue());
+            case "total_import_active_energy" -> dto.setTotalImportActiveEnergy(value.doubleValue());
+            case "total_export_active_energy" -> dto.setTotalExportActiveEnergy(value.doubleValue());
             default -> log.warn("Unknown column mapping: {}", columnName);
         }
-
     }
-
-
 }

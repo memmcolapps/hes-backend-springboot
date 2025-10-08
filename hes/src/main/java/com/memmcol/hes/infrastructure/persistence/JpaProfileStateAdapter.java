@@ -8,7 +8,10 @@ import com.memmcol.hes.trackByTimestamp.MeterProfileState;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.Objects;
 
 /**
  * 4.3 State Adapter (JPA)
@@ -23,9 +26,9 @@ public class JpaProfileStateAdapter implements ProfileStatePort {
     @Override
     public ProfileState loadState(String meterSerial, String profileObis) {
         MeterProfileState e = em.createQuery("""
-                select s from MeterProfileState s
-                 where s.meterSerial=:m and s.profileObis=:p
-                """, MeterProfileState.class)
+                        select s from MeterProfileState s
+                         where s.meterSerial=:m and s.profileObis=:p
+                        """, MeterProfileState.class)
                 .setParameter("m", meterSerial)
                 .setParameter("p", profileObis)
                 .getResultStream()
@@ -41,14 +44,13 @@ public class JpaProfileStateAdapter implements ProfileStatePort {
     }
 
     @Override
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void upsertState(String meterSerial, String profileObis,
                             ProfileTimestamp lastTs, CapturePeriod capturePeriod) {
-
         MeterProfileState e = em.createQuery("""
-                select s from MeterProfileState s
-                 where s.meterSerial=:m and s.profileObis=:p
-                """, MeterProfileState.class)
+                    select s from MeterProfileState s
+                    where s.meterSerial=:m and s.profileObis=:p
+                    """, MeterProfileState.class)
                 .setParameter("m", meterSerial)
                 .setParameter("p", profileObis)
                 .getResultStream()
@@ -60,11 +62,25 @@ public class JpaProfileStateAdapter implements ProfileStatePort {
             e.setMeterSerial(meterSerial);
             e.setProfileObis(profileObis);
         }
-        if (lastTs != null) e.setLastTimestamp(lastTs.value());
-        if (capturePeriod != null) e.setCapturePeriodSec(capturePeriod.seconds());
+
+        if (lastTs != null) {
+            e.setLastTimestamp(lastTs.value());
+        }
+
+        if (capturePeriod != null) {
+            long sec = capturePeriod.seconds();
+            if (sec == 0) {
+                sec = 1; // ✅ enforce minimum of 1 second
+            }
+            e.setCapturePeriodSec((int) sec);
+        }
+
         e.setUpdatedAt(java.time.LocalDateTime.now());
 
-        if (e.getId() == null) em.persist(e);
-        else em.merge(e);
+        if (e.getId() == null) {
+            em.persist(e);
+        } else {
+            em.merge(e);
+        }
     }
 }
