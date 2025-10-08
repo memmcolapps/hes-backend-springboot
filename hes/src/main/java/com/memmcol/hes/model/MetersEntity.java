@@ -73,9 +73,6 @@ public class MetersEntity {
     @Column(name = "old_krn", nullable = false)
     private String oldKrn = "0";
 
-    @Column(name = "energy_type")
-    private String energyType;
-
     @Column(name = "fixed_energy")
     private String fixedEnergy;
 
@@ -91,17 +88,11 @@ public class MetersEntity {
     @Column(name = "meter_manufacturer", nullable = false)
     private UUID meterManufacturer;
 
-    @Column(name = "activate_status", nullable = false)
-    private boolean activateStatus = true;
-
     @Column(name = "tariff")
     private UUID tariff;
 
     @Column(name = "smart_status")
     private boolean smartStatus = false;
-
-    @Column(name = "meter_model", nullable = false)
-    private String meterModel;
 
     @Column(name = "image")
     private String image;
