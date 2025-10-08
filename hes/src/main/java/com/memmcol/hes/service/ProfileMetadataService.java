@@ -32,7 +32,7 @@ public class ProfileMetadataService {
 
     /**
      * Return metadata for a given meter model & profile OBIS.
-     * • Cache  →  DB  →  Meter  (in that order)
+     * • Cache  →  DB  →  MetersEntity  (in that order)
      */
     public List<ModelProfileMetadata> getOrLoadMetadata(
             String meterModel,
@@ -56,7 +56,7 @@ public class ProfileMetadataService {
             return dbRows;
         }
 
-        // ③ Meter read (only once per model)
+        // ③ MetersEntity read (only once per model)
         log.info("📡 No cache/DB hit – reading metadata from meter {}", sampleSerial);
         List<ModelProfileMetadata> fresh = loadFromMeterAndPersist(sampleSerial, meterModel, profileObis);
 

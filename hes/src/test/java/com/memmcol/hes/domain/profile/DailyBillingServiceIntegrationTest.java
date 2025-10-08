@@ -128,7 +128,7 @@ class DailyBillingServiceIntegrationTest {
                 ));
 
         // Act
-        dailyBillingService.readProfileAndSave(model, meterSerial, profileObis, 1);
+        dailyBillingService.readProfileAndSave(model, meterSerial, profileObis, true);
 
         // Assert → check DB has persisted something
         List<DailyBillingProfileEntity> results = dailyBillingRepository.findAll();

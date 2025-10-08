@@ -54,16 +54,11 @@ public class ChannelTwoService implements ProfileSyncUseCase {
     }
 
     private void doSync(String model, String serial, String profileObis, int batchSize) throws Exception {
-//        ProfileState state = statePort.loadState(serial, profileObis); //Check DB only. I will add
-//        ProfileTimestamp cursor = (state != null && state.lastTimestamp() != null)
-//                ? state.lastTimestamp()
-//                : new ProfileTimestamp(profileTimestampResolver2.resolveLastTimestamp(serial, profileObis)); // fallback seed
-//        CapturePeriod cp = (state != null && state.capturePeriod() != null)
-//                ? state.capturePeriod()
-//                : new CapturePeriod(capturePeriodPort.resolveCapturePeriodSeconds(serial, profileObis));
-
         ProfileTimestamp cursor = new ProfileTimestamp(timestampPort.resolveLastTimestamp(serial, profileObis)); // fallback seed
         CapturePeriod cp = new CapturePeriod(capturePeriodPort.resolveCapturePeriodSeconds(serial, profileObis));
+
+        if (cp.seconds() < 900)
+            cp = new CapturePeriod(900);
 
         LocalDateTime now = LocalDateTime.now();
         while (cursor.value().isBefore(now)) {
@@ -131,16 +126,6 @@ public class ChannelTwoService implements ProfileSyncUseCase {
                 continue;
             }
 
-//            int saved = persistencePort.saveBatch(serial, profileObis, rows);
-//            long dt = System.currentTimeMillis() - t0;
-//            metricsPort.recordBatch(serial, profileObis, saved, dt);
-//
-//            ProfileRow last = rows.get(rows.size() - 1);
-//            cursor = last.timestamp().plus(cp);
-//
-//            statePort.upsertState(serial, profileObis, last.timestamp(), cp);
-
-
             ProfileSyncResult syncResult = persistencePort.saveBatchAndAdvanceCursor(serial, model, profileObis, rows, cp, metadataResult);
             long dt2 = System.currentTimeMillis() - t0;
 
@@ -152,10 +137,6 @@ public class ChannelTwoService implements ProfileSyncUseCase {
 
             // Persist new cursor
             statePort.upsertState(serial, profileObis, resumeFrom, cp);
-
-//            log.info("Batch persisted meter={} total={} inserted={} dup={} start={} end={} advanceTo={}",
-//                    serial, rows.size(), saved, rows.size() - saved,
-//                    from, syncResult.getIncomingMax(), resumeFrom);
 
             // Safety guard to avoid infinite loop if capture period = 0 (should not happen)
             if (cp.seconds() <= 0) break;
@@ -179,7 +160,4 @@ public class ChannelTwoService implements ProfileSyncUseCase {
         }
     }
 
-    private void readProfileProcessor(){
-
-    }
 }

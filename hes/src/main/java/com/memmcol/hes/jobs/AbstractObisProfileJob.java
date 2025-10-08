@@ -1,17 +1,9 @@
-package com.memmcol.hes.job;
+package com.memmcol.hes.jobs;
 
-import com.memmcol.hes.nettyUtils.RequestResponseService;
-import com.memmcol.hes.repository.MeterRepository;
-import lombok.AllArgsConstructor;
-import lombok.NoArgsConstructor;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.quartz.DisallowConcurrentExecution;
 import org.quartz.JobExecutionContext;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.quartz.QuartzJobBean;
-
-import java.io.PrintStream;
 
 @Slf4j
 @DisallowConcurrentExecution
@@ -22,12 +14,13 @@ public abstract class AbstractObisProfileJob extends QuartzJobBean {
         String serial = context.getMergedJobDataMap().getString("meterSerial");
         String profileObis = context.getMergedJobDataMap().getString("profileObis");
         int batchSize = context.getMergedJobDataMap().getInt("batchSize");
+        boolean isMD = context.getMergedJobDataMap().getBoolean("isMD");
 
         log.info("▶ [{}] triggered for meter={}, model={}, obis={}",
                 this.getClass().getSimpleName(), serial, model, profileObis);
 
         try {
-            runProfileJob(model, serial, profileObis, batchSize, context);
+            runProfileJob(model, serial, profileObis, batchSize, context, isMD);
         } catch (Exception ex) {
             log.error("❌ Error in [{}] for meter {}: {}",
                     this.getClass().getSimpleName(), serial, ex.getMessage());
@@ -35,5 +28,5 @@ public abstract class AbstractObisProfileJob extends QuartzJobBean {
     }
 
     protected abstract void runProfileJob(
-            String model, String serial, String profileObis, int batchSize, JobExecutionContext context);
+            String model, String serial, String profileObis, int batchSize, JobExecutionContext context, boolean isMD);
 }

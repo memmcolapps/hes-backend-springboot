@@ -30,8 +30,7 @@ public class ProfileChannelOneServiceExtension {
     private final ProfileStatePort statePort;
     private final ProfileMetadataProvider metadataProvider;
 
-    @Transactional
-    public void readProfileAndSave(String model, String meterSerial, String profileObis, int batchSize) {
+       public void readProfileAndSave(String model, String meterSerial, String profileObis, boolean isMD) {
         try {
             //Step 1: Get last timestamp read from the meter or default to yesterday
             ProfileTimestamp cursor = new ProfileTimestamp(
@@ -39,14 +38,18 @@ public class ProfileChannelOneServiceExtension {
             );
             //Step 2: Get profile capture period
             CapturePeriod cp = new CapturePeriod(
-                    capturePeriodPort.resolveCapturePeriodSeconds(meterSerial, profileObis)
-            );
+                    capturePeriodPort.resolveCapturePeriodSeconds(meterSerial, profileObis));
+
+            if (cp.seconds() < 900){
+                cp = new CapturePeriod(900);
+            }
 
             LocalDateTime now = LocalDateTime.now();
 
             while (cursor.value().isBefore(now)) {
                 LocalDateTime from = cursor.value();
-                LocalDateTime to = from.plusSeconds((long) batchSize * cp.seconds());
+//                LocalDateTime to = from.plusSeconds((long) batchSize * cp.seconds());
+                LocalDateTime to = from.plusDays(1);
                 if (to.isAfter(now)) to = now;
 
                 long t0 = System.currentTimeMillis();
@@ -56,7 +59,8 @@ public class ProfileChannelOneServiceExtension {
                 List<ProfileRowGeneric> rawRows;
 
                 try {
-                    rawRows = dlmsReaderUtils.readRange(model, meterSerial, profileObis, metadataResult, from, to, true);
+                    rawRows = dlmsReaderUtils.readRange(model, meterSerial, profileObis, metadataResult, from, to, isMD);
+//                    rawRows = dlmsReaderUtils.mockReadRange(model, meterSerial, profileObis, metadataResult, from, to, true);
                 } catch (Exception e) {
                     log.warn("Range read failed; attempting recovery meter={} profile={} cause={}",
                             meterSerial, profileObis, e.getMessage());

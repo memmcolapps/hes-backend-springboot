@@ -36,27 +36,41 @@ public class ProfileSyncController {
 
 
     @PostMapping("/readChannelOne/{model}/{serial}/{profileObis}/readAndSave")
-    public ResponseEntity<?> readProfile(@PathVariable String model,
+    public ResponseEntity<?> readChannelOneProfile(@PathVariable String model,
                                   @PathVariable String serial,
                                   @PathVariable String profileObis,
-                                  @RequestParam(defaultValue = "50") int batchSize) {
+                                  @RequestParam(name = "isMD", defaultValue = "false") boolean isMD) {
 
         if (Objects.equals(model, "MMX-313-CT") && Objects.equals(profileObis, "1.0.99.1.0.255")) {
-            metersLockService.readChannelOneWithLock(model, serial, profileObis, batchSize);
+            metersLockService.readChannelOneWithLock(model, serial, profileObis, isMD);
             return ResponseEntity.accepted().body("Sync started for " + serial + " profile " + profileObis);
         } else {
             return ResponseEntity.badRequest().body("Model and Profile Obis wrongly selected");
         }
      }
 
+    @PostMapping("/readChannelTwo/{model}/{serial}/{profileObis}/readAndSave")
+    public ResponseEntity<?> readChannelTwoProfile(@PathVariable String model,
+                                         @PathVariable String serial,
+                                         @PathVariable String profileObis,
+                                         @RequestParam(name = "isMD", defaultValue = "false") boolean isMD) {
+
+        if (Objects.equals(model, "MMX-313-CT") && Objects.equals(profileObis, "1.0.99.2.0.255")) {
+            metersLockService.readChannelTwoWithLock(model, serial, profileObis, isMD);
+            return ResponseEntity.accepted().body("Sync started for " + serial + " profile " + profileObis);
+        } else {
+            return ResponseEntity.badRequest().body("Model and Profile Obis wrongly selected");
+        }
+    }
+
     @PostMapping("/readMonthlyBilling/{model}/{serial}/{profileObis}/readAndSave")
     public ResponseEntity<?> readMonthlyBillWithLock(@PathVariable String model,
                                          @PathVariable String serial,
                                          @PathVariable String profileObis,
-                                         @RequestParam(defaultValue = "50") int batchSize) {
+                                                     @RequestParam(name = "isMD", defaultValue = "false") boolean isMD) {
 
         if (Objects.equals(model, "MMX-313-CT") && Objects.equals(profileObis, "0.0.98.1.0.255")) {
-            metersLockService.readMonthlyBillWithLock(model, serial, profileObis, batchSize);
+            metersLockService.readMonthlyBillWithLock(model, serial, profileObis, isMD);
             return ResponseEntity.accepted().body("Sync started for " + serial + " profile " + profileObis);
         } else {
             return ResponseEntity.badRequest().body("Model and Profile Obis wrongly selected");
@@ -67,10 +81,10 @@ public class ProfileSyncController {
     public ResponseEntity<?> readDailyBillWithLock(@PathVariable String model,
                                                      @PathVariable String serial,
                                                      @PathVariable String profileObis,
-                                                     @RequestParam(defaultValue = "50") int batchSize) {
+                                                     @RequestParam(name = "isMD", defaultValue = "false") boolean isMD) {
 
         if (Objects.equals(model, "MMX-313-CT") && Objects.equals(profileObis, "0.0.98.2.0.255")) {
-            metersLockService.readDailyBillWithLock(model, serial, profileObis, batchSize);
+            metersLockService.readDailyBillWithLock(model, serial, profileObis, isMD);
             return ResponseEntity.accepted().body("Sync started for " + serial + " profile " + profileObis);
         } else {
             return ResponseEntity.badRequest().body("Model and Profile Obis wrongly selected");
@@ -91,26 +105,21 @@ public class ProfileSyncController {
     })
     @PostMapping("/readEventsProfile/{model}/{serial}/{profileObis}/readAndSave")
     public ResponseEntity<String> readEventsWithLock(
-            @Parameter(description = "Meter model", example = "GENERIC")
+            @Parameter(description = "MetersEntity model", example = "GENERIC")
             @PathVariable String model,
 
-            @Parameter(description = "Meter serial number", example = "123456789")
+            @Parameter(description = "MetersEntity serial number", example = "123456789")
             @PathVariable String serial,
 
             @Parameter(description = "OBIS code of the event profile", example = "0.0.99.98.0.255")
             @PathVariable String profileObis,
 
-            @Parameter(description = "Optional number of rows per batch", example = "100")
-            @RequestParam(required = false, defaultValue = "1") int batchSize,
+            @Parameter(description = "Set if it MD meter or not", example = "true")
+            @RequestParam(name = "isMD", defaultValue = "false") boolean isMD) {
 
-            @Parameter(description = "Test mode flag", example = "false")
-            @RequestParam(required = false, defaultValue = "false") boolean testMode) {
-
-        metersLockService.readEventsWithLock(model, serial, profileObis, batchSize, testMode);
+        metersLockService.readEventsWithLock(model, serial, profileObis, isMD);
         return ResponseEntity.accepted()
                 .body("Sync started for meter " + serial +
-                        " profile " + profileObis +
-                        " with batchSize=" + batchSize +
-                        " testMode=" + testMode);
+                        " profile " + profileObis);
     }
 }

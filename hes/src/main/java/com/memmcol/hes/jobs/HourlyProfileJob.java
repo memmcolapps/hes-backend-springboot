@@ -1,4 +1,4 @@
-package com.memmcol.hes.job;
+package com.memmcol.hes.jobs;
 
 import com.memmcol.hes.domain.profile.MetersLockService;
 import lombok.AllArgsConstructor;
@@ -15,8 +15,8 @@ public class HourlyProfileJob  extends AbstractObisProfileJob {
     private final MetersLockService metersLockService;
 
     @Override
-    protected void runProfileJob(String model, String serial, String profileObis, int batchSize, JobExecutionContext context) {
-        metersLockService.readChannelOneWithLock(model, serial, profileObis, batchSize);
+    protected void runProfileJob(String model, String serial, String profileObis, int batchSize, JobExecutionContext context,boolean isMD) {
+        metersLockService.readChannelOneWithLock(model, serial, profileObis, isMD);
         System.out.printf("⏰ HourlyProfileJob finished for meter %s%n", serial);
     }
 }

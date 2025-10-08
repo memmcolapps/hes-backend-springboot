@@ -16,6 +16,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -46,8 +47,16 @@ public class ProfileChannelOneMapper implements GenericDtoMappers<ProfileChannel
 
         // Iterate over all OBIS values
         for (Map.Entry<String, Object> entry : raw.getValues().entrySet()) {
-            String obisCode = entry.getKey();
+            String obisWithAttr = entry.getKey();                     // e.g. 1.0.129.6.0.255-2
+            String obisCode = obisWithAttr.split("-")[0];         // e.g. 1.0.129.6.0.255
             Object rawValue = entry.getValue();
+
+            /*
+            *
+            * String obisWithAttr = entry.getKey();                     // e.g. 1.0.129.6.0.255-2
+            String baseObis     = obisWithAttr.split("-")[0];         // e.g. 1.0.129.6.0.255
+            Object rawValue     = entry.getValue();
+*/
 
             if (rawValue == null) continue;
 
@@ -79,7 +88,7 @@ public class ProfileChannelOneMapper implements GenericDtoMappers<ProfileChannel
                         tsInstant = LocalDateTime.ofInstant(raw.getTimestamp(), ZoneId.systemDefault());
                     }
                 }
-                dto.setEntryTimestamp(tsInstant);
+                dto.setEntryTimestamp(tsInstant.truncatedTo(ChronoUnit.SECONDS));
                 continue;
             }
 

@@ -141,7 +141,7 @@ public class DailyBillingProfileServiceTest {
                         true
                 ));
         // Act
-        DAILY_BILLING_OBIS.forEach(obis -> service.readProfileAndSave("MMX-313-CT", "202006001314", obis, 1));
+        DAILY_BILLING_OBIS.forEach(obis -> service.readProfileAndSave("MMX-313-CT", "202006001314", obis, true));
 
         // Assert
         verify(dlmsReaderUtils, atLeast(DAILY_BILLING_OBIS.size()))
@@ -195,7 +195,7 @@ public class DailyBillingProfileServiceTest {
 
         // Act
         for (String obis : DAILY_BILLING_OBIS) {
-            service.readProfileAndSave("MMX-313-CT", "202006001314", obis, 1);
+            service.readProfileAndSave("MMX-313-CT", "202006001314", obis, true);
         }
 
         // Assert

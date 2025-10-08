@@ -11,7 +11,7 @@ public interface ProfileTimestampPort {
      * Resolves the last timestamp for a given meter & profile OBIS.
      * Checks cache → DB → meter, and falls back to a default value if not found.
      *
-     * @param meterSerial Meter serial number.
+     * @param meterSerial MetersEntity serial number.
      * @param profileObis Profile OBIS code.
      * @return The last known timestamp (or fallback timestamp).
      */

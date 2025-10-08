@@ -47,7 +47,7 @@ public class CapturePeriodAdapter implements CapturePeriodPort {
             return db.get();
         }
 
-        // 3. Meter read
+        // 3. MetersEntity read
         String msg = String.format("Reading capture period from meter=%s obis=%s", meterSerial, profileObis);
         log.info(msg);
         logTx(meterSerial, msg);
@@ -99,14 +99,14 @@ public class CapturePeriodAdapter implements CapturePeriodPort {
             GXReplyData captureReply2 =  dlmsReaderUtils.readDataBlock(client, serial, captureRequest2[0]);
             client.updateValue(profile, 7, captureReply2.getValue());
             int bufferCount = profile.getEntriesInUse(); // entriesInUse = attribute 7
-            log.info("📦 Meter entries in use (attribute 7) = {}", bufferCount);
+            log.info("📦 MetersEntity entries in use (attribute 7) = {}", bufferCount);
 
             // 🔎 Read attribute 4: max buffer size
             byte[][] bufferSize = client.read(profile, 4);
             GXReplyData bufferSizeReply =  dlmsReaderUtils.readDataBlock(client, serial, bufferSize[0]);
             client.updateValue(profile, 4, bufferSizeReply.getValue());
             int bufferCapacity = profile.getProfileEntries();
-            log.info("🧮 Meter buffer capacity (attribute 4) = {}", bufferCapacity);
+            log.info("🧮 MetersEntity buffer capacity (attribute 4) = {}", bufferCapacity);
 
             // 🔎 Read attribute 8: capture period in seconds (optional)
             byte[][] captureSize = client.read(profile, 8);

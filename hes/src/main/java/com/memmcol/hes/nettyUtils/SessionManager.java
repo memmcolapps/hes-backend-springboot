@@ -127,7 +127,7 @@ public class SessionManager {
             inflightRequests.entrySet().removeIf(entry -> {
                 DlmsRequestContext ctx = entry.getValue();
                 if (now > ctx.getExpiryTime()) {
-                    log.warn("🧹 Cleaning up expired request: CID={}, Meter={}", entry.getKey(), ctx.getMeterId());
+                    log.warn("🧹 Cleaning up expired request: CID={}, MetersEntity={}", entry.getKey(), ctx.getMeterId());
                     TRACKER.remove(entry.getKey());
                     return true;
                 }
@@ -170,7 +170,7 @@ public class SessionManager {
         inflightRequests.entrySet().removeIf(entry -> {
             DlmsRequestContext ctx = entry.getValue();
             if (now > ctx.getExpiryTime()) {
-                log.warn("🧹 Cleaning expired TX: CID={}, Meter={}", entry.getKey(), ctx.getMeterId());
+                log.warn("🧹 Cleaning expired TX: CID={}, MetersEntity={}", entry.getKey(), ctx.getMeterId());
                 TRACKER.remove(entry.getKey());
                 return true;
             }
