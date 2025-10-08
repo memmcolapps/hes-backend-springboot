@@ -34,7 +34,7 @@ public class EventLogService {
 
     /*TODO:
     *  1. Remove @Transactional from all other profiles readProfileAndSave method*/
-    public void readProfileAndSave(String model, String meterSerial, String profileObis, int batchSize, boolean testMode) {
+    public void readProfileAndSave(String model, String meterSerial, String profileObis, boolean isMD) {
 
         try {
             //Step 1: Get last timestamp read from the meter or default to yesterday
@@ -48,16 +48,9 @@ public class EventLogService {
             *  3. Add plus(cp(1)) before the next timestamp start
             * */
             LocalDateTime now = LocalDateTime.now();
-            int iteration = 0;
             while (cursor.value().isBefore(now)) {
-
-                iteration++;
-                if (iteration > batchSize) {
-                    log.info("Skipping profile read after {} iterations for testing/debug purposes", iteration);
-                    break;
-                }
                 LocalDateTime from = cursor.value();
-                LocalDateTime to = from.plusDays(10);
+                LocalDateTime to = from.plusDays(1);
 
                 if (to.isAfter(now)) to = now;
 
@@ -68,12 +61,13 @@ public class EventLogService {
                 List<ProfileRowGeneric> rawRows;
 
                 try {
+                    rawRows = dlmsReaderUtils.readRange(model, meterSerial, profileObis, captureObjects, from, to, isMD);
 
-                    if (testMode) {
-                        rawRows = dlmsReaderUtils.mockReadRange(model, meterSerial, profileObis, captureObjects, from, to, true);
-                    } else {
-                        rawRows = dlmsReaderUtils.readRange(model, meterSerial, profileObis, captureObjects, from, to, true);
-                    }
+//                    if (testMode) {
+//                        rawRows = dlmsReaderUtils.mockReadRange(model, meterSerial, profileObis, captureObjects, from, to, true);
+//                    } else {
+//                        rawRows = dlmsReaderUtils.readRange(model, meterSerial, profileObis, captureObjects, from, to, isMD);
+//                    }
                 } catch (Exception e) {
                     log.warn("Range read failed; attempting recovery meter={} profile={} cause={}",
                             meterSerial, profileObis, e.getMessage());
@@ -92,7 +86,7 @@ public class EventLogService {
                 if (rawRows == null || rawRows.isEmpty()) {
                     log.info("No rows, no exception — advancing cursor, meter={} profile={}", meterSerial, profileObis);
                     cursor = new ProfileTimestamp(to);
-                    statePort.upsertState(meterSerial, profileObis, new ProfileTimestamp(to), new CapturePeriod(1));
+                    statePort.upsertState(meterSerial, profileObis, new ProfileTimestamp(to), new CapturePeriod(10));
                     continue;
                 }
 
@@ -106,7 +100,8 @@ public class EventLogService {
                 metricsPort.recordBatch(meterSerial, profileObis, syncResult.getInsertedCount(), t1);
 
                 // Persist new cursor (Next iteration)
-                cursor = ProfileTimestamp.ofNullable(syncResult.getAdvanceTo()).plus(new CapturePeriod(1));
+                cursor = ProfileTimestamp.ofNullable(syncResult.getAdvanceTo().plusSeconds(10));
+
             }
 
         } catch (Exception ex) {

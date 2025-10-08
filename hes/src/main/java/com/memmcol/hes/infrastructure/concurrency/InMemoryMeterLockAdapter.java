@@ -11,7 +11,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
- * 4.4 Meter Lock Registry Adapter
+ * 4.4 MetersEntity Lock Registry Adapter
  */
 @Component
 @Slf4j

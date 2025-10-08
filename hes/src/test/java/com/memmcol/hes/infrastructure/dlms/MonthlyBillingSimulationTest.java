@@ -18,7 +18,7 @@ public class MonthlyBillingSimulationTest {
     @Test
     void simulateMonthlyBillingRead_multipleRows() throws Exception {
         // Run one full polling pass
-        metersLockService.readMonthlyBillWithLock("MMX-313-CT","202006001314","0.0.98.1.0.255", 50);
+        metersLockService.readMonthlyBillWithLock("MMX-313-CT","202006001314","0.0.98.1.0.255", true);
 
         // Print all decoded rows
         System.out.println("Decoded rows used for simulation:");

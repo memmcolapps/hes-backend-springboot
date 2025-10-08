@@ -35,7 +35,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-@Tag(name = "DLMS APIs", description = "Meter reading & profile APIs")
+@Tag(name = "DLMS APIs", description = "MetersEntity reading & profile APIs")
 @RestController
 @Slf4j
 @RequestMapping("/api/dlms")
@@ -119,7 +119,7 @@ public class DlmsController {
     @GetMapping("/readscaler/{serial}/{obis}")
     public ResponseEntity<?> readScaler(@PathVariable String serial, @PathVariable String obis) {
         try {
-            /* ⚙️ 1. Load (Cache ➜ DB ➜ Meter) */
+            /* ⚙️ 1. Load (Cache ➜ DB ➜ MetersEntity) */
             List data = profileMetadataService.getOrLoadMetadata("MMX-313-CT", obis, serial);
 
             /* ✅ 2. Success payload */

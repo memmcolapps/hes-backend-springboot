@@ -13,6 +13,7 @@ import jakarta.persistence.TypedQuery;
 import lombok.extern.slf4j.Slf4j;
 import org.hibernate.Session;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.sql.Statement;
@@ -57,12 +58,7 @@ public class ProfileChannelOnePersistAdapter {
         return query.getResultList();
     }
 
-    @Transactional
-    public void save(ProfileChannelOneDTO dto) {
-        ProfileChannelOne entity = ProfileChannelOneToEntity.toEntity(dto);
-        entityManager.unwrap(org.hibernate.Session.class).persist(entity);
-    }
-
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public ProfileSyncResult saveBatchAndAdvanceCursor(String meterSerial,
                                                        String profileOBIS,
                                                        List<ProfileChannelOneDTO> readings,
@@ -139,61 +135,6 @@ public class ProfileChannelOnePersistAdapter {
         return filteredRows;
     }
 
-    /**
-     * Persist readings to DB
-     * return int
-     */
-    public int persistReadings(List<ProfileChannelOneDTO> filteredRows) {
-        Session session = entityManager.unwrap(Session.class);
-        final AtomicInteger saved = new AtomicInteger();
-
-        filteredRows.forEach(dto -> {
-            session.persist(ProfileChannelOneToEntity.toEntity(dto));
-            if (saved.incrementAndGet() % FLUSH_BATCH == 0) {
-                session.flush();
-                session.clear();
-            }
-        });
-        session.flush();
-        session.clear();
-
-        log.info("💾 Saved {} readings to DB.", saved.get());
-        return saved.get();
-    }
-
-    public int persistAndMergeReadings(List<ProfileChannelOneDTO> filteredRows) {
-        Session session = entityManager.unwrap(Session.class);
-        final AtomicInteger saved = new AtomicInteger();
-
-        filteredRows.forEach(dto -> {
-            ProfileChannelOne entity = ProfileChannelOneToEntity.toEntity(dto);
-
-            // Check if record exists
-            ProfileChannelOneId id = new ProfileChannelOneId(
-                    entity.getMeterSerial(),
-                    entity.getEntryTimestamp()
-            );
-
-            ProfileChannelOne existing = session.get(ProfileChannelOne.class, id);
-
-            if (existing == null) {
-                session.persist(entity); // Insert new
-            } else {
-                session.merge(entity);   // Update existing
-            }
-
-            if (saved.incrementAndGet() % FLUSH_BATCH == 0) {
-                session.flush();
-                session.clear();
-            }
-        });
-
-        session.flush();
-        session.clear();
-
-        log.info("💾 Saved {} readings to DB.", saved.get());
-        return saved.get();
-    }
 
     /**
      * 2️⃣ Rewrite persistReadings with partition pre-creation

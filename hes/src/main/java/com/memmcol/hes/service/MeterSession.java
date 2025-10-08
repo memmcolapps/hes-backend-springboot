@@ -59,7 +59,7 @@ public class MeterSession {
         try {
             byte[] disconnect = client.disconnectRequest();
             byte[] response = txRxService.sendReceiveWithContext(meterSerial, disconnect, 20000);
-            log.info("Meter disconnected successfully.");
+            log.info("MetersEntity disconnected successfully.");
         } catch (Exception e) {
             log.warn("⚠️ Failed to send disconnect for {}: {}", meterSerial, e.getMessage());
         }

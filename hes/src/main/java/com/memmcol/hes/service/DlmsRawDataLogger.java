@@ -20,7 +20,7 @@ public class DlmsRawDataLogger {
 
     /**
      * Save raw profile rows to JSON file per meter and timestamp.
-     * @param serial Meter serial number
+     * @param serial MetersEntity serial number
      * @param rows List of raw ProfileRowDTO
      * @param timestamp Base timestamp for the batch
      */

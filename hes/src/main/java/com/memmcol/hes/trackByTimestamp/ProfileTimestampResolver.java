@@ -26,7 +26,7 @@ public class ProfileTimestampResolver {
             return ts;
         }
 
-        // 3. Meter (bootstrap)
+        // 3. MetersEntity (bootstrap)
         return readAdapter.bootstrapFromMeter(serial, profileObis, model);
     }
 

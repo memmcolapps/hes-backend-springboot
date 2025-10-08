@@ -118,9 +118,9 @@ public class DailyBillingMapper implements GenericDtoMappers<DailyBillingProfile
             case "t3_active_energy" -> dto.setT3ActiveEnergy(value.doubleValue());
             case "t4_active_energy" -> dto.setT4ActiveEnergy(value.doubleValue());
             case "total_apparent_energy" -> dto.setTotalApparentEnergy(value.doubleValue());
-            case "t1_total_apparent_energy" -> dto.setT1TotalApparentEnergy(value.doubleValue());
-            case "t3_total_apparent_energy" -> dto.setT3TotalApparentEnergy(value.doubleValue());
-            case "t4_total_apparent_energy" -> dto.setT4TotalApparentEnergy(value.doubleValue());
+            case "t1_apparent_energy" -> dto.setT1TotalApparentEnergy(value.doubleValue());
+            case "t3_apparent_energy" -> dto.setT3TotalApparentEnergy(value.doubleValue());
+            case "t4_apparent_energy" -> dto.setT4TotalApparentEnergy(value.doubleValue());
             default -> log.warn("Unknown column mapping: {}", columnName);
         }
     }

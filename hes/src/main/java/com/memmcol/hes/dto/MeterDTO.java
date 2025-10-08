@@ -10,12 +10,14 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 @Builder
 public class MeterDTO {
-
     private String meterNumber;
     private String meterModel;
-    private String meterCategory;
     private String meterClass;
-    private String meterType;
-    private Boolean status;
+    private boolean MD;
     private LocalDateTime createdAt;
+
+        // Optional: convenience method
+    public void determineMD() {
+        this.MD = "MD".equalsIgnoreCase(this.meterClass);
+    }
 }
