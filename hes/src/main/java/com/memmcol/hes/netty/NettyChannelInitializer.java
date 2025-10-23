@@ -1,5 +1,7 @@
 package com.memmcol.hes.netty;
 
+import com.memmcol.hes.infrastructure.dlms.DlmsReaderUtils;
+import com.memmcol.hes.nettyUtils.MeterHeartbeatManager;
 import com.memmcol.hes.service.DlmsService;
 import com.memmcol.hes.service.MeterStatusService;
 import io.netty.channel.ChannelInitializer;
@@ -8,20 +10,31 @@ import io.netty.channel.socket.SocketChannel;
 import io.netty.handler.timeout.IdleStateHandler;
 import io.netty.handler.timeout.ReadTimeoutHandler;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 @Component
 public class NettyChannelInitializer extends ChannelInitializer<SocketChannel> {
 
     private final MeterStatusService meterStatusService;
-    private final DlmsService dlmsService;
+    private final DlmsReaderUtils dlmsReaderUtils;
+    private final MeterHeartbeatManager heartbeatManager;
+    private final ScheduledExecutorService dlmsScheduledExecutor;
 
     @Autowired
-    public NettyChannelInitializer(MeterStatusService meterStatusService, DlmsService dlmsService) {
+    public NettyChannelInitializer(MeterStatusService meterStatusService,
+                                   DlmsReaderUtils dlmsReaderUtils,
+                                   MeterHeartbeatManager heartbeatManager,
+                                   @Qualifier("dlmsScheduledExecutor") ScheduledExecutorService dlmsScheduledExecutor
+    ) {
         this.meterStatusService = meterStatusService;
-        this.dlmsService = dlmsService;
+        this.dlmsReaderUtils = dlmsReaderUtils;
+        this.heartbeatManager = heartbeatManager;
+        this.dlmsScheduledExecutor = dlmsScheduledExecutor;
     }
 
     @Override
@@ -36,7 +49,7 @@ public class NettyChannelInitializer extends ChannelInitializer<SocketChannel> {
         pipeline.addLast("dlmsEncoder", new DLMSFrameEncoder());
 
         // Business logic
-        pipeline.addLast("dlmsHandler", new DLMSMeterHandler(meterStatusService, dlmsService));
+        pipeline.addLast("dlmsHandler", new DLMSMeterHandler(meterStatusService, dlmsReaderUtils, heartbeatManager, dlmsScheduledExecutor));
     }
 
 }

@@ -166,6 +166,7 @@ public class DlmsService {
             throw new IllegalArgumentException("❌ Unexpected clock result type: " + result.getClass());
         }
 
+        //   Send this to close the association cleanly.
         //6. Generate Disconnect Frame
         byte[] disconnectFrame = dlmsClient.disconnectRequest();
         if (disconnectFrame != null && disconnectFrame.length > 0) {
@@ -182,8 +183,6 @@ public class DlmsService {
             log.warn("⚠️ Disconnect frame was empty or null — not sent.");
         }
 
-//        Send this to close the association cleanly.
-
         // Convert to LocalDateTime
         LocalDateTime localDateTime = clockDateTime.getMeterCalendar().toInstant()
                 .atZone(ZoneId.systemDefault())
@@ -192,9 +191,9 @@ public class DlmsService {
         // Format to "YYYY-MM-DD HH:MM:SS"
         strclock = localDateTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
 
-        strclock = "🕒 MetersEntity Clock for " + serial + ": " + strclock;
+        strclock = "🕒 Meter Clock for " + serial + ": " + strclock;
 
-        log.info("🕒 MetersEntity Clock: {}", strclock);
+        log.info("🕒 Meters Clock: {}", strclock);
 
         return strclock;
     }
@@ -464,6 +463,7 @@ public class DlmsService {
         }
     }
 
+    //Read capture column
     public List<String> getProfileCaptureColumns(GXDLMSClient client, String serial, String obisCode) {
         List<String> columns = new ArrayList<>();
 
@@ -589,6 +589,7 @@ public class DlmsService {
         return readProfileData(client, meterSerial, obisCode, entryCount);
     }
 
+    //Pointer to readimg profile data
     public List<ProfileRowDTO> readProfileData(GXDLMSClient client, String meterSerial, String obisCode, int entryCount) throws Exception {
         GXDLMSProfileGeneric profile = new GXDLMSProfileGeneric();
         profile.setLogicalName(obisCode); // e.g., 1.0.99.2.0.255
@@ -606,7 +607,7 @@ public class DlmsService {
         int totalEntries = profile.getEntriesInUse();
         int startIndex = Math.max(1, totalEntries - entryCount + 1);
 
-        log.info("MetersEntity {} - Reading from entry {} to {}", meterSerial, startIndex, totalEntries);
+        log.info("Meters {} - Reading from entry {} to {}", meterSerial, startIndex, totalEntries);
 
         // Step 3: Read profile buffer using readRowsByEntry
         byte[][] readRequest = client.readRowsByEntry(profile, startIndex, entryCount);
@@ -959,6 +960,7 @@ public class DlmsService {
         return entities.size(); // return number of saved records
     }
 
+    //Next profile by date range (Using Gurux)
     public int readProfileChannel2ByTimestampDatablock(String serial, String model, LocalDateTime endDate) throws Exception {
         String profileObis = "1.0.99.2.0.255";
 
@@ -1336,9 +1338,7 @@ public class DlmsService {
     }
 
 //    ✅ Step 1: Loader Method – Read Attribute 3 + Save Metadata
-//
 //    Create this method in a service (e.g. ProfileCaptureLoaderService) to be passed into the getMetadata(...) call.
-
     public List<ModelProfileMetadata> readAttribute3FromMeterAndConvertToEntity(
             String meterModel,    //Temporary replaced with meter serial number. The meter model will be added later,
             String profileObis
