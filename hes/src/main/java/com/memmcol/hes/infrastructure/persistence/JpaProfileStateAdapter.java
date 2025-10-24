@@ -7,6 +7,9 @@ import com.memmcol.hes.domain.profile.ProfileTimestamp;
 import com.memmcol.hes.trackByTimestamp.MeterProfileState;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,9 +22,14 @@ import java.util.Objects;
 
 @Component
 @RequiredArgsConstructor
+@Slf4j
 public class JpaProfileStateAdapter implements ProfileStatePort {
 
     private final EntityManager em;
+    private final CacheManager cacheManager;  // ✅ Inject cache manager
+
+    private static final String CACHE_NAME = "lastProfileTimestamp";
+    private static final String CACHE_PREFIX = "lastTs::";
 
     @Override
     public ProfileState loadState(String meterSerial, String profileObis) {
@@ -81,6 +89,18 @@ public class JpaProfileStateAdapter implements ProfileStatePort {
             em.persist(e);
         } else {
             em.merge(e);
+        }
+
+        // ✅ Immediately refresh cache after DB upsert
+        if (lastTs != null) {
+            String cacheKey = CACHE_PREFIX + meterSerial + "::" + profileObis;
+            Cache cache = cacheManager.getCache(CACHE_NAME);
+            if (cache != null) {
+                cache.put(cacheKey, lastTs.value());
+                log.debug("Cache refreshed for meter={} obis={} ts={}", meterSerial, profileObis, lastTs.value());
+            } else {
+                log.warn("Cache '{}' not found — cannot refresh for meter={} obis={}", CACHE_NAME, meterSerial, profileObis);
+            }
         }
     }
 }
