@@ -4,7 +4,7 @@ import com.memmcol.hes.application.port.out.TxRxService;
 import com.memmcol.hes.domain.profile.MeterRatios;
 import com.memmcol.hes.infrastructure.dlms.DlmsReaderUtils;
 import com.memmcol.hes.nettyUtils.SessionManagerMultiVendor;
-import com.memmcol.hes.service.AssociationLostException;
+import com.memmcol.hes.exception.AssociationLostException;
 import com.memmcol.hes.service.MeterRatioService;
 import gurux.dlms.GXByteBuffer;
 import gurux.dlms.GXDLMSClient;

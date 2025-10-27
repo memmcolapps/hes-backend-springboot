@@ -2,6 +2,7 @@ package com.memmcol.hes.service;
 
 import com.memmcol.hes.domain.profile.ObisMappingService;
 import com.memmcol.hes.domain.profile.ObisObjectType;
+import com.memmcol.hes.exception.AssociationLostException;
 import com.memmcol.hes.infrastructure.dlms.DlmsReaderUtils;
 import com.memmcol.hes.model.ModelProfileMetadata;
 import com.memmcol.hes.nettyUtils.SessionManager;

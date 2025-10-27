@@ -137,6 +137,8 @@ Read and store the last 2 hours of load profile data, returning it as a JSON res
 * Power Grid Event Logs - 0.0.99.98.4.255 - Grid-related events'
 * Fraud Event Logs - 0.0.99.98.1.255 - Tamper/fraud events'
 * Control Event Logs - 0.0.99.98.2.255 - Control/operation events'
+* Recharge token event: 0000636203FF - 0.0.63.62.3.255
+* Management token event: 0000636205FF - 0.0.63.62.5.255
 
 #### API Endpoint
 

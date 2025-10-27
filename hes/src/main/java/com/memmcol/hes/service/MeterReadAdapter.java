@@ -1,5 +1,6 @@
 package com.memmcol.hes.service;
 
+import com.memmcol.hes.exception.AssociationLostException;
 import com.memmcol.hes.model.ModelProfileMetadata;
 import com.memmcol.hes.model.ProfileMetadataDTO;
 import com.memmcol.hes.model.ProfileRowDTO;

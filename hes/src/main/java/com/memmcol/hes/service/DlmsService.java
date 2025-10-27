@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.memmcol.hes.domain.limiters.LimiterHelper;
+import com.memmcol.hes.exception.AssociationLostException;
 import com.memmcol.hes.model.*;
 import com.memmcol.hes.nettyUtils.RequestResponseService;
 import com.memmcol.hes.nettyUtils.SessionManager;
