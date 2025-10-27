@@ -1,109 +1,278 @@
-# ⚙️ HES Backend Training Branch
+POST http://localhost:9061/api/training/obis/profile
 
-**Branch:** `training-hes-backend`  
-**Purpose:** Practical training for Segun and Musa on Instantaneous & Profile readings, including JSON response handling, caching, and data persistence.
-
----
-
-## 🧭 1. Overview
-
-This training branch is a simplified environment derived from the `development-Muda` branch.  
-It focuses on:
-- Understanding how the Head End System (HES) communicates with meters.  
-- Reading and storing meter data (Instantaneous, Profile).  
-- Applying bulk data handling and caching principles.  
-
----
-
-## 🧰 2. Environment Setup
-
-### Prerequisites
-- **Java 21+**
-- **Maven 3.9+**
-- **PostgreSQL 17+**
-- **IntelliJ IDEA** (recommended)
-- **Flyway** for database migrations
-- **Git access** to MEMMCOL repo
-
-### Setup Steps
-1. Clone this branch:
-   ```bash
-   git clone -b training-hes-backend https://github.com/memmcol/HES-Backend.git
-
-2.	Configure application properties:
-
-  	    •	application-dev.properties
-
-4.	Start the app:
-   
-        •	mvn spring-boot:run
-
-6.	Verify running instance:
-Visit http://localhost:9061/api/v1/hes/health
-
-⸻
-
-## ⚡ 3. Task A – Instantaneous Reading
-
-### Objective
-
-Learn how to query instantaneous meter readings and return results in JSON format.
-
-#### Key Files
-	•	InstantaneousReadingService.java
-	•	InstantaneousReadingController.java
-	•	MeterConnectionUtil.java
-
-#### API Endpoint
-
-GET /api/v1/meters/{meterNumber}/instantaneous
-
-Example Response
+HTTP/1.1 200 
+X-Content-Type-Options: nosniff
+X-XSS-Protection: 0
+Cache-Control: no-cache, no-store, max-age=0, must-revalidate
+Pragma: no-cache
+Expires: 0
+X-Frame-Options: DENY
+Content-Type: application/json
+Content-Length: 7211
+Date: Thu, 23 Oct 2025 14:35:18 GMT
 
 {
-  "meterNumber": "202006001314",
-  "timestamp": "2025-10-06T12:45:00",
-  "voltage": 230.1,
-  "current": 4.32,
-  "power": 0.99,
-  "status": "OK"
-}
-
-Notes
-	•	Use DTOs for clean data mapping.
-	•	Cache responses for 2–5 minutes using Spring Cache.
-	•	Test with both live and mock meter connections.
-
-⸻
-
-## 📊 4. Task B – Profile Reading
-
-### Objective
-
-Read and store the last 2 hours of load profile data, returning it as a JSON response.
-
-#### Key Files
-	•	ProfileReadingService.java
-	•	ProfileReadingController.java
-	•	ProfileChannel2ReadingDTO.java
-
-#### API Endpoint
-
-GET /api/v1/meters/{meterNumber}/profile?hours=2
-
-Example Response
-
-{
-  "meterNumber": "202006001314",
-  "profiles": [
-    { "timestamp": "2025-10-06T11:00:00", "activeEnergy": 1.24, "reactiveEnergy": 0.31 },
-    { "timestamp": "2025-10-06T12:00:00", "activeEnergy": 1.30, "reactiveEnergy": 0.29 }
+  "captured size": 10,
+  "capturedObjects": [
+    {
+      "meterSerial": "202006001314",
+      "meterModel": "MMX-313-CT",
+      "profileObis": "1.0.99.1.0.255",
+      "captureObis": "0.0.1.0.0.255",
+      "classId": 8,
+      "attributeIndex": 2,
+      "scaler": 1.0,
+      "unit": ""
+    },
+    {
+      "meterSerial": "202006001314",
+      "meterModel": "MMX-313-CT",
+      "profileObis": "1.0.99.1.0.255",
+      "captureObis": "0.0.96.10.1.255",
+      "classId": 1,
+      "attributeIndex": 2,
+      "scaler": 1.0,
+      "unit": ""
+    },
+    {
+      "meterSerial": "202006001314",
+      "meterModel": "MMX-313-CT",
+      "profileObis": "1.0.99.1.0.255",
+      "captureObis": "1.0.15.7.0.255",
+      "classId": 3,
+      "attributeIndex": 2,
+      "scaler": 1.0,
+      "unit": "KW"
+    },
+    {
+      "meterSerial": "202006001314",
+      "meterModel": "MMX-313-CT",
+      "profileObis": "1.0.99.1.0.255",
+      "captureObis": "1.0.129.7.0.255",
+      "classId": 3,
+      "attributeIndex": 2,
+      "scaler": 1.0,
+      "unit": "KVA"
+    },
+    {
+      "meterSerial": "202006001314",
+      "meterModel": "MMX-313-CT",
+      "profileObis": "1.0.99.1.0.255",
+      "captureObis": "1.0.31.7.124.255",
+      "classId": 3,
+      "attributeIndex": 2,
+      "scaler": 0.01,
+      "unit": "PERCENTAGE"
+    },
+    {
+      "meterSerial": "202006001314",
+      "meterModel": "MMX-313-CT",
+      "profileObis": "1.0.99.1.0.255",
+      "captureObis": "1.0.51.7.124.255",
+      "classId": 3,
+      "attributeIndex": 2,
+      "scaler": 0.01,
+      "unit": "PERCENTAGE"
+    },
+    {
+      "meterSerial": "202006001314",
+      "meterModel": "MMX-313-CT",
+      "profileObis": "1.0.99.1.0.255",
+      "captureObis": "1.0.71.7.124.255",
+      "classId": 3,
+      "attributeIndex": 2,
+      "scaler": 0.01,
+      "unit": "PERCENTAGE"
+    },
+    {
+      "meterSerial": "202006001314",
+      "meterModel": "MMX-313-CT",
+      "profileObis": "1.0.99.1.0.255",
+      "captureObis": "1.0.32.7.124.255",
+      "classId": 3,
+      "attributeIndex": 2,
+      "scaler": 0.01,
+      "unit": "PERCENTAGE"
+    },
+    {
+      "meterSerial": "202006001314",
+      "meterModel": "MMX-313-CT",
+      "profileObis": "1.0.99.1.0.255",
+      "captureObis": "1.0.52.7.124.255",
+      "classId": 3,
+      "attributeIndex": 2,
+      "scaler": 0.01,
+      "unit": "PERCENTAGE"
+    },
+    {
+      "meterSerial": "202006001314",
+      "meterModel": "MMX-313-CT",
+      "profileObis": "1.0.99.1.0.255",
+      "captureObis": "1.0.72.7.124.255",
+      "classId": 3,
+      "attributeIndex": 2,
+      "scaler": 0.01,
+      "unit": "PERCENTAGE"
+    }
+  ],
+  "Readings size": 9,
+  "readings": [
+    {
+      "timestamp": "2025-10-23T14:35:18Z",
+      "meterSerial": "202006001314",
+      "profileObis": "1.0.99.1.0.255",
+      "values": {
+        "timestamp": "2025-10-23T13:00:00",
+        "0.0.96.10.1.255-2": 0.0,
+        "1.0.15.7.0.255-2": 414.88,
+        "1.0.129.7.0.255-2": 415.04,
+        "1.0.31.7.124.255-2": 0.0,
+        "1.0.51.7.124.255-2": 0.0,
+        "1.0.71.7.124.255-2": 0.0,
+        "1.0.32.7.124.255-2": 0.0,
+        "1.0.52.7.124.255-2": 0.0,
+        "1.0.72.7.124.255-2": 0.0
+      }
+    },
+    {
+      "timestamp": "2025-10-23T14:35:18Z",
+      "meterSerial": "202006001314",
+      "profileObis": "1.0.99.1.0.255",
+      "values": {
+        "timestamp": "2025-10-23T13:15:00",
+        "0.0.96.10.1.255-2": 0.0,
+        "1.0.15.7.0.255-2": 411.76,
+        "1.0.129.7.0.255-2": 411.84,
+        "1.0.31.7.124.255-2": 0.0,
+        "1.0.51.7.124.255-2": 0.0,
+        "1.0.71.7.124.255-2": 0.0,
+        "1.0.32.7.124.255-2": 0.0,
+        "1.0.52.7.124.255-2": 0.0,
+        "1.0.72.7.124.255-2": 0.0
+      }
+    },
+    {
+      "timestamp": "2025-10-23T14:35:18Z",
+      "meterSerial": "202006001314",
+      "profileObis": "1.0.99.1.0.255",
+      "values": {
+        "timestamp": "2025-10-23T13:30:00",
+        "0.0.96.10.1.255-2": 0.0,
+        "1.0.15.7.0.255-2": 415.68,
+        "1.0.129.7.0.255-2": 415.76,
+        "1.0.31.7.124.255-2": 0.0,
+        "1.0.51.7.124.255-2": 0.0,
+        "1.0.71.7.124.255-2": 0.0,
+        "1.0.32.7.124.255-2": 0.0,
+        "1.0.52.7.124.255-2": 0.0,
+        "1.0.72.7.124.255-2": 0.0
+      }
+    },
+    {
+      "timestamp": "2025-10-23T14:35:18Z",
+      "meterSerial": "202006001314",
+      "profileObis": "1.0.99.1.0.255",
+      "values": {
+        "timestamp": "2025-10-23T13:45:00",
+        "0.0.96.10.1.255-2": 0.0,
+        "1.0.15.7.0.255-2": 411.60,
+        "1.0.129.7.0.255-2": 411.76,
+        "1.0.31.7.124.255-2": 0.0,
+        "1.0.51.7.124.255-2": 0.0,
+        "1.0.71.7.124.255-2": 0.0,
+        "1.0.32.7.124.255-2": 0.0,
+        "1.0.52.7.124.255-2": 0.0,
+        "1.0.72.7.124.255-2": 0.0
+      }
+    },
+    {
+      "timestamp": "2025-10-23T14:35:18Z",
+      "meterSerial": "202006001314",
+      "profileObis": "1.0.99.1.0.255",
+      "values": {
+        "timestamp": "2025-10-23T14:00:00",
+        "0.0.96.10.1.255-2": 0.0,
+        "1.0.15.7.0.255-2": 415.84,
+        "1.0.129.7.0.255-2": 415.92,
+        "1.0.31.7.124.255-2": 0.0,
+        "1.0.51.7.124.255-2": 0.0,
+        "1.0.71.7.124.255-2": 0.0,
+        "1.0.32.7.124.255-2": 0.0,
+        "1.0.52.7.124.255-2": 0.0,
+        "1.0.72.7.124.255-2": 0.0
+      }
+    },
+    {
+      "timestamp": "2025-10-23T14:35:18Z",
+      "meterSerial": "202006001314",
+      "profileObis": "1.0.99.1.0.255",
+      "values": {
+        "timestamp": "2025-10-23T14:15:00",
+        "0.0.96.10.1.255-2": 0.0,
+        "1.0.15.7.0.255-2": 412.80,
+        "1.0.129.7.0.255-2": 412.88,
+        "1.0.31.7.124.255-2": 0.0,
+        "1.0.51.7.124.255-2": 0.0,
+        "1.0.71.7.124.255-2": 0.0,
+        "1.0.32.7.124.255-2": 0.0,
+        "1.0.52.7.124.255-2": 0.0,
+        "1.0.72.7.124.255-2": 0.0
+      }
+    },
+    {
+      "timestamp": "2025-10-23T14:35:18Z",
+      "meterSerial": "202006001314",
+      "profileObis": "1.0.99.1.0.255",
+      "values": {
+        "timestamp": "2025-10-23T14:30:00",
+        "0.0.96.10.1.255-2": 0.0,
+        "1.0.15.7.0.255-2": 408.24,
+        "1.0.129.7.0.255-2": 408.24,
+        "1.0.31.7.124.255-2": 0.0,
+        "1.0.51.7.124.255-2": 0.0,
+        "1.0.71.7.124.255-2": 0.0,
+        "1.0.32.7.124.255-2": 0.0,
+        "1.0.52.7.124.255-2": 0.0,
+        "1.0.72.7.124.255-2": 0.0
+      }
+    },
+    {
+      "timestamp": "2025-10-23T14:35:18Z",
+      "meterSerial": "202006001314",
+      "profileObis": "1.0.99.1.0.255",
+      "values": {
+        "timestamp": "2025-10-23T14:45:00",
+        "0.0.96.10.1.255-2": 0.0,
+        "1.0.15.7.0.255-2": 409.44,
+        "1.0.129.7.0.255-2": 409.60,
+        "1.0.31.7.124.255-2": 0.0,
+        "1.0.51.7.124.255-2": 0.0,
+        "1.0.71.7.124.255-2": 0.0,
+        "1.0.32.7.124.255-2": 0.0,
+        "1.0.52.7.124.255-2": 0.0,
+        "1.0.72.7.124.255-2": 0.0
+      }
+    },
+    {
+      "timestamp": "2025-10-23T14:35:18Z",
+      "meterSerial": "202006001314",
+      "profileObis": "1.0.99.1.0.255",
+      "values": {
+        "timestamp": "2025-10-23T15:00:00",
+        "0.0.96.10.1.255-2": 0.0,
+        "1.0.15.7.0.255-2": 405.84,
+        "1.0.129.7.0.255-2": 405.84,
+        "1.0.31.7.124.255-2": 0.0,
+        "1.0.51.7.124.255-2": 0.0,
+        "1.0.71.7.124.255-2": 0.0,
+        "1.0.32.7.124.255-2": 0.0,
+        "1.0.52.7.124.255-2": 0.0,
+        "1.0.72.7.124.255-2": 0.0
+      }
+    }
   ]
 }
+Response file saved.
+> 2025-10-23T153518.200.json
 
-Notes
-	•	Read from meter → validate timestamp → save to DB.
-	•	Use repository saveAll() for bulk insert.
-	•	Confirm data integrity with SQL check:
-
-SELECT COUNT(*) FROM meter_profiles WHERE meter_number = '202006001314';
+Response code: 200; Time: 35056ms (35 s 56 ms); Content length: 7211 bytes (7.21 kB)
