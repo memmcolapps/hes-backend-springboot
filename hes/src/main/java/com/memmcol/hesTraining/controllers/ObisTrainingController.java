@@ -1,10 +1,5 @@
 package com.memmcol.hesTraining.controllers;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import com.memmcol.hes.exception.DlmsDataAccessException;
 import com.memmcol.hesTraining.dto.ProfileRequest;
 import com.memmcol.hesTraining.services.MeterReadingService;
 import com.memmcol.hesTraining.services.ProfileReadingServices;
@@ -39,7 +34,7 @@ public class ObisTrainingController {
     @Operation(
             summary = "Read DLMS meter clock",
             description = """
-                    Establishes association, reads meter clock (OBIS 0.0.1.0.0.255), 
+                    Establishes association, reads meter clock (OBIS 0.0.1.0.0.255),
                     parses the DLMS response, and returns the local date-time.
                     """,
             responses = {
@@ -106,6 +101,7 @@ public class ObisTrainingController {
     }
 
 
+    //Read profile data for both MD and non-MD
    @PostMapping("/profile")
     public ResponseEntity<String> getProfileData(@RequestBody ProfileRequest request) throws Exception {
 
