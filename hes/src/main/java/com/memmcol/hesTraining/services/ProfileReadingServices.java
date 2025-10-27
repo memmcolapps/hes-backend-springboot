@@ -8,17 +8,20 @@ import com.memmcol.hes.domain.profile.MeterRatios;
 import com.memmcol.hes.domain.profile.ProfileRowGeneric;
 import com.memmcol.hes.infrastructure.dlms.DlmsReaderUtils;
 import com.memmcol.hes.infrastructure.dlms.DlmsTimestampDecoder;
+import com.memmcol.hes.nettyUtils.DlmsErrorUtils;
 import com.memmcol.hes.nettyUtils.SessionManagerMultiVendor;
 import com.memmcol.hes.service.MeterRatioService;
 import com.memmcol.hesTraining.dto.CaptureObjectsDTO;
 import gurux.dlms.GXDLMSClient;
+import gurux.dlms.GXDLMSExceptionResponse;
 import gurux.dlms.GXDateTime;
+import gurux.dlms.GXReplyData;
 import gurux.dlms.enums.ObjectType;
-import gurux.dlms.enums.Unit;
 import gurux.dlms.objects.*;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import com.memmcol.hes.exception.DlmsDataAccessException;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -46,10 +49,36 @@ public class ProfileReadingServices {
     /**
      * Profile reading for NON-MD meters (no CT/PT ratio)
      */
-    public String readProfile_NonMD(String meterSerial, String meterModel, String profileObis,
+//    public String readProfile_NonMD(String meterSerial, String meterModel, String profileObis,
+//                                    LocalDateTime startDate,
+//                                    LocalDateTime endDate) throws Exception {
+//        return readProfileGeneric(meterSerial, meterModel, profileObis, false, startDate, endDate);
+//    }
+
+    public String readProfile_NonMD(String meterId, String meterModel, String profileObis,
                                     LocalDateTime startDate,
                                     LocalDateTime endDate) throws Exception {
-        return readProfileGeneric(meterSerial, meterModel, profileObis, false, startDate, endDate);
+        try {
+            return readProfileGeneric(meterId, meterModel, profileObis, false, startDate, endDate);
+        } catch (DlmsDataAccessException e) {
+            // ⚠️ Handle DLMS-specific exception gracefully
+            log.error("DLMS data access error for meter {}: {}", meterId, e.getMessage());
+            return toJSON(Map.of(
+                    "status", "error",
+                    "meterId", meterId,
+                    "obis", profileObis,
+                    "message", e.getMessage()
+            ));
+        } catch (Exception e) {
+            // ⚠️ Catch all other runtime exceptions
+            log.error("Unexpected error reading profile for meter {}: {}", meterId, e.getMessage(), e);
+            return toJSON(Map.of(
+                    "status", "error",
+                    "meterId", meterId,
+                    "obis", profileObis,
+                    "message", "Unexpected error: " + e.getMessage()
+            ));
+        }
     }
 
     /**
@@ -58,7 +87,27 @@ public class ProfileReadingServices {
     public String readProfile_MD(String meterSerial, String meterModel, String profileObis,
                                  LocalDateTime startDate,
                                  LocalDateTime endDate) throws Exception {
+        try{
         return readProfileGeneric(meterSerial, meterModel, profileObis, true, startDate, endDate);
+        } catch (DlmsDataAccessException e) {
+            // ⚠️ Handle DLMS-specific exception gracefully
+            log.error("DLMS data access error for meter {}: {}", meterSerial, e.getMessage());
+            return toJSON(Map.of(
+                    "status", "error",
+                    "meterId", meterSerial,
+                    "obis", profileObis,
+                    "message", e.getMessage()
+            ));
+        } catch (Exception e) {
+            // ⚠️ Catch all other runtime exceptions
+            log.error("Unexpected error reading profile for meter {}: {}", meterSerial, e.getMessage(), e);
+            return toJSON(Map.of(
+                    "status", "error",
+                    "meterId", meterSerial,
+                    "obis", profileObis,
+                    "message", "Unexpected error: " + e.getMessage()
+            ));
+        }
     }
 
     // =====================================================================
@@ -124,10 +173,15 @@ public class ProfileReadingServices {
     // =====================================================================
     // 🧠 HELPER METHODS
     // =====================================================================
-    private List<CaptureObjectsDTO> readCaptureObjects(GXDLMSProfileGeneric profile, GXDLMSClient client, String meterSerial, String meterModel, String profileObis) throws Exception {
+    private List<CaptureObjectsDTO> readCaptureObjects(GXDLMSProfileGeneric profile, GXDLMSClient client,
+                                                       String meterSerial, String meterModel, String profileObis) throws Exception {
 
         byte[][] request = client.read(profile, 3);
-        var reply = dlmsReaderUtils.readDataBlock(client, meterSerial, request[0]);
+        GXReplyData reply = dlmsReaderUtils.readDataBlock(client, meterSerial, request[0]);
+
+        // 2️⃣ Check for lower-level DLMS error code
+        DlmsErrorUtils.checkError(reply, meterSerial, profileObis);
+
         client.updateValue(profile, 3, reply.getValue());
 
         List<CaptureObjectsDTO> captureList = new ArrayList<>();
@@ -253,5 +307,6 @@ public class ProfileReadingServices {
                 .enable(SerializationFeature.INDENT_OUTPUT);
         return mapper.writeValueAsString(data);
     }
+
 
 }
