@@ -61,7 +61,7 @@ public class DlmsReaderUtilsTest {
         List<List<Object>> raw = List.of(row);
 
         // Mock timestamp decoder behavior
-        when(timestampDecoder.toLocalDateTime(ts)).thenReturn(ts);
+        when(timestampDecoder.decodeTimestamp(ts)).thenReturn(ts);
 
         // Act
         List<ProfileRowGeneric> result =

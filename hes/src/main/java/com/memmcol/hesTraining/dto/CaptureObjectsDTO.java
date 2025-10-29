@@ -1,5 +1,7 @@
 package com.memmcol.hesTraining.dto;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
+import gurux.dlms.enums.DataType;
 import lombok.*;
 
 @Data

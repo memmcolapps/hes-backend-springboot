@@ -249,7 +249,7 @@ public class ChannelTwoReaderAdapter implements ProfileDataReaderPort<ProfileRow
             rowIndex++;
             if (row == null || row.isEmpty()) continue;
 
-            LocalDateTime ts = timestampDecoder.toLocalDateTime(row.get(0));
+            LocalDateTime ts = timestampDecoder.decodeTimestamp(row.get(0));
             if (ts == null) {
                 log.debug("Skipping row {} (no timestamp) meter={} obis={}", rowIndex, meterSerial, profileObis);
                 continue;

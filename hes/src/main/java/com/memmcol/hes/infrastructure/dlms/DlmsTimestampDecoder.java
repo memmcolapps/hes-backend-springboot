@@ -22,30 +22,6 @@ import java.util.Date;
 public class DlmsTimestampDecoder {
     private final ZoneId zone = ZoneId.systemDefault(); // or meter timezone if known
 
-    public LocalDateTime toLocalDateTime(Object value) {
-        if (value == null) return null;
-        try {
-            switch (value) {
-                case GXDateTime gx -> {
-                    return convertGXDateTime(gx);
-                }
-                case Date d -> {
-                    return LocalDateTime.ofInstant(d.toInstant(), zone);
-                }
-                case byte[] raw -> {
-                    return decode(raw);
-                }
-                default -> {
-                    log.info("Fallback for unexpected types");
-                    return LocalDateTime.parse(value.toString());
-                }
-            }
-        } catch (Exception e) {
-            log.warn("Failed to decode timestamp from {} (type={}): {}", value,
-                    value.getClass().getName(), e.getMessage());
-            return null;
-        }
-    }
     private LocalDateTime convertGXDateTime(GXDateTime gx) {
         Instant instant = gx.getMeterCalendar().getTime().toInstant();
         return LocalDateTime.ofInstant(instant, zone);
@@ -106,5 +82,31 @@ public class DlmsTimestampDecoder {
         }
         return tsInstant.truncatedTo(ChronoUnit.SECONDS);
     }
+
+
+    //    public LocalDateTime toLocalDateTime(Object value) {
+//        if (value == null) return null;
+//        try {
+//            switch (value) {
+//                case GXDateTime gx -> {
+//                    return convertGXDateTime(gx);
+//                }
+//                case Date d -> {
+//                    return LocalDateTime.ofInstant(d.toInstant(), zone);
+//                }
+//                case byte[] raw -> {
+//                    return decode(raw);
+//                }
+//                default -> {
+//                    log.info("Fallback for unexpected types");
+//                    return LocalDateTime.parse(value.toString());
+//                }
+//            }
+//        } catch (Exception e) {
+//            log.warn("Failed to decode timestamp from {} (type={}): {}", value,
+//                    value.getClass().getName(), e.getMessage());
+//            return null;
+//        }
+//    }
 
 }

@@ -6,17 +6,19 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.memmcol.hes.domain.profile.MeterRatios;
 import com.memmcol.hes.domain.profile.ProfileRowGeneric;
+import com.memmcol.hes.infrastructure.dlms.DlmsDataDecoder;
 import com.memmcol.hes.infrastructure.dlms.DlmsReaderUtils;
 import com.memmcol.hes.infrastructure.dlms.DlmsTimestampDecoder;
-import com.memmcol.hes.nettyUtils.DlmsErrorUtils;
+import com.memmcol.hes.infrastructure.dlms.DlmsErrorUtils;
 import com.memmcol.hes.nettyUtils.SessionManagerMultiVendor;
 import com.memmcol.hes.service.MeterRatioService;
 import com.memmcol.hesTraining.dto.CaptureObjectsDTO;
 import gurux.dlms.GXDLMSClient;
-import gurux.dlms.GXDLMSExceptionResponse;
 import gurux.dlms.GXDateTime;
 import gurux.dlms.GXReplyData;
+import gurux.dlms.enums.DataType;
 import gurux.dlms.enums.ObjectType;
+import gurux.dlms.internal.GXCommon;
 import gurux.dlms.objects.*;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -25,6 +27,7 @@ import com.memmcol.hes.exception.DlmsDataAccessException;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -41,6 +44,7 @@ public class ProfileReadingServices {
     private final DlmsReaderUtils dlmsReaderUtils;
     private final MeterRatioService ratioService;
     private final DlmsTimestampDecoder timestampDecoder;
+
 
     // =====================================================================
     // 🧩 PUBLIC METHODS
@@ -180,7 +184,7 @@ public class ProfileReadingServices {
         GXReplyData reply = dlmsReaderUtils.readDataBlock(client, meterSerial, request[0]);
 
         // 2️⃣ Check for lower-level DLMS error code
-        DlmsErrorUtils.checkError(reply, meterSerial, profileObis);
+//        DlmsErrorUtils.checkError(reply, meterSerial, profileObis);
 
         client.updateValue(profile, 3, reply.getValue());
 
@@ -188,6 +192,8 @@ public class ProfileReadingServices {
         for (var entry : profile.getCaptureObjects()) {
             GXDLMSObject obj = entry.getKey();
             GXDLMSCaptureObject co = entry.getValue();
+
+            // Read scaler and unit (already implemented)
             Map<String, Object> info = readScalerUnit(client, meterSerial, obj.getLogicalName(),
                     obj.getObjectType().getValue(), co.getAttributeIndex());
 
@@ -204,7 +210,6 @@ public class ProfileReadingServices {
         }
         return captureList;
     }
-
 
     private List<ProfileRowGeneric> parseProfileRows(List<Object> buffer, List<CaptureObjectsDTO> capturedObjects,
                                                      String meterSerial, String profileObis, MeterRatios ratios) throws JsonProcessingException {
@@ -226,10 +231,25 @@ public class ProfileReadingServices {
             for (int i = 1; i < row.length && i < capturedObjects.size(); i++) {
                 CaptureObjectsDTO meta = capturedObjects.get(i);
                 Object rawValue = row[i];
-                BigDecimal scaledValue = applyScalingAndRatio(rawValue, meta.getUnit(), meta.getScaler(), ratios);
-                values.put(meta.getCaptureObis() + "-" + meta.getAttributeIndex(), scaledValue);
-            }
+                Object decodedValue = rawValue;
 
+                try {
+                    if (rawValue instanceof byte[]) {
+                        decodedValue = DlmsDataDecoder.decodeOctetString((byte[]) rawValue);
+                    } else if (rawValue instanceof Number) {
+                        decodedValue = applyScalingAndRatio(rawValue, meta.getUnit(), meta.getScaler(), ratios);
+                    } else if (rawValue != null) {
+                        decodedValue = rawValue.toString();
+                    }
+
+                    values.put(meta.getCaptureObis() + "-" + meta.getAttributeIndex(), decodedValue);
+
+                } catch (Exception e) {
+                    log.warn("⚠️ Decode failed for {}-{}: {}", meta.getCaptureObis(),
+                            meta.getAttributeIndex(), e.getMessage());
+                    values.put(meta.getCaptureObis() + "-" + meta.getAttributeIndex(), rawValue);
+                }
+            }
             readings.add(new ProfileRowGeneric(
                     Instant.now().truncatedTo(ChronoUnit.SECONDS),
                     meterSerial,
@@ -306,6 +326,87 @@ public class ProfileReadingServices {
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
                 .enable(SerializationFeature.INDENT_OUTPUT);
         return mapper.writeValueAsString(data);
+    }
+
+    private Object decodeOctetString1(Object rawValue, CaptureObjectsDTO meta) {
+        try {
+            byte[] bytes = (rawValue instanceof byte[]) ? (byte[]) rawValue
+                    : GXCommon.hexToBytes(String.valueOf(rawValue));
+
+            // Detect DLMS datetime pattern
+            if (bytes.length >= 12) {
+                LocalDateTime dt = timestampDecoder.decodeTimestamp(bytes);
+                if (dt != null) return dt;
+            }
+
+            // Check if ASCII
+            String ascii = new String(bytes, StandardCharsets.US_ASCII);
+            if (ascii.matches("\\d+")) return new BigDecimal(ascii);
+            if (ascii.chars().allMatch(Character::isLetterOrDigit)) return ascii;
+
+            // Default: hex representation
+            return GXCommon.toHex(bytes);
+        } catch (Exception e) {
+            log.warn("⚠️ OctetString decode failed for OBIS {}: {}", meta.getCaptureObis(), e.getMessage());
+            assert rawValue instanceof byte[];
+            return GXCommon.toHex((byte[]) rawValue);
+        }
+    }
+
+    private Object decodeOctetString(Object rawValue) {
+        try {
+            byte[] bytes = (rawValue instanceof byte[])
+                    ? (byte[]) rawValue
+                    : GXCommon.hexToBytes(String.valueOf(rawValue));
+
+            // --- STEP 1️⃣ Try DLMS DateTime decoding (if bytes look like a timestamp) ---
+            if (bytes.length >= 12) {
+                LocalDateTime dt = timestampDecoder.decodeTimestamp(bytes);
+                if (dt != null) {
+                    return dt;
+                }
+            }
+
+            // --- STEP 2️⃣ Try printable ASCII interpretation ---
+            String ascii = new String(bytes, StandardCharsets.US_ASCII);
+
+            // Ensure all bytes are within printable ASCII range
+            boolean printable = ascii.chars().allMatch(c -> c >= 32 && c <= 126);
+            if (printable) {
+                // Always treat printable bytes as String (serials, tokens, IDs, etc.)
+                return ascii.trim();
+            }
+
+            // --- STEP 3️⃣ Default fallback to HEX representation ---
+            return GXCommon.toHex(bytes);
+
+        } catch (Exception e) {
+            log.warn("⚠️ OctetString decode failed for OBIS : {}",e.getMessage());
+            return (rawValue instanceof byte[])
+                    ? GXCommon.toHex((byte[]) rawValue)
+                    : String.valueOf(rawValue);
+        }
+    }
+    private boolean isLikelyDlmsDateTime(byte[] bytes) {
+        if (bytes == null || bytes.length < 12) return false;
+
+        // DLMS DateTime format always starts with 0x07
+        if (bytes[0] != 0x07) return false;
+
+        int year = ((bytes[1] & 0xFF) << 8) | (bytes[2] & 0xFF);
+        int month = bytes[3] & 0xFF;
+        int day = bytes[4] & 0xFF;
+        int hour = bytes[5] & 0xFF;
+        int minute = bytes[6] & 0xFF;
+        int second = bytes[7] & 0xFF;
+
+        // Validate logical ranges
+        return (year >= 1990 && year <= 2100)
+                && (month >= 1 && month <= 12)
+                && (day >= 1 && day <= 31)
+                && (hour <= 23)
+                && (minute <= 59)
+                && (second <= 59);
     }
 
 
