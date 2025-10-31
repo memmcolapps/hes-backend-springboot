@@ -6,10 +6,12 @@ import lombok.*;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "event_log",
-        uniqueConstraints = @UniqueConstraint(
-                columnNames = {"meter_serial", "event_code", "event_time"}
-        ))
+@Table(
+        name = "event_log",
+        uniqueConstraints = {
+                @UniqueConstraint(name = "uq_event_log", columnNames = {"meter_serial", "event_code", "event_time"})
+        }
+)
 @Getter
 @Setter
 @NoArgsConstructor
@@ -33,8 +35,8 @@ public class EventLog {
     @Column(name = "event_time", nullable = false)
     private LocalDateTime eventTime;
 
-    @Column(length = 10)
-    private String phase;   // optional (L1, L2, L3, N)
+    @Column(name = "current_threshold", length = 255)
+    private Double currentThreshold;
 
     @Column(length = 255)
     private String eventName;   // <-- just the event name

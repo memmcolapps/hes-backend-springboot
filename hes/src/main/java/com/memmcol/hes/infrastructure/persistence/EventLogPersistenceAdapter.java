@@ -6,19 +6,15 @@ import com.memmcol.hes.domain.profile.CapturePeriod;
 import com.memmcol.hes.domain.profile.ProfileState;
 import com.memmcol.hes.domain.profile.ProfileSyncResult;
 import com.memmcol.hes.domain.profile.ProfileTimestamp;
-import com.memmcol.hes.entities.EventCodeLookup;
 import com.memmcol.hes.dto.EventLogDTO;
 import com.memmcol.hes.entities.EventLog;
-import com.memmcol.hes.entities.EventType;
 import com.memmcol.hes.repository.EventCodeLookupRepository;
 import com.memmcol.hes.repository.EventLogCustomRepository;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
-import jakarta.persistence.PersistenceException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.hibernate.Session;
-import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -109,7 +105,7 @@ public class EventLogPersistenceAdapter {
                     .eventType(eventTypeId)
                     .eventCode(dto.getEventCode())
                     .eventTime(dto.getEventTime().truncatedTo(ChronoUnit.SECONDS))
-                    .phase(dto.getPhase())
+                    .currentThreshold(dto.getCurrentThreshold())
                     .eventName(eventName)
                     .build();
 
