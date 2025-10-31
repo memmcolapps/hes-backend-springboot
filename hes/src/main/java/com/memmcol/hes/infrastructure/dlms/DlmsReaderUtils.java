@@ -89,7 +89,7 @@ public class DlmsReaderUtils {
 
             client.getData(response, reply, null);
         }
-
+        DlmsErrorUtils.checkError(reply, serial, "OBIS Read!");
         return reply;
     }
 
@@ -102,6 +102,7 @@ public class DlmsReaderUtils {
         }
         GXReplyData reply = new GXReplyData();
         client.getData(response, reply, null);
+        DlmsErrorUtils.checkError(reply, serial, "OBIS Read!");
         client.updateValue(obj, index, reply.getValue());
     }
 
@@ -117,6 +118,7 @@ public class DlmsReaderUtils {
         }
         GXReplyData reply = new GXReplyData();
         client.getData(response, reply, null);
+        DlmsErrorUtils.checkError(reply, serial, "OBIS Read!");
         return client.updateValue(obj, index, reply.getValue());
     }
 
@@ -605,4 +607,6 @@ public class DlmsReaderUtils {
             default -> unit.name(); // fallback to enum name
         };
     }
+
+
 }

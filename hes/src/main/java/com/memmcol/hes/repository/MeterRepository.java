@@ -30,11 +30,4 @@ public interface MeterRepository extends JpaRepository<MetersEntity, UUID> {
        WHERE m.meterNumber = :meterNumber
        """)
     Optional<MeterDTO> findMeterDetailsByMeterNumber(@Param("meterNumber") String meterNumber);
-
-
-/*
- Optional<MeterDTO> findMeterDetailsByMeterNumber(@Param("meterNumber") String meterNumber);
-@Query("select s.lastTimestamp from MeterProfileState s " +
-            "where s.meterSerial = :serial and s.profileObis = :obis")
-    Optional<LocalDateTime> findLastTimestamp(String serial, String obis);*/
 }

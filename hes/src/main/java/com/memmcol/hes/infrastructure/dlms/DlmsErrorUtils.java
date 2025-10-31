@@ -1,4 +1,4 @@
-package com.memmcol.hes.nettyUtils;
+package com.memmcol.hes.infrastructure.dlms;
 
 import com.memmcol.hes.exception.DlmsDataAccessException;
 import gurux.dlms.GXDLMSExceptionResponse;

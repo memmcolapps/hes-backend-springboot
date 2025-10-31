@@ -5,9 +5,11 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.memmcol.hes.domain.limiters.LimiterHelper;
 import com.memmcol.hes.exception.AssociationLostException;
+import com.memmcol.hes.infrastructure.dlms.DlmsReaderUtils;
 import com.memmcol.hes.model.*;
 import com.memmcol.hes.nettyUtils.RequestResponseService;
 import com.memmcol.hes.nettyUtils.SessionManager;
+import com.memmcol.hes.nettyUtils.SessionManagerMultiVendor;
 import com.memmcol.hes.repository.DlmsObisObjectRepository;
 import com.memmcol.hes.repository.ProfileChannel2Repository;
 import com.memmcol.hes.trackByTimestamp.*;
@@ -47,7 +49,7 @@ import java.util.stream.Collectors;
 @Service
 @Slf4j
 public class DlmsService {
-    private final SessionManager sessionManager;
+    private final SessionManagerMultiVendor sessionManager;
     private final DlmsObisObjectRepository repository;
     private final ProfileMetadataCacheService metadataCache;
     private final ProfileMetadataService profileMetadataService;
@@ -61,8 +63,9 @@ public class DlmsService {
     private final MeterReadAdapter readAdapter;
     private final RequestResponseService requestResponseService;
     private final LimiterHelper limiterHelper;
+    private final DlmsReaderUtils dlmsReaderUtils;
 
-    public DlmsService(SessionManager sessionManager,
+    public DlmsService(SessionManagerMultiVendor sessionManager,
                        DlmsObisObjectRepository repository,
                        ProfileMetadataCacheService metadataCache,
                        @Lazy ProfileMetadataService profileMetadataService,
@@ -74,7 +77,7 @@ public class DlmsService {
                        ProfileTimestampResolver profileTimestampResolver,
                        MeterProfileStateRepository meterProfileStateRepository,
                        MeterReadAdapter readAdapter,
-                       RequestResponseService requestResponseService, LimiterHelper limiterHelper) {
+                       RequestResponseService requestResponseService, LimiterHelper limiterHelper, DlmsReaderUtils dlmsReaderUtils) {
         this.sessionManager = sessionManager;
         this.repository = repository;
         this.metadataCache = metadataCache;
@@ -89,6 +92,7 @@ public class DlmsService {
         this.readAdapter = readAdapter;
         this.requestResponseService = requestResponseService;
         this.limiterHelper = limiterHelper;
+        this.dlmsReaderUtils = dlmsReaderUtils;
     }
 
     public static final DateTimeFormatter GLOBAL_TS_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
@@ -506,7 +510,7 @@ public class DlmsService {
         ClassId: 15 (ASSOCIATION_LOGICAL_NAME)
         Attribute Index: 2 (Object List)
      */
-    public List<GXDLMSObject> readAssociationObjects(String meterSerial) throws Exception {
+    public List<GXDLMSObject> readAssociationObjects(String meterSerial, String meterModel) throws Exception {
         GXDLMSClient client = sessionManager.getOrCreateClient(meterSerial);
         if (client == null) {
             throw new IllegalStateException("No session found for meter: " + meterSerial);
@@ -519,7 +523,7 @@ public class DlmsService {
         byte[][] request = client.read(association, 2);
 
         // Read using block reader
-        GXReplyData reply = readAdapter.readDataBlock(client, meterSerial, request[0]);
+        GXReplyData reply = dlmsReaderUtils.readDataBlock(client, meterSerial, request[0]);
 
         // Update value in association object
         client.updateValue(association, 2, reply.getValue());
@@ -531,19 +535,19 @@ public class DlmsService {
 //            client.getObjects().add(obj);
 //        }
 
-        processAssociationView(client);
+        processAssociationView(client, meterSerial, meterModel);
 
         // Return the object list from the association
         return association.getObjectList();
     }
 
-    public void processAssociationView(GXDLMSClient client) throws Exception {
+    public void processAssociationView(GXDLMSClient client, String meterSerial, String meterModel) throws Exception {
         log.info("Processing association view");
         List<GXDLMSObject> objects = client.getObjects();
 
         // 1. Map to DTO
         List<ObisObjectDTO> dtos = objects.stream()
-                .map(DlmsObisMapper::map)
+                .map(obj -> DlmsObisMapper.map(obj, meterSerial, meterModel))
                 .collect(Collectors.toList());
 
         // 2. Save to JSON
