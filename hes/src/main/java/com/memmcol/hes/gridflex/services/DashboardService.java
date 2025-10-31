@@ -1,12 +1,16 @@
 package com.memmcol.hes.gridflex.services;
 
 import com.memmcol.hes.gridflex.records.DashboardSummaryResponse;
+import com.memmcol.hes.repository.SmartMeterRepository;
+import lombok.AllArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
 
 @Service
+@AllArgsConstructor
 public class DashboardService {
+    private final SmartMeterRepository smartMeterRepository;
 
     public DashboardSummaryResponse getDashboardSummary() {
         // 🧮 1. Simulated summary counts (replace with DB queries or repository calls)
