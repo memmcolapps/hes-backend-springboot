@@ -5,6 +5,8 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.LocalDateTime;
+
 @Entity
 @Table(name = "dlms_obis_objects")
 @Data
@@ -23,4 +25,11 @@ public class DlmsObisObjectEntity {
     private String accessRights;
     private String scaler;
     private String unit;
+
+    private String meterSerial;
+    private String meterModel;
+
+    @Column(nullable = false, updatable = false,
+            columnDefinition = "timestamp default current_timestamp")
+    private LocalDateTime createDate;
 }

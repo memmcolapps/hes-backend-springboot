@@ -56,12 +56,12 @@ public class SessionManagerMultiVendor {
      * This is a simple version – later you can query asset_meter or metadata service.
      */
     private String resolveModelId(String serial) {
-        if (serial.startsWith("202006")) return "CLOU";
-        if (serial.startsWith("62122")) return "GENERIC";
-        if (serial.startsWith("62222")) return "GENERIC";
-        if (serial.startsWith("62124")) return "LONGDIAN3";
+        if (serial.startsWith("202006")) return "MOMAS";
+        if (serial.startsWith("62122")) return "MOMAS";
+        if (serial.startsWith("62222")) return "MOMAS";
+        if (serial.startsWith("62124")) return "LONGDIAN";
         if (serial.startsWith("62224")) return "LONGDIAN";
-        return "GENERIC";
+        return "MOMAS";
     }
 
     /**
@@ -72,19 +72,10 @@ public class SessionManagerMultiVendor {
         meterConfigMap.put("GENERIC", new DlmsConfig(1, 1,
                 Authentication.LOW, "11111111", InterfaceType.WRAPPER));
 
-        meterConfigMap.put("CLOU", new DlmsConfig(1, 1,
+        meterConfigMap.put("MOMAS", new DlmsConfig(1, 1,
                 Authentication.LOW, "12345678", InterfaceType.WRAPPER));
 
         meterConfigMap.put("LONGDIAN", new DlmsConfig(1, 1,
-                Authentication.HIGH_GMAC, "00000000", InterfaceType.WRAPPER));
-
-        meterConfigMap.put("LONGDIAN2", new DlmsConfig(1, 1,
-                Authentication.NONE, null, InterfaceType.WRAPPER));
-
-        meterConfigMap.put("LONGDIAN3", new DlmsConfig(1, 1,
-                Authentication.LOW, "00000000", InterfaceType.WRAPPER));
-
-        meterConfigMap.put("LONGDIAN4", new DlmsConfig(16, 1,
                 Authentication.LOW, "00000000", InterfaceType.WRAPPER));
     }
 
@@ -92,7 +83,7 @@ public class SessionManagerMultiVendor {
      * Creates a DLMS client dynamically based on model or prefix.
      */
     private GXDLMSClient createDlmsClient(String serial, String modelId) {
-        DlmsConfig cfg = meterConfigMap.getOrDefault(modelId, meterConfigMap.get("CLOU"));
+        DlmsConfig cfg = meterConfigMap.getOrDefault(modelId, meterConfigMap.get("MOMAS"));
 
         return new GXDLMSClient(
                 true,
@@ -101,18 +92,6 @@ public class SessionManagerMultiVendor {
                 cfg.getAuth(),
                 cfg.getPassword(),
                 cfg.getInterfaceType()
-        );
-    }
-
-    private GXDLMSClient createSecureDlmsClient2(String serial, String modelId) {
-        DlmsConfig cfg = meterConfigMap.getOrDefault(modelId, meterConfigMap.get("CLOU"));
-        return new GXDLMSSecureClient(
-                true,
-                1,                          // Public client
-                1,                              // Logical device ID (meter)
-                Authentication.NONE,
-                null,
-                InterfaceType.WRAPPER
         );
     }
 
@@ -161,11 +140,8 @@ public class SessionManagerMultiVendor {
 
         // --- Identify meter model dynamically (from DB or prefix) ---
         String modelId = resolveModelId(serial);
-        if (modelId.equals("LONGDIAN")) {
-            dlmsClient = createSecureDlmsClient(serial, modelId);
-        } else {
-            dlmsClient = createDlmsClient(serial, modelId);
-        }
+        dlmsClient = createDlmsClient(serial, modelId);
+
         try {
             log.info("🔗 Setting up DLMS Association for {} (Model: {})", serial, modelId);
             byte[][] aarq = dlmsClient.aarqRequest();

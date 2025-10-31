@@ -74,10 +74,10 @@ public class DlmsController {
         return ResponseEntity.ok(dlmsService.greet(name)) ;
     }
 
-    @GetMapping("/read/{serial}/association")
-    public ResponseEntity<?> getAssociationView(@PathVariable String serial) {
+    @GetMapping("/read/{serial}/{model}/association")
+    public ResponseEntity<?> getAssociationView(@PathVariable String serial, @PathVariable String model) {
         try {
-            List<GXDLMSObject> objects = dlmsService.readAssociationObjects(serial);
+            List<GXDLMSObject> objects = dlmsService.readAssociationObjects(serial, model);
             List<Map<String, Object>> result = objects.stream().map(obj -> {
                 Map<String, Object> item = new LinkedHashMap<>();
                 item.put("classId", obj.getObjectType().getValue());
