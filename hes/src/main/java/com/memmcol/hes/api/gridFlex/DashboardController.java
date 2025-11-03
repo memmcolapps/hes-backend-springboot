@@ -18,14 +18,14 @@ import org.springframework.web.bind.annotation.RestController;
 public class DashboardController {
     private final DashboardService dashboardService;
 
-    @GetMapping
+    @GetMapping("/getDashboardSummary")
     @Operation(summary = "Get HES dashboard overview on load")
     public ResponseEntity<DashboardSummaryResponse> getDashboardSummary() {
         DashboardSummaryResponse response = dashboardService.getDashboardSummary();
         return ResponseEntity.ok(response);
     }
 
-    @GetMapping
+    @GetMapping("/getDashboardOverview")
     @Operation(summary = "Get HES dashboard overview on demand")
     public ResponseEntity<DashboardSummaryResponse> getDashboard(
             @RequestParam(required = false) String band,
