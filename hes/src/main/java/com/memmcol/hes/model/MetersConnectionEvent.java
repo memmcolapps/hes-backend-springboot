@@ -19,8 +19,8 @@ public class MetersConnectionEvent{
     @Column(name = "meter_No", unique = true, nullable = false, length = 12)
     private String meterNo;
 
-    @Column(name = "eventType")
-    private String eventType;
+    @Column(name = "connection_type")
+    private String connectionType;
 
     @Column(name = "connection_time")
     private LocalDateTime connectionTime;
@@ -32,11 +32,4 @@ public class MetersConnectionEvent{
         this.connectionTime = LocalDateTime.now();
         this.updatedAt = LocalDateTime.now();
     }
-
-    public MetersConnectionEvent(String meterNo, String eventType){
-        this();
-        this.meterNo = meterNo;
-        this.eventType = eventType;
-    }
-
 }
