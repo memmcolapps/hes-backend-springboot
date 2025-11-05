@@ -100,9 +100,6 @@ public class MetersEntity {
     @Column(name = "meter_stage")
     private String meterStage;
 
-    @Column(name = "asset_id")
-    private String assetId;
-
     // ✅ Relationship to SmartMeterInfo
     @OneToOne(mappedBy = "meter", cascade = CascadeType.ALL, optional = false)
     private SmartMeterInfo smartMeterInfo;
