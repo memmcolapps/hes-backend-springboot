@@ -1,0 +1,174 @@
+package com.memmcol.hes.gridflex.services;
+
+import com.memmcol.hes.gridflex.records.DashboardSummaryResponse;
+import com.memmcol.hes.model.MetersConnectionEvent;
+import com.memmcol.hes.netty.NettyServerHolder;
+import com.memmcol.hes.repository.*;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.scheduling.annotation.Async;
+import org.springframework.stereotype.Service;
+
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.stream.Collectors;
+
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class DashboardAsyncService {
+    private final SmartMeterRepository smartMeterRepository;
+    private final NettyServerHolder holder;
+    private final MetersConnectionEventRepository connectionEventRepository;
+    private final SchedulerRepository schedulerRepository;
+    private final EventLogRepository eventLogRepository;
+    private final MeterRepository meterRepository;
+    private final MetersConnectionEventRepository metersConnectionEventRepository;
+    // ======================
+    // 1️⃣ Meter summary
+    // ======================
+    @Async
+    @Cacheable(cacheNames = "dashboardMeterSummary", key = "'summary'")
+    public CompletableFuture<DashboardSummaryResponse.MeterSummary> getMeterSummaryAsync() {
+        log.info("🔄 Fetching meter summary from DB …");
+        try {
+            int total = safeInt(smartMeterRepository.countAll());
+            int online = safeInt(holder.getActiveMeterCount());
+            int offline = Math.max(total - online, 0);
+            int failedCommands = 0;
+
+            DashboardSummaryResponse.MeterSummary summary =
+                    new DashboardSummaryResponse.MeterSummary(total, online, offline, failedCommands);
+
+            return CompletableFuture.completedFuture(summary);
+        } catch (Exception e) {
+            log.error("❌ Error fetching meter summary: {}", e.getMessage());
+            return CompletableFuture.completedFuture(new DashboardSummaryResponse.MeterSummary(0, 0, 0, 0));
+        }
+    }
+
+    // ======================
+    // 2️⃣ Communication logs
+    // ======================
+    @Async
+    @Cacheable(cacheNames = "dashboardCommunicationLogs", key = "'logs'")
+    public CompletableFuture<List<DashboardSummaryResponse.CommunicationLogPoint>> getCommunicationLogsAsync() {
+        log.info("🔄 Fetching communication logs from DB …");
+        try {
+            LocalDateTime now = LocalDateTime.now();
+            LocalDateTime fromTime = now.minusHours(24);
+
+            List<MetersConnectionEvent> recentEvents = connectionEventRepository.findRecentEvents(fromTime);
+
+            // Define 6 intervals (4 hours each)
+            List<DashboardSummaryResponse.CommunicationLogPoint> logs = new ArrayList<>();
+            for (int i = 4; i <= 24; i += 4) {
+                LocalDateTime start = now.minusHours(i);
+                LocalDateTime end = now.minusHours(i - 4);
+
+                long count = recentEvents.stream()
+                        .filter(e -> e.getUpdatedAt().isAfter(start) && e.getUpdatedAt().isBefore(end))
+                        .count();
+
+                logs.add(new DashboardSummaryResponse.CommunicationLogPoint(i + " hrs", (int) count));
+            }
+
+            return CompletableFuture.completedFuture(logs);
+        } catch (Exception e) {
+            log.error("❌ Error fetching communication logs: {}", e.getMessage());
+            return CompletableFuture.completedFuture(List.of());
+        }
+    }
+
+    // ======================
+    // 3️⃣ Scheduler Rate
+    // ======================
+    @Async
+    @Cacheable(cacheNames = "dashboardSchedulerRate", key = "'rate'")
+    public CompletableFuture<DashboardSummaryResponse.DataSchedulerRate> getSchedulerRateAsync() {
+        log.info("🔄 Fetching scheduler rate from DB …");
+        try {
+            long active = schedulerRepository.countByJobStatusIgnoreCase("ACTIVE");
+            long paused = schedulerRepository.countByJobStatusIgnoreCase("PAUSED");
+
+            double total = active + paused;
+            double activePercent = 0.0;
+            double pausedPercent = 0.0;
+
+            if (total > 0) {
+                activePercent = (active / total) * 100.0;
+                pausedPercent = (paused / total) * 100.0;
+            }
+            return CompletableFuture.completedFuture(
+                    new DashboardSummaryResponse.DataSchedulerRate(activePercent, pausedPercent)
+            );
+        } catch (Exception e) {
+            log.error("❌ Error fetching scheduler rate: {}", e.getMessage());
+            return CompletableFuture.completedFuture(new DashboardSummaryResponse.DataSchedulerRate(0, 0));
+        }
+    }
+
+    // ======================
+    // 4️⃣ Communication Report
+    // ======================
+    @Async
+    @Cacheable(cacheNames = "dashboardCommunicationReport", key = "'report'")
+    public CompletableFuture<List<DashboardSummaryResponse.CommunicationReportRow>> getCommunicationReportAsync() {
+        log.info("🔄 Fetching communication report from DB …");
+        try {
+            // 📋 4️⃣ Communication report table
+            List<DashboardSummaryResponse.CommunicationReportRow> communicationReport = new ArrayList<>();
+
+            List<Object[]> meterModels = meterRepository.findAllMeterModels();
+            Map<String, String> meterModelMap = meterModels.stream()
+                    .collect(Collectors.toMap(r -> (String) r[0], r -> (String) r[1]));
+
+            List<Object[]> connectionEvents = metersConnectionEventRepository.findLatestConnectionEvents();
+            Map<String, Object[]> connectionMap = connectionEvents.stream()
+                    .collect(Collectors.toMap(r -> (String) r[0], r -> r));
+
+            List<Object[]> tamperEvents = eventLogRepository.findLatestEventLogsByType(3); // Tamper
+            Map<String, Object[]> tamperMap = tamperEvents.stream()
+                    .collect(Collectors.toMap(r -> (String) r[0], r -> r));
+
+            List<Object[]> relayEvents = eventLogRepository.findLatestEventLogsByType(4); // Relay
+            Map<String, Object[]> relayMap = relayEvents.stream()
+                    .collect(Collectors.toMap(r -> (String) r[0], r -> r));
+
+            int sn = 1;
+            for (String meterNo : meterModelMap.keySet()) {
+                Object[] conn = connectionMap.get(meterNo);
+                Object[] tamp = tamperMap.get(meterNo);
+                Object[] relay = relayMap.get(meterNo);
+
+                communicationReport.add(
+                        new DashboardSummaryResponse.CommunicationReportRow(
+                                String.format("%02d", sn++),
+                                meterNo,
+                                meterModelMap.get(meterNo),
+                                conn != null ? (String) conn[1] : "Unknown",
+                                conn != null ? conn[2].toString() : "N/A",
+                                tamp != null ? (String) tamp[1] : "No Tamper",
+                                tamp != null ? tamp[2].toString() : "N/A",
+                                relay != null ? (String) relay[1] : "Disconnected",
+                                relay != null ? relay[2].toString() : "N/A"
+                        )
+                );
+            }
+
+            return CompletableFuture.completedFuture(communicationReport);
+        } catch (Exception e) {
+            log.error("❌ Error fetching communication report: {}", e.getMessage());
+            return CompletableFuture.completedFuture(List.of());
+        }
+    }
+
+    // Utility
+    private int safeInt(Number value) {
+        return value == null ? 0 : value.intValue();
+    }
+}

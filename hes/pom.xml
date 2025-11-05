@@ -58,10 +58,16 @@
             <scope>provided</scope>
         </dependency>
         <!-- https://mvnrepository.com/artifact/org.gurux/gurux.dlms -->
+<!--        <dependency>-->
+<!--            <groupId>org.gurux</groupId>-->
+<!--            <artifactId>gurux.dlms</artifactId>-->
+<!--            <version>4.0.79</version>-->
+<!--        </dependency>-->
+        <!-- https://mvnrepository.com/artifact/org.gurux/gurux.dlms -->
         <dependency>
             <groupId>org.gurux</groupId>
             <artifactId>gurux.dlms</artifactId>
-            <version>4.0.79</version>
+            <version>4.0.83</version>
         </dependency>
         <!-- https://mvnrepository.com/artifact/org.gurux/gurux.common -->
         <dependency>
@@ -144,10 +150,16 @@
             <artifactId>spring-boot-starter-cache</artifactId>
         </dependency>
 
-        <!-- Caffeine cache -->
+<!--        &lt;!&ndash; Caffeine cache &ndash;&gt;-->
+<!--        <dependency>-->
+<!--            <groupId>com.github.ben-manes.caffeine</groupId>-->
+<!--            <artifactId>caffeine</artifactId>-->
+<!--        </dependency>-->
+        <!-- https://mvnrepository.com/artifact/com.github.ben-manes.caffeine/caffeine -->
         <dependency>
             <groupId>com.github.ben-manes.caffeine</groupId>
             <artifactId>caffeine</artifactId>
+            <version>3.2.3</version>
         </dependency>
         <!-- Quartz core dependency -->
         <dependency>
@@ -222,6 +234,15 @@
                 <version>3.5.3</version>
                 <configuration>
                     <argLine>-XX:+EnableDynamicAgentLoading</argLine>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <source>21</source>
+                    <target>21</target>
+                    <compilerArgs>--enable-preview</compilerArgs>
                 </configuration>
             </plugin>
         </plugins>
