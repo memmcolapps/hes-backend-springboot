@@ -11,4 +11,6 @@ import java.util.Optional;
 public interface SchedulerRepository extends JpaRepository<SchedulerJobInfo, Long> {
     SchedulerJobInfo findByJobName(String jobName);
     Optional<SchedulerJobInfo> findByJobNameAndJobGroup(String jobName, String jobGroup);
+
+    long countByJobStatusIgnoreCase(String status);
 }

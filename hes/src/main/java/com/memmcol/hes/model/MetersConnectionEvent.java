@@ -10,13 +10,11 @@ import java.time.LocalDateTime;
 @Getter
 @Setter
 @Entity
-public class MetersConnectionEvent{
+@Table(name = "meters_connection_event")
+public class MetersConnectionEvent {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-
-    @Column(name = "meter_No", unique = true, nullable = false, length = 12)
+    @Column(name = "meter_no", nullable = false, length = 12)
     private String meterNo;
 
     @Column(name = "connection_type")

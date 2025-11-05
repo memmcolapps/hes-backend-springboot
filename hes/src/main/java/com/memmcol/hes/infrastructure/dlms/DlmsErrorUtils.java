@@ -22,20 +22,18 @@ public class DlmsErrorUtils {
     public static void checkError(GXReplyData reply, String meterSerial, String profileObis) {
         try {
             if (reply == null) {
-                throw new DlmsDataAccessException("Profile OBIS " + profileObis, "No DLMS reply received.");
+                throw new DlmsDataAccessException(profileObis, "No DLMS reply received.");
             }
             if (reply.getError() != 0) {
                 log.warn("⚠️ DLMS Error [{}] for meter {} on OBIS {}", reply.getError(), meterSerial, profileObis);
-                throw new DlmsDataAccessException(
-                        "Profile OBIS " + profileObis,
-                        "DLMS Error Code: " + reply.getErrorMessage()
+                throw new DlmsDataAccessException(profileObis, reply.getErrorMessage()
                 );
             }
             // Check for DLMS ExceptionResponse
             if (reply.getValue() instanceof GXDLMSExceptionResponse ex) {
                 log.warn("⚠️ DLMS Exception from meter [{}]: {}", meterSerial, ex.getExceptionServiceError());
                 throw new DlmsDataAccessException(
-                        "Profile OBIS " + profileObis,
+                        profileObis,
                         "DLMS Exception: " + ex.getExceptionServiceError()
                 );
             }

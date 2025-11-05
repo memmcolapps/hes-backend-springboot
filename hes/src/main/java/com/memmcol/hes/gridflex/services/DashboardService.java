@@ -1,84 +1,56 @@
 package com.memmcol.hes.gridflex.services;
 
 import com.memmcol.hes.gridflex.records.DashboardSummaryResponse;
-import com.memmcol.hes.repository.SmartMeterRepository;
-import lombok.AllArgsConstructor;
+import com.memmcol.hes.model.MetersConnectionEvent;
+import com.memmcol.hes.netty.NettyServerHolder;
+import com.memmcol.hes.repository.*;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.stream.Collectors;
 
+@Slf4j
 @Service
-@AllArgsConstructor
+@RequiredArgsConstructor
 public class DashboardService {
-    private final SmartMeterRepository smartMeterRepository;
+    private final DashboardAsyncService asyncService;
 
+    // ======================
+    // Main method to call from controller
+    // ======================
     public DashboardSummaryResponse getDashboardSummary() {
-        // 🧮 1. Simulated summary counts (replace with DB queries or repository calls)
-        DashboardSummaryResponse.MeterSummary meterSummary =
-                new DashboardSummaryResponse.MeterSummary(4200, 1200, 400, 20);
 
-        // 📈 2. Communication log graph points (last 24 hours)
-        List<DashboardSummaryResponse.CommunicationLogPoint> communicationLogs = List.of(
-                new DashboardSummaryResponse.CommunicationLogPoint("4 hrs", 60),
-                new DashboardSummaryResponse.CommunicationLogPoint("8 hrs", 40),
-                new DashboardSummaryResponse.CommunicationLogPoint("12 hrs", 45),
-                new DashboardSummaryResponse.CommunicationLogPoint("16 hrs", 35),
-                new DashboardSummaryResponse.CommunicationLogPoint("20 hrs", 50),
-                new DashboardSummaryResponse.CommunicationLogPoint("24 hrs", 80)
-        );
+        // Run all tasks asynchronously in parallel
+        CompletableFuture<DashboardSummaryResponse.MeterSummary> meterSummaryFuture = asyncService.getMeterSummaryAsync();
+        CompletableFuture<List<DashboardSummaryResponse.CommunicationLogPoint>> communicationLogsFuture = asyncService.getCommunicationLogsAsync();
+        CompletableFuture<DashboardSummaryResponse.DataSchedulerRate> schedulerRateFuture = asyncService.getSchedulerRateAsync();
+        CompletableFuture<List<DashboardSummaryResponse.CommunicationReportRow>> communicationReportFuture = asyncService.getCommunicationReportAsync();
 
-        // 🔁 3. Data collection scheduler rates
-        DashboardSummaryResponse.DataSchedulerRate schedulerRate =
-                new DashboardSummaryResponse.DataSchedulerRate(92.5, 7.5);
+        // Wait for all to complete
+        CompletableFuture.allOf(
+                meterSummaryFuture,
+                communicationLogsFuture,
+                schedulerRateFuture,
+                communicationReportFuture
+        ).join();
 
-        // 📋 4. Communication report table (sample data)
-        List<DashboardSummaryResponse.CommunicationReportRow> communicationReport = List.of(
-                new DashboardSummaryResponse.CommunicationReportRow("01", "6212465987", "MMX 310-NG", "Offline", "1 min ago", "No Tamper", "2 hours ago", "Disconnected", "2 hours ago"),
-                new DashboardSummaryResponse.CommunicationReportRow("02", "6212465987", "MMX 110-NG", "Online", "2 hours ago", "Tamper Detected", "3 hours ago", "Disconnected", "3 hours ago"),
-                new DashboardSummaryResponse.CommunicationReportRow("03", "6212465987", "MMX 110-NG", "Offline", "2 hours ago", "No Tamper", "3 hours ago", "Disconnected", "3 hours ago")
-        );
-
-        // 🧩 5. Combine all sections
+        // Combine results
         return new DashboardSummaryResponse(
-                meterSummary,
-                communicationLogs,
-                schedulerRate,
-                communicationReport
+                meterSummaryFuture.join(),
+                communicationLogsFuture.join(),
+                schedulerRateFuture.join(),
+                communicationReportFuture.join()
         );
     }
 
-    public DashboardSummaryResponse getDashboardOverview(String band, String meterType, Integer year) {
-        // 🧮 1. Simulated summary counts (replace with DB queries or repository calls)
-        DashboardSummaryResponse.MeterSummary meterSummary =
-                new DashboardSummaryResponse.MeterSummary(4200, 1200, 400, 20);
 
-        // 📈 2. Communication log graph points (last 24 hours)
-        List<DashboardSummaryResponse.CommunicationLogPoint> communicationLogs = List.of(
-                new DashboardSummaryResponse.CommunicationLogPoint("4 hrs", 60),
-                new DashboardSummaryResponse.CommunicationLogPoint("8 hrs", 40),
-                new DashboardSummaryResponse.CommunicationLogPoint("12 hrs", 45),
-                new DashboardSummaryResponse.CommunicationLogPoint("16 hrs", 35),
-                new DashboardSummaryResponse.CommunicationLogPoint("20 hrs", 50),
-                new DashboardSummaryResponse.CommunicationLogPoint("24 hrs", 80)
-        );
-
-        // 🔁 3. Data collection scheduler rates
-        DashboardSummaryResponse.DataSchedulerRate schedulerRate =
-                new DashboardSummaryResponse.DataSchedulerRate(92.5, 7.5);
-
-        // 📋 4. Communication report table (sample data)
-        List<DashboardSummaryResponse.CommunicationReportRow> communicationReport = List.of(
-                new DashboardSummaryResponse.CommunicationReportRow("01", "6212465987", "MMX 310-NG", "Offline", "1 min ago", "No Tamper", "2 hours ago", "Disconnected", "2 hours ago"),
-                new DashboardSummaryResponse.CommunicationReportRow("02", "6212465987", "MMX 110-NG", "Online", "2 hours ago", "Tamper Detected", "3 hours ago", "Disconnected", "3 hours ago"),
-                new DashboardSummaryResponse.CommunicationReportRow("03", "6212465987", "MMX 110-NG", "Offline", "2 hours ago", "No Tamper", "3 hours ago", "Disconnected", "3 hours ago")
-        );
-
-        // 🧩 5. Combine all sections
-        return new DashboardSummaryResponse(
-                meterSummary,
-                communicationLogs,
-                schedulerRate,
-                communicationReport
-        );
-    }
 }
+

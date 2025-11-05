@@ -5,11 +5,14 @@ import com.memmcol.hes.gridflex.services.DashboardService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.CacheManager;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.Objects;
 
 @RestController
 @RequiredArgsConstructor
@@ -17,22 +20,33 @@ import org.springframework.web.bind.annotation.RestController;
 @Tag(name = "Dashboard", description = "API for Gridflex dashboard overview")
 public class DashboardController {
     private final DashboardService dashboardService;
+    private final CacheManager cacheManager;
 
-    @GetMapping("/getDashboardSummary")
+    @GetMapping("/summary")
     @Operation(summary = "Get HES dashboard overview on load")
     public ResponseEntity<DashboardSummaryResponse> getDashboardSummary() {
         DashboardSummaryResponse response = dashboardService.getDashboardSummary();
         return ResponseEntity.ok(response);
     }
 
-    @GetMapping("/getDashboardOverview")
-    @Operation(summary = "Get HES dashboard overview on demand")
-    public ResponseEntity<DashboardSummaryResponse> getDashboard(
-            @RequestParam(required = false) String band,
-            @RequestParam(required = false) String meterType,
-            @RequestParam(required = false) Integer year) {
+//    @GetMapping("/overview")
+//    @Operation(summary = "Get HES dashboard overview on demand")
+//    public ResponseEntity<DashboardSummaryResponse> getDashboard(
+//            @RequestParam(required = false) String band,
+//            @RequestParam(required = false) String meterType,
+//            @RequestParam(required = false) Integer year) {
+//
+//        DashboardSummaryResponse response = dashboardService.getDashboardOverview(band, meterType, year);
+//        return ResponseEntity.ok(response);
+//    }
 
-        DashboardSummaryResponse response = dashboardService.getDashboardOverview(band, meterType, year);
-        return ResponseEntity.ok(response);
+    @GetMapping("/cache/clear")
+    @Operation(summary = "Clear or Inspect Cache")
+    public String clearDashboardCache() {
+        Objects.requireNonNull(cacheManager.getCache("dashboardMeterSummary")).clear();
+        Objects.requireNonNull(cacheManager.getCache("dashboardCommunicationLogs")).clear();
+        Objects.requireNonNull(cacheManager.getCache("dashboardSchedulerRate")).clear();
+        Objects.requireNonNull(cacheManager.getCache("dashboardCommunicationReport")).clear();
+        return "Dashboard caches cleared.";
     }
 }
