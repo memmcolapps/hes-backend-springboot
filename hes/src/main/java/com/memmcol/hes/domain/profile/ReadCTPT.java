@@ -1,10 +1,8 @@
 package com.memmcol.hes.domain.profile;
 
 import com.memmcol.hes.application.port.out.TxRxService;
-import com.memmcol.hes.nettyUtils.RequestResponseService;
 import com.memmcol.hes.nettyUtils.SessionManager;
-import com.memmcol.hes.service.AssociationLostException;
-import com.memmcol.hes.service.MeterConnections;
+import com.memmcol.hes.exception.AssociationLostException;
 import gurux.dlms.GXDLMSClient;
 import gurux.dlms.GXReplyData;
 import gurux.dlms.objects.GXDLMSData;

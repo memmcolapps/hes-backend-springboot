@@ -72,7 +72,7 @@ public class ChannelTwoMapper {
             // Set entry timestamp from CLOCK OBIS
             if (objectType == ObisObjectType.CLOCK) {
                 try {
-                    LocalDateTime tsInstant = timestampDecoder.toLocalDateTime(rawValue.toString());
+                    LocalDateTime tsInstant = timestampDecoder.decodeTimestamp(rawValue.toString());
                     dto.setEntryTimestamp(tsInstant);
                 } catch (Exception e) {
                     // Fallback: use raw.getTimestamp() if parsing fails

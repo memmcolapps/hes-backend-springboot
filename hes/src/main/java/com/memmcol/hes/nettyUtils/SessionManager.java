@@ -36,11 +36,11 @@ public class SessionManager {
         this.txRxService = txRxService;
     }
 
-    @PostConstruct
-    public void init() {
-        cleanInflightRequests();
-//        monitorInactivity();
-    }
+//    @PostConstruct
+//    public void init() {
+//        cleanInflightRequests();
+////        monitorInactivity();
+//    }
 
     /**
      * Adds a new session if one doesn't already exist.
@@ -120,63 +120,62 @@ public class SessionManager {
                 && response[len - 1] == 0x01;
     }
 
-    public void cleanInflightRequests() {
-        ScheduledExecutorService cleaner = Executors.newSingleThreadScheduledExecutor();
-        cleaner.scheduleAtFixedRate(() -> {
-            long now = System.currentTimeMillis();
-            inflightRequests.entrySet().removeIf(entry -> {
-                DlmsRequestContext ctx = entry.getValue();
-                if (now > ctx.getExpiryTime()) {
-                    log.warn("🧹 Cleaning up expired request: CID={}, MetersEntity={}", entry.getKey(), ctx.getMeterId());
-                    TRACKER.remove(entry.getKey());
-                    return true;
-                }
-                return false;
-            });
-        }, 30, 30, TimeUnit.SECONDS); // every 30s
-    }
+//    public void cleanInflightRequests() {
+//        ScheduledExecutorService cleaner = Executors.newSingleThreadScheduledExecutor();
+//        cleaner.scheduleAtFixedRate(() -> {
+//            long now = System.currentTimeMillis();
+//            inflightRequests.entrySet().removeIf(entry -> {
+//                DlmsRequestContext ctx = entry.getValue();
+//                if (now > ctx.getExpiryTime()) {
+//                    log.warn("🧹 Cleaning up expired request: CID={}, Meter={}", entry.getKey(), ctx.getMeterId());
+//                    TRACKER.remove(entry.getKey());
+//                    return true;
+//                }
+//                return false;
+//            });
+//        }, 30, 30, TimeUnit.SECONDS); // every 30s
+//    }
 
 
     /**
      * Remove expired sessions (run on a schedule).
      * Remove Cleaning expired TX Correlation ID
      */
-    @Scheduled(fixedDelay = 30000) // every 30 seconds
+//    @Scheduled(fixedDelay = 30000) // every 30 seconds
     public void cleanupExpiredEntries() {
         log.debug("🔍 Starting cleanup: sessions and inflight requests...");
 
-        // 1. Cleanup expired sessions
-        int sessionMapBefore = sessionMap.size();
-        sessionMap.entrySet().removeIf(entry -> {
-            MeterSession meterSession = entry.getValue();
-            if (meterSession.isExpired(SESSION_TIMEOUT)) {
-                try {
-                    meterSession.sendDisconnectRequest(meterSession);
-                    log.warn("⏳ Cleanup triggered disconnect for expired meterSession {}", entry.getKey());
-                } catch (Exception e) {
-                    log.error("❌ Failed to disconnect {} during cleanup: {}", entry.getKey(), e.getMessage());
-                }
-                return true; // remove it after disconnect
-            }
-            return false;
-        });
-//        sessionMap.entrySet().removeIf(entry -> entry.getValue().isExpired(SESSION_TIMEOUT));
-        int sessionMapAfter = sessionMap.size();
-        log.debug("🔍 Sessions cleaned: {} removed, {} remaining", sessionMapBefore - sessionMapAfter, sessionMapAfter);
+        // 1. Cleanup expired sessions and disconnect active meters
+//        int sessionMapBefore = sessionMap.size();
+//        sessionMap.entrySet().removeIf(entry -> {
+//            MeterSession meterSession = entry.getValue();
+//            if (meterSession.isExpired(SESSION_TIMEOUT)) {
+//                try {
+//                    meterSession.sendDisconnectRequest(meterSession);
+//                    log.warn("⏳ Cleanup triggered disconnect for expired meter {}", entry.getKey());
+//                } catch (Exception e) {
+//                    log.error("❌ Failed to disconnect {} during cleanup: {}", entry.getKey(), e.getMessage());
+//                }
+//                return true; // remove it after disconnect
+//            }
+//            return false;
+//        });
+//        int sessionMapAfter = sessionMap.size();
+//        log.debug("🔍 Sessions cleaned: {} removed, {} remaining", sessionMapBefore - sessionMapAfter, sessionMapAfter);
 
         // 2. Cleanup expired inflight requests
-        int inflightBefore = inflightRequests.size();
-        long now = System.currentTimeMillis();
-        inflightRequests.entrySet().removeIf(entry -> {
-            DlmsRequestContext ctx = entry.getValue();
-            if (now > ctx.getExpiryTime()) {
-                log.warn("🧹 Cleaning expired TX: CID={}, MetersEntity={}", entry.getKey(), ctx.getMeterId());
-                TRACKER.remove(entry.getKey());
-                return true;
-            }
-            return false;
-        });
-        int inflightAfter = inflightRequests.size();
-        log.debug("🧹 Inflight TXs cleaned: {} removed, {} remaining", inflightBefore - inflightAfter, inflightAfter);
+//        int inflightBefore = inflightRequests.size();
+//        long now = System.currentTimeMillis();
+//        inflightRequests.entrySet().removeIf(entry -> {
+//            DlmsRequestContext ctx = entry.getValue();
+//            if (now > ctx.getExpiryTime()) {
+//                log.warn("🧹 Cleaning expired TX: CID={}, MetersEntity={}", entry.getKey(), ctx.getMeterId());
+//                TRACKER.remove(entry.getKey());
+//                return true;
+//            }
+//            return false;
+//        });
+//        int inflightAfter = inflightRequests.size();
+//        log.debug("🧹 Inflight TXs cleaned: {} removed, {} remaining", inflightBefore - inflightAfter, inflightAfter);
     }
 }

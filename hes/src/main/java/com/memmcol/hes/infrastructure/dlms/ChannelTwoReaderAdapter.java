@@ -7,8 +7,8 @@ import com.memmcol.hes.application.port.out.TxRxService;
 import com.memmcol.hes.domain.profile.ProfileMetadataResult;
 import com.memmcol.hes.domain.profile.ProfileRow;
 import com.memmcol.hes.domain.profile.ProfileTimestamp;
+import com.memmcol.hes.exception.AssociationLostException;
 import com.memmcol.hes.model.ModelProfileMetadata;
-import com.memmcol.hes.nettyUtils.RequestResponseService;
 import com.memmcol.hes.nettyUtils.SessionManager;
 import com.memmcol.hes.service.*;
 import gurux.dlms.*;
@@ -249,7 +249,7 @@ public class ChannelTwoReaderAdapter implements ProfileDataReaderPort<ProfileRow
             rowIndex++;
             if (row == null || row.isEmpty()) continue;
 
-            LocalDateTime ts = timestampDecoder.toLocalDateTime(row.get(0));
+            LocalDateTime ts = timestampDecoder.decodeTimestamp(row.get(0));
             if (ts == null) {
                 log.debug("Skipping row {} (no timestamp) meter={} obis={}", rowIndex, meterSerial, profileObis);
                 continue;

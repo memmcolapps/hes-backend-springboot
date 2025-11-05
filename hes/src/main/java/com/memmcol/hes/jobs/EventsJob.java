@@ -31,6 +31,9 @@ public class EventsJob extends QuartzJobBean {
         String obisCodesStr = dataMap.getString("obisCodes");
         log.info("✅ EventsJob executed at {}", context.getFireTime());
 
+        /*TODO:
+        *  1. Event profile not consistent.
+        *  2. Investigate why skipping some OBIS*/
         if (obisCodesStr != null) {
             String[] obisCodes = obisCodesStr.split(",");
             for (String obis : obisCodes) {

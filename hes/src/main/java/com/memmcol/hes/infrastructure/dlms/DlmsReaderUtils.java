@@ -5,13 +5,11 @@ import com.memmcol.hes.application.port.out.ProfileReadException;
 import com.memmcol.hes.application.port.out.TxRxService;
 import com.memmcol.hes.domain.profile.ProfileMetadataResult;
 import com.memmcol.hes.domain.profile.ProfileRowGeneric;
-import com.memmcol.hes.mocks.MockFrames;
 import com.memmcol.hes.mocks.MockRequestResponseService;
 import com.memmcol.hes.mocks.MockRxDecoderWithReply;
 import com.memmcol.hes.model.ModelProfileMetadata;
-import com.memmcol.hes.service.AssociationLostException;
-import com.memmcol.hes.nettyUtils.RequestResponseService;
-import com.memmcol.hes.nettyUtils.SessionManager;
+import com.memmcol.hes.nettyUtils.SessionManagerMultiVendor;
+import com.memmcol.hes.exception.AssociationLostException;
 import com.memmcol.hes.service.DlmsUtils;
 import com.memmcol.hes.service.GuruxObjectFactory;
 import gurux.dlms.*;
@@ -23,13 +21,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import javax.crypto.BadPaddingException;
-import javax.crypto.IllegalBlockSizeException;
-import javax.crypto.NoSuchPaddingException;
-import java.security.InvalidAlgorithmParameterException;
-import java.security.InvalidKeyException;
-import java.security.NoSuchAlgorithmException;
-import java.security.SignatureException;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -47,7 +38,7 @@ import static com.memmcol.hes.nettyUtils.RequestResponseService.logTx;
 @RequiredArgsConstructor
 public class DlmsReaderUtils {
 
-    private final SessionManager sessionManager;
+    private final SessionManagerMultiVendor sessionManager;
     private final MeterLockPort meterLockPort;
     private final DlmsPartialDecoder partialDecoder;
     private final DlmsTimestampDecoder timestampDecoder;
@@ -98,7 +89,7 @@ public class DlmsReaderUtils {
 
             client.getData(response, reply, null);
         }
-
+        DlmsErrorUtils.checkError(reply, serial, "OBIS Read!");
         return reply;
     }
 
@@ -111,6 +102,7 @@ public class DlmsReaderUtils {
         }
         GXReplyData reply = new GXReplyData();
         client.getData(response, reply, null);
+        DlmsErrorUtils.checkError(reply, serial, "OBIS Read!");
         client.updateValue(obj, index, reply.getValue());
     }
 
@@ -126,7 +118,38 @@ public class DlmsReaderUtils {
         }
         GXReplyData reply = new GXReplyData();
         client.getData(response, reply, null);
+        DlmsErrorUtils.checkError(reply, serial, "OBIS Read!");
         return client.updateValue(obj, index, reply.getValue());
+    }
+
+    // Read association object status (0.0.40.0.0.255, index 8)
+    public Object checkAssociationStatus(String meterSerial) throws Exception {
+        Object response = "Associated";
+        GXDLMSClient client = sessionManager.getOrCreateClient(meterSerial);
+        GXDLMSAssociationLogicalName association = new GXDLMSAssociationLogicalName();
+        association.setLogicalName("0.0.40.0.0.255"); // Standard OBIS for Association LN
+        try {
+            response = readAttribute(client, meterSerial, association, 8);
+        } catch (AssociationLostException lostException) {
+            sessionManager.removeSession(meterSerial);
+            sessionManager.getOrCreateClient(meterSerial);
+        }
+        return response;
+    }
+
+
+    // Read clock object status
+    public Object readClock(String meterSerial) throws Exception {
+        Object response = LocalDateTime.now();
+        GXDLMSClient client = sessionManager.getOrCreateClient(meterSerial);
+        GXDLMSClock clock = new GXDLMSClock("0.0.1.0.0.255");
+        try {
+            response = readAttribute(client, meterSerial, clock, 2);
+        } catch (AssociationLostException lostException) {
+            sessionManager.removeSession(meterSerial);
+            sessionManager.getOrCreateClient(meterSerial);
+        }
+        return response;
     }
 
     public Object readObisObject(String meterSerial, String obisCode, int classId, int attributeIndex) throws Exception {
@@ -584,4 +607,8 @@ public class DlmsReaderUtils {
             default -> unit.name(); // fallback to enum name
         };
     }
+
+
+
+
 }

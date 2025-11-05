@@ -1,5 +1,6 @@
 package com.memmcol.hes.cache;
 
+import com.github.benmanes.caffeine.cache.AsyncCache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
@@ -73,15 +74,42 @@ public class CaffeineCacheConfig {
                 .expireAfterWrite(24, TimeUnit.HOURS) // or no expiry if lookup table is static
                 .recordStats());
 
-        // Custom cache manager with per-cache Caffeine config
-        return new CaffeineCacheManager() {
+        // ✅ Dashboard-specific caches
+        specs.put("dashboardMeterSummary", Caffeine.newBuilder()
+                .maximumSize(100)
+                .expireAfterWrite(10, TimeUnit.MINUTES)
+                .recordStats());
+
+        specs.put("dashboardCommunicationLogs", Caffeine.newBuilder()
+                .maximumSize(50)
+                .expireAfterWrite(10, TimeUnit.MINUTES)
+                .recordStats());
+
+        specs.put("dashboardSchedulerRate", Caffeine.newBuilder()
+                .maximumSize(20)
+                .expireAfterWrite(10, TimeUnit.MINUTES)
+                .recordStats());
+
+        specs.put("dashboardCommunicationReport", Caffeine.newBuilder()
+                .maximumSize(100)
+                .expireAfterWrite(10, TimeUnit.MINUTES)
+                .recordStats());
+
+        // ✅ Define manager supporting async cache
+        CaffeineCacheManager manager = new CaffeineCacheManager() {
             @Override
             protected Cache createCaffeineCache(String name) {
                 Caffeine<Object, Object> cacheSpec = specs.getOrDefault(name,
                         Caffeine.newBuilder().expireAfterWrite(10, TimeUnit.MINUTES));
-                return new CaffeineCache(name, cacheSpec.build());
+
+                // ✅ Use buildAsync() instead of buildAsyncMap()
+                AsyncCache<Object, Object> asyncCache = cacheSpec.buildAsync();
+
+                return new CaffeineCache(name, asyncCache, true); // "true" => allow sync lookup
             }
         };
+        manager.setAsyncCacheMode(true); // ✅ Important for CompletableFuture support
+        return manager;
     }
 
 
