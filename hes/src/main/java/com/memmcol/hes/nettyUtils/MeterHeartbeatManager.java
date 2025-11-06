@@ -24,10 +24,9 @@ public class MeterHeartbeatManager {
     // --- Configurable parameters ---
     private static final int BATCH_FLUSH_INTERVAL_MINUTES = 5;
     private static final int BUFFER_FLUSH_THRESHOLD = 500;  // Immediate flush if buffer exceeds this
-    private static final int OFFLINE_THRESHOLD_MINUTES = 10;
 
     // Thread-safe buffer for lastSeen timestamps
-    private final ConcurrentHashMap<String, LocalDateTime> lastSeenBuffer = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, String> lastSeenBuffer = new ConcurrentHashMap<>();
 
     // Shared executor for async operations
     private final ExecutorService meterOpsExecutor = Executors.newFixedThreadPool(10);
@@ -44,17 +43,11 @@ public class MeterHeartbeatManager {
                 BATCH_FLUSH_INTERVAL_MINUTES,
                 BATCH_FLUSH_INTERVAL_MINUTES,
                 TimeUnit.MINUTES);
-
-        // Schedule offline detection check
-        scheduler.scheduleAtFixedRate(this::checkOfflineMeters,
-                10,
-                10,
-                TimeUnit.MINUTES);
     }
 
-    /** Called whenever a heartbeat is received */
-    public void handleHeartbeat(String meterId) {
-        lastSeenBuffer.put(meterId, LocalDateTime.now());
+    /** Called whenever Netty receives a heartbeat, login and disconnect event */
+    public void handleOnlineStatus(String meterId, String status) {
+        lastSeenBuffer.put(meterId, status);
 
         // Optional fallback: flush early if buffer too large
         if (lastSeenBuffer.size() >= BUFFER_FLUSH_THRESHOLD) {
@@ -63,46 +56,27 @@ public class MeterHeartbeatManager {
         }
     }
 
-    /** Called whenever Netty receives a disconnect event */
-    public void handleDisconnect(String meterId) {
-        log.warn("⚠️ Disconnect detected for meter [{}]. Updating status to OFFLINE...", meterId);
-
-        // Immediately remove from buffer to prevent stale data
-        lastSeenBuffer.remove(meterId);
-
-        // Update database immediately
-        try {
-            connectionEventService.updateConnectionStatus(meterId, "OFFLINE", LocalDateTime.now());
-            log.info("🟡 Meter [{}] marked as OFFLINE and removed from buffer.", meterId);
-        } catch (Exception e) {
-            log.error("❌ Failed to update DB for meter [{}] disconnect: {}", meterId, e.getMessage(), e);
-        }
-    }
-
     /** Periodically flush batched updates to DB */
     private synchronized void flushToDatabase() {
         if (lastSeenBuffer.isEmpty()) return;
 
-        Map<String, LocalDateTime> snapshot = Map.copyOf(lastSeenBuffer);
+        Map<String, String> snapshot = Map.copyOf(lastSeenBuffer);
         lastSeenBuffer.clear();
 
         CompletableFuture.runAsync(() -> {
             try {
                 int successCount = 0;
-                for (Map.Entry<String, LocalDateTime> entry : snapshot.entrySet()) {
+                for (Map.Entry<String, String> entry : snapshot.entrySet()) {
                     String meterNo = entry.getKey();
-                    LocalDateTime lastSeen = entry.getValue();
+                    String status = entry.getValue();
 
                     try {
-                        // Mark meter as online and record latest timestamp
-//                        connectionEventService.updateOrInsertEvent(meterNo, "ONLINE");
-                        connectionEventService.updateConnectionStatus(meterNo, "ONLINE", lastSeen);
-
+                        connectionEventService.updateConnectionStatus(meterNo, status, LocalDateTime.now());
                         successCount++;
                     } catch (Exception ex) {
                         log.warn("⚠️ Failed to update meter {}: {}", meterNo, ex.getMessage());
                         // Reinsert failed record into buffer for retry
-                        lastSeenBuffer.put(meterNo, lastSeen);
+                        lastSeenBuffer.put(meterNo, status);
                     }
                 }
 
@@ -114,47 +88,6 @@ public class MeterHeartbeatManager {
             }
         }, meterOpsExecutor);
     }
-
-//    private void checkOfflineMeters() {
-//        LocalDateTime now = LocalDateTime.now();
-//        lastSeenBuffer.forEach((meterNo, lastSeen) -> {
-//            if (Duration.between(lastSeen, now).toMinutes() > OFFLINE_THRESHOLD_MINUTES) {
-//                connectionEventService.updateOrInsertEvent(meterNo, "OFFLINE");
-//            }
-//        });
-//    }
-
-    /** Periodically checks for offline meters */
-    private void checkOfflineMeters() {
-        LocalDateTime now = LocalDateTime.now();
-        log.info("🕒 Running offline meter detection...");
-
-        CompletableFuture.runAsync(() -> {
-            int offlineCount = 0;
-
-            for (Map.Entry<String, LocalDateTime> entry : lastSeenBuffer.entrySet()) {
-                String meterNo = entry.getKey();
-                LocalDateTime lastSeen = entry.getValue();
-
-                if (Duration.between(lastSeen, now).toMinutes() > OFFLINE_THRESHOLD_MINUTES) {
-                    try {
-//                        connectionEventService.updateOrInsertEvent(meterNo, "OFFLINE");
-                        connectionEventService.updateConnectionStatus(meterNo, "OFFLINE", lastSeen);
-                        offlineCount++;
-                        log.info("🚨 Meter {} marked OFFLINE (Last seen: {})", meterNo, lastSeen);
-                    } catch (Exception ex) {
-                        log.warn("⚠️ Failed to update offline meter {}: {}", meterNo, ex.getMessage());
-                    }
-                }
-            }
-
-            if (offlineCount > 0)
-                log.info("✅ {} meters marked OFFLINE during this check.", offlineCount);
-            else
-                log.info("✅ No offline meters detected at this time.");
-        }, meterOpsExecutor);
-    }
-
 
     @PreDestroy
     public void shutdown() {

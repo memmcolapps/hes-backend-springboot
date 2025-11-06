@@ -73,7 +73,7 @@ public class DashboardServiceV1 {
             LocalDateTime end = now.minusHours(i - 4);
 
             long count = recentEvents.stream()
-                    .filter(e -> e.getUpdatedAt().isAfter(start) && e.getUpdatedAt().isBefore(end))
+                    .filter(e -> e.getOnlineTime().isAfter(start) && e.getOnlineTime().isBefore(end))
                     .count();
 
             points.add(new DashboardSummaryResponse.CommunicationLogPoint(i + " hrs", (int) count));
