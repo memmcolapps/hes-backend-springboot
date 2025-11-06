@@ -5,8 +5,6 @@ import com.memmcol.hes.nettyUtils.DlmsRequestContext;
 import com.memmcol.hes.nettyUtils.EventNotificationHandler;
 import com.memmcol.hes.nettyUtils.MeterHeartbeatManager;
 import com.memmcol.hes.service.*;
-import gurux.dlms.GXDLMSClient;
-import gurux.dlms.objects.GXDLMSAssociationLogicalName;
 import io.netty.channel.*;
 import io.netty.handler.timeout.ReadTimeoutException;
 import io.netty.util.AttributeKey;
@@ -16,7 +14,6 @@ import java.net.SocketException;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
@@ -40,7 +37,7 @@ public class DLMSMeterHandler extends SimpleChannelInboundHandler<byte[]> {
     public void channelInactive(ChannelHandlerContext ctx) {
         MeterConnections.remove(ctx.channel());
         meterStatusService.broadcastMeterOffline(MeterConnections.getSerial(ctx.channel()));
-        heartbeatManager.handleDisconnect(MeterConnections.getSerial(ctx.channel()));
+        heartbeatManager.handleOnlineStatus(MeterConnections.getSerial(ctx.channel()), "OFFLINE");
         log.info("🛑 Disconnected channel {}", ctx.channel().remoteAddress());
         ctx.close();
     }
@@ -247,7 +244,7 @@ public class DLMSMeterHandler extends SimpleChannelInboundHandler<byte[]> {
         //Reading Association status (to maintain DLMS association) and Save to DB
         //Both for LOGIN and HEARTBEAT FRAME
         if (msgType == 0x0A || msgType == 0x0C) {
-            heartbeatManager.handleHeartbeat(meterId);
+            heartbeatManager.handleOnlineStatus(meterId, "ONLINE");
             readAssociationStatus(meterId);
         }
     }

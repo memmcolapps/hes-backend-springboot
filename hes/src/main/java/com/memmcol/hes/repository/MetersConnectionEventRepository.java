@@ -17,8 +17,8 @@ public interface MetersConnectionEventRepository extends JpaRepository<MetersCon
     @Query("""
         SELECT m 
         FROM MetersConnectionEvent m 
-        WHERE m.updatedAt >= :fromTime
-        ORDER BY m.updatedAt ASC
+        WHERE m.onlineTime >= :fromTime
+        ORDER BY m.onlineTime ASC
     """)
     List<MetersConnectionEvent> findRecentEvents(@Param("fromTime") LocalDateTime fromTime);
 
@@ -26,13 +26,29 @@ public interface MetersConnectionEventRepository extends JpaRepository<MetersCon
 	•	Returns the latest connection status for each meter (ONLINE/OFFLINE).
 	•	Based on connection_time.*/
     @Query("""
-        SELECT e.meterNo, e.connectionType, e.connectionTime
+        SELECT e.meterNo, e.connectionType, e.onlineTime
         FROM MetersConnectionEvent e
-        WHERE e.connectionTime = (
-            SELECT MAX(e2.connectionTime)
+        WHERE e.onlineTime = (
+            SELECT MAX(e2.onlineTime)
             FROM MetersConnectionEvent e2
             WHERE e2.meterNo = e.meterNo
         )
     """)
     List<Object[]> findLatestConnectionEvents();
+
+
+    @Modifying
+    @Query(value = """
+   INSERT INTO meters_connection_event (meter_no, connection_type, online_time, offline_time)
+   VALUES (:meterNo, :status, :connectionTime, :connectionTime)
+   ON CONFLICT (meter_no) DO UPDATE SET
+       connection_type = EXCLUDED.connection_type,
+       online_time = EXCLUDED.online_time,
+       offline_time = EXCLUDED.offline_time
+""", nativeQuery = true)
+    void upsertConnectionEvent(@Param("meterNo") String meterNo,
+                               @Param("status") String status,
+                               @Param("connectionTime") LocalDateTime connectionTime);
+
+
 }

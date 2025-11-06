@@ -12,7 +12,6 @@ import java.time.LocalDateTime;
 @Entity
 @Table(name = "meters_connection_event")
 public class MetersConnectionEvent {
-
     @Id
     @Column(name = "meter_no", nullable = false, length = 12)
     private String meterNo;
@@ -20,14 +19,9 @@ public class MetersConnectionEvent {
     @Column(name = "connection_type")
     private String connectionType;
 
-    @Column(name = "connection_time")
-    private LocalDateTime connectionTime;
+    @Column(name = "online_time")
+    private LocalDateTime onlineTime;
 
-    @Column(name = "updated_at")
-    private LocalDateTime updatedAt;
-
-    public MetersConnectionEvent() {
-        this.connectionTime = LocalDateTime.now();
-        this.updatedAt = LocalDateTime.now();
-    }
+    @Column(name = "offline_time")
+    private LocalDateTime offlineTime;
 }
