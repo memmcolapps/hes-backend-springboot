@@ -39,12 +39,13 @@ public interface MetersConnectionEventRepository extends JpaRepository<MetersCon
 
     @Modifying
     @Query(value = """
-   INSERT INTO meters_connection_event (meter_no, connection_type, online_time, offline_time)
-   VALUES (:meterNo, :status, :connectionTime, :connectionTime)
+   INSERT INTO meters_connection_event (meter_no, connection_type, online_time, offline_time, updated_at)
+   VALUES (:meterNo, :status, :connectionTime, :connectionTime, now())
    ON CONFLICT (meter_no) DO UPDATE SET
        connection_type = EXCLUDED.connection_type,
        online_time = EXCLUDED.online_time,
-       offline_time = EXCLUDED.offline_time
+       offline_time = EXCLUDED.offline_time,
+       updated_at = EXCLUDED.updated_at
 """, nativeQuery = true)
     void upsertConnectionEvent(@Param("meterNo") String meterNo,
                                @Param("status") String status,
