@@ -1,0 +1,2 @@
+ALTER TABLE public.meters_connection_event
+    ADD COLUMN updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL;

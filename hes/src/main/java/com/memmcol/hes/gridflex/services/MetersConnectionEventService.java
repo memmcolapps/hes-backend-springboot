@@ -34,6 +34,7 @@ public class MetersConnectionEventService {
         log.debug("🔁 Updating connection status for meter [{}] → [{}] at {}", meterNo, status, connectionTime);
         repository.findById(meterNo.trim()).ifPresentOrElse(event -> {
             event.setConnectionType(status);
+            event.setUpdatedAt(LocalDateTime.now());
             if (status.equalsIgnoreCase("ONLINE")) {
                 event.setOnlineTime(connectionTime);
             } else if (status.equalsIgnoreCase("OFFLINE")) {
@@ -45,6 +46,7 @@ public class MetersConnectionEventService {
             log.debug("🆕 No record found for meter [{}], inserting new event.", meterNo);
             MetersConnectionEvent newEvent = new MetersConnectionEvent();
             newEvent.setMeterNo(meterNo);
+            newEvent.setUpdatedAt(LocalDateTime.now());
             newEvent.setConnectionType(status);
             if (status.equalsIgnoreCase("ONLINE")) {
                 newEvent.setOnlineTime(connectionTime);

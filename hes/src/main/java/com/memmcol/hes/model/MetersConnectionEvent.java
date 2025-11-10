@@ -24,4 +24,7 @@ public class MetersConnectionEvent {
 
     @Column(name = "offline_time")
     private LocalDateTime offlineTime;
+
+    @Column(name = "updated_at")
+    private LocalDateTime updatedAt;
 }
