@@ -15,6 +15,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.TimeZone;
 
 @Slf4j
 @Service
@@ -152,6 +153,9 @@ public class EventNotificationHandler {
         EventNotificationHandler notificationHandler = new EventNotificationHandler();
         byte[] frame = notificationHandler.hexToBytes(data);
         notificationHandler.process("123456", frame);
+
+//        log.info("Default time zone: {}", TimeZone.getDefault().getID());
+//        log.info("Current System time: {}", LocalDateTime.now());
     }
 
 
