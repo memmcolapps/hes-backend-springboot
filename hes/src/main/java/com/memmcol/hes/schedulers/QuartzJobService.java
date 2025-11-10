@@ -73,7 +73,59 @@ public class QuartzJobService {
         };
     }
 
+
+
     // ---------------- CRUD ----------------
+
+
+    /**
+     * Save a job only if it does NOT exist.
+     * If it exists, do nothing.
+     */
+    public void saveIfNew(SchedulerJobInfo jobInfo) throws Exception {
+        boolean exists = schedulerRepository
+                .findByJobNameAndJobGroup(jobInfo.getJobName(), jobInfo.getJobGroup())
+                .isPresent();
+
+        if (exists) {
+            log.info("Job [{}] already exists. Skipping insert.", jobInfo.getJobName());
+            return; // Ignore existing jobs
+        }
+
+        // Validation
+        if (jobInfo.getJobClass() == null || jobInfo.getJobClass().isBlank()) {
+            throw new IllegalArgumentException("jobClass is required and cannot be empty.");
+        }
+
+        // Decide if it's a cron job
+        jobInfo.setCronJob(StringUtils.hasText(jobInfo.getCronExpression()));
+
+        scheduleNewJob(jobInfo); // schedule in Quartz
+        schedulerRepository.save(jobInfo);
+        log.info("✅ New job [{}] inserted successfully.", jobInfo.getJobName());
+    }
+    /**
+     * Update a job only if it exists.
+     * If the job does not exist, do nothing.
+     */
+    public void updateIfExists(SchedulerJobInfo jobInfo) throws Exception {
+        SchedulerJobInfo existingJob = schedulerRepository
+                .findByJobNameAndJobGroup(jobInfo.getJobName(), jobInfo.getJobGroup())
+                .orElse(null);
+
+        if (existingJob == null) {
+            log.info("Job [{}] does not exist. Skipping update.", jobInfo.getJobName());
+            return; // Ignore new jobs
+        }
+
+        // Merge only provided fields
+        mergeJobFields(existingJob, jobInfo);
+
+        updateJob(existingJob); // update Quartz schedule if needed
+        schedulerRepository.save(existingJob);
+
+        log.info("✅ Existing job [{}] updated successfully.", existingJob.getJobName());
+    }
 
     /**
      * Create or update a job.

@@ -1,36 +1,79 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<configuration>
+<configuration scan="true">
 
-    <!-- DLMS Tx/Rx logger writing to a separate file (per meter serial) -->
+    <!-- Define log directory -->
+    <property name="LOG_DIR" value="logs"/>
+
+    <!-- ==== DLMS Tx/Rx Logger (Per Meter, Asynchronous) ==== -->
     <appender name="DLMS_APPENDER" class="ch.qos.logback.classic.sift.SiftingAppender">
         <discriminator>
             <key>meter</key>
             <defaultValue>general</defaultValue>
         </discriminator>
         <sift>
-            <appender name="METER_FILE_APPENDER" class="ch.qos.logback.core.FileAppender">
-                <file>logs/${meter}-dlms-txrx.log</file>
+            <appender name="METER_FILE_APPENDER" class="ch.qos.logback.core.rolling.RollingFileAppender">
+                <file>${LOG_DIR}/meters/${meter}-dlms-txrx.log</file>
+
+                <!-- Daily rollover -->
+                <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+                    <fileNamePattern>${LOG_DIR}/${meter}-dlms-txrx-%d{yyyy-MM-dd}.log</fileNamePattern>
+                    <maxHistory>1</maxHistory>
+                    <!-- Optional: total size cap -->
+                    <totalSizeCap>10MB</totalSizeCap>
+                    <cleanHistoryOnStart>true</cleanHistoryOnStart>
+                </rollingPolicy>
+
                 <encoder>
-                    <pattern>%d{yyyy-MM-dd HH:mm:ss} %-5level %msg%n</pattern>
+                    <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level %msg%n</pattern>
                 </encoder>
             </appender>
         </sift>
     </appender>
 
-    <!-- Route DLMS frames into the separate TX/RX log -->
-    <logger name="DLMS-TXRX" level="INFO" additivity="false">
+    <!-- Asynchronous wrapper for DLMS logs -->
+    <appender name="ASYNC_DLMS" class="ch.qos.logback.classic.AsyncAppender">
+        <queueSize>500</queueSize>
+        <discardingThreshold>0</discardingThreshold>
         <appender-ref ref="DLMS_APPENDER"/>
+    </appender>
+
+    <logger name="DLMS-TXRX" level="INFO" additivity="false">
+        <appender-ref ref="ASYNC_DLMS"/>
     </logger>
 
-    <!-- Console appender for normal application log -->
-    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+
+    <!-- ==== Main Application Log (Asynchronous, Daily Rollover) ==== -->
+    <appender name="MAIN_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_DIR}/applications/application.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_DIR}/app-main-%d{yyyy-MM-dd}.log</fileNamePattern>
+            <maxHistory>1</maxHistory>
+            <!-- Optional: total size cap -->
+            <totalSizeCap>20MB</totalSizeCap>
+            <cleanHistoryOnStart>true</cleanHistoryOnStart>
+        </rollingPolicy>
         <encoder>
-            <pattern>%d{yyyy-MM-dd HH:mm:ss} %-5level [%thread] %logger - %msg%n</pattern>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger - %msg%n</pattern>
         </encoder>
     </appender>
 
-    <!-- Root logger - needed to keep the app alive and output standard logs -->
+    <!-- Async wrapper for main logs -->
+    <appender name="ASYNC_MAIN" class="ch.qos.logback.classic.AsyncAppender">
+        <queueSize>1000</queueSize>
+        <discardingThreshold>0</discardingThreshold>
+        <appender-ref ref="MAIN_FILE"/>
+    </appender>
+
+    <!-- ==== Console (optional, for dev) ==== -->
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- ==== Root Logger ==== -->
     <root level="INFO">
+        <appender-ref ref="ASYNC_MAIN"/>
         <appender-ref ref="STDOUT"/>
     </root>
 
