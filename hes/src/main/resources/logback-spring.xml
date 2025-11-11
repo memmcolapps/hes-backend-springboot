@@ -47,7 +47,7 @@
         <file>${LOG_DIR}/applications/application.log</file>
         <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
             <fileNamePattern>${LOG_DIR}/app-main-%d{yyyy-MM-dd}.log</fileNamePattern>
-            <maxHistory>1</maxHistory>
+            <maxHistory>2</maxHistory>
             <!-- Optional: total size cap -->
             <totalSizeCap>20MB</totalSizeCap>
             <cleanHistoryOnStart>true</cleanHistoryOnStart>
