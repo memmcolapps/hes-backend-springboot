@@ -32,7 +32,8 @@ public class SecurityConfig {
                                 "/actuator/**" ,          // Optional: if using Spring Boot Actuator
                                 "/swagger-ui/**",
                                 "/swagger-ui.html",
-                                "/v3/api-docs/**"
+                                "/v3/api-docs/**",
+                                "/api/realtime/stream"
                         ).permitAll()
                         .anyRequest().authenticated()
                 )
