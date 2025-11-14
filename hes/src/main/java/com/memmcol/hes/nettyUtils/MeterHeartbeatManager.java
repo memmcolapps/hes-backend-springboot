@@ -6,8 +6,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
-import java.time.Duration;
-import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.util.Map;
 import java.util.concurrent.*;
 
@@ -71,7 +71,7 @@ public class MeterHeartbeatManager {
                     String status = entry.getValue();
 
                     try {
-                        connectionEventService.updateConnectionStatus(meterNo, status, LocalDateTime.now());
+                        connectionEventService.updateConnectionStatus(meterNo, status, ZonedDateTime.now(ZoneId.systemDefault()).toLocalDateTime());
                         successCount++;
                     } catch (Exception ex) {
                         log.warn("⚠️ Failed to update meter {}: {}", meterNo, ex.getMessage());
