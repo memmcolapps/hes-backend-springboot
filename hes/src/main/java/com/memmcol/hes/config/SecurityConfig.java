@@ -33,7 +33,8 @@ public class SecurityConfig {
                                 "/swagger-ui/**",
                                 "/swagger-ui.html",
                                 "/v3/api-docs/**",
-                                "/api/realtime/stream"
+                                "/api/realtime/stream",
+                                "/api/realtime/meter-status/stream"
                         ).permitAll()
                         .anyRequest().authenticated()
                 )

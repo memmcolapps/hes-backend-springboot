@@ -46,7 +46,7 @@ public class MeterHeartbeatManager {
     }
 
     /** Called whenever Netty receives a heartbeat, login and disconnect event */
-    public void handleOnlineStatus(String meterId, String status) {
+    public void handleStatus(String meterId, String status) {
         lastSeenBuffer.put(meterId, status);
 
         // Optional fallback: flush early if buffer too large

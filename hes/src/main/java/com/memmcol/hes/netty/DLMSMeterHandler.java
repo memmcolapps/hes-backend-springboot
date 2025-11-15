@@ -37,7 +37,7 @@ public class DLMSMeterHandler extends SimpleChannelInboundHandler<byte[]> {
     public void channelInactive(ChannelHandlerContext ctx) {
         MeterConnections.remove(ctx.channel());
         meterStatusService.broadcastMeterOffline(MeterConnections.getSerial(ctx.channel()));
-        heartbeatManager.handleOnlineStatus(MeterConnections.getSerial(ctx.channel()), "OFFLINE");
+        heartbeatManager.handleStatus(MeterConnections.getSerial(ctx.channel()), "OFFLINE");
         log.info("🛑 Disconnected channel {}", ctx.channel().remoteAddress());
         ctx.close();
     }
@@ -244,7 +244,7 @@ public class DLMSMeterHandler extends SimpleChannelInboundHandler<byte[]> {
         //Reading Association status (to maintain DLMS association) and Save to DB
         //Both for LOGIN and HEARTBEAT FRAME
         if (msgType == 0x0A || msgType == 0x0C) {
-            heartbeatManager.handleOnlineStatus(meterId, "ONLINE");
+            heartbeatManager.handleStatus(meterId, "ONLINE");
             readAssociationStatus(meterId);
         }
     }
