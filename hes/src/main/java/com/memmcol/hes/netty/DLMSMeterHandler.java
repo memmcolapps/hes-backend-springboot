@@ -1,5 +1,6 @@
 package com.memmcol.hes.netty;
 
+import com.memmcol.hes.gridflex.sse.MeterHeartbeatService;
 import com.memmcol.hes.infrastructure.dlms.DlmsReaderUtils;
 import com.memmcol.hes.nettyUtils.DlmsRequestContext;
 import com.memmcol.hes.nettyUtils.EventNotificationHandler;
@@ -19,14 +20,20 @@ import java.util.concurrent.TimeUnit;
 
 import static com.memmcol.hes.nettyUtils.RequestResponseService.*;
 
+/*TODO:
+*  1. delete MeterStatusService class and all dependencies
+*  2. Remove references to MeterHeartbeatManager from this class and NettyChannelInitializer class.
+*  */
+
 @Slf4j
 @AllArgsConstructor
 public class DLMSMeterHandler extends SimpleChannelInboundHandler<byte[]> {
-    private final MeterStatusService meterStatusService;
+//    private final MeterStatusService meterStatusService;
     private final DlmsReaderUtils dlmsReaderUtils;
-    private final MeterHeartbeatManager heartbeatManager;
+//    private final MeterHeartbeatManager heartbeatManager;
     private final ScheduledExecutorService dlmsScheduledExecutor;
     private final EventNotificationHandler handler;
+    private final MeterHeartbeatService heartbeatService;
 
     @Override
     public void channelActive(ChannelHandlerContext ctx) {
@@ -35,9 +42,10 @@ public class DLMSMeterHandler extends SimpleChannelInboundHandler<byte[]> {
 
     @Override
     public void channelInactive(ChannelHandlerContext ctx) {
+//        meterStatusService.broadcastMeterOffline(MeterConnections.getSerial(ctx.channel()));
+//        heartbeatManager.handleStatus(MeterConnections.getSerial(ctx.channel()), "OFFLINE");
+        heartbeatService.processFrame(MeterConnections.getSerial(ctx.channel()), "OFFLINE");
         MeterConnections.remove(ctx.channel());
-        meterStatusService.broadcastMeterOffline(MeterConnections.getSerial(ctx.channel()));
-        heartbeatManager.handleOnlineStatus(MeterConnections.getSerial(ctx.channel()), "OFFLINE");
         log.info("🛑 Disconnected channel {}", ctx.channel().remoteAddress());
         ctx.close();
     }
@@ -181,7 +189,8 @@ public class DLMSMeterHandler extends SimpleChannelInboundHandler<byte[]> {
         // Bind or update meter connection (for LOGIN and HEARTBEAT)
         if (msgType == 0x0A || msgType == 0x0C) {
             MeterConnections.bind(ctx.channel(), meterId);
-            meterStatusService.broadcastMeterOnline(meterId);
+//            meterStatusService.broadcastMeterOnline(meterId);
+            heartbeatService.processFrame(MeterConnections.getSerial(ctx.channel()), "ONLINE");
         }
 
         // -----------------------------
@@ -244,7 +253,8 @@ public class DLMSMeterHandler extends SimpleChannelInboundHandler<byte[]> {
         //Reading Association status (to maintain DLMS association) and Save to DB
         //Both for LOGIN and HEARTBEAT FRAME
         if (msgType == 0x0A || msgType == 0x0C) {
-            heartbeatManager.handleOnlineStatus(meterId, "ONLINE");
+//            heartbeatManager.handleStatus(meterId, "ONLINE");
+//            heartbeatService.processFrame(meterId, "ONLINE");
             readAssociationStatus(meterId);
         }
     }

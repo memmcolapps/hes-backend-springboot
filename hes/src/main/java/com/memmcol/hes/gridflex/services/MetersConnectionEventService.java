@@ -8,6 +8,8 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.util.Optional;
 
 @Service
@@ -19,7 +21,6 @@ public class MetersConnectionEventService {
     public MetersConnectionEventService(MetersConnectionEventRepository repository) {
         this.repository = repository;
     }
-
 
 
     /**
@@ -34,11 +35,11 @@ public class MetersConnectionEventService {
         log.debug("🔁 Updating connection status for meter [{}] → [{}] at {}", meterNo, status, connectionTime);
         repository.findById(meterNo.trim()).ifPresentOrElse(event -> {
             event.setConnectionType(status);
-            event.setUpdatedAt(LocalDateTime.now());
+            event.setUpdatedAt(ZonedDateTime.now(ZoneId.systemDefault()).toLocalDateTime());
             if (status.equalsIgnoreCase("ONLINE")) {
                 event.setOnlineTime(connectionTime);
             } else if (status.equalsIgnoreCase("OFFLINE")) {
-                event.setOfflineTime(LocalDateTime.now());
+                event.setOfflineTime(ZonedDateTime.now(ZoneId.systemDefault()).toLocalDateTime());
             }
             repository.save(event);
             log.debug("✅ Updated meter [{}] to [{}]", meterNo, status);
@@ -46,12 +47,12 @@ public class MetersConnectionEventService {
             log.debug("🆕 No record found for meter [{}], inserting new event.", meterNo);
             MetersConnectionEvent newEvent = new MetersConnectionEvent();
             newEvent.setMeterNo(meterNo);
-            newEvent.setUpdatedAt(LocalDateTime.now());
+            newEvent.setUpdatedAt(ZonedDateTime.now(ZoneId.systemDefault()).toLocalDateTime());
             newEvent.setConnectionType(status);
             if (status.equalsIgnoreCase("ONLINE")) {
                 newEvent.setOnlineTime(connectionTime);
             } else if (status.equalsIgnoreCase("OFFLINE")) {
-                newEvent.setOfflineTime(LocalDateTime.now());
+                newEvent.setOfflineTime(ZonedDateTime.now(ZoneId.systemDefault()).toLocalDateTime());
             }
             repository.save(newEvent);
             log.debug("✅ Inserted new meter [{}] with status [{}]", meterNo, status);

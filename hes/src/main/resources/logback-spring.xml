@@ -4,6 +4,9 @@
     <!-- Define log directory -->
     <property name="LOG_DIR" value="logs"/>
 
+    <!-- Optional: allow dynamic server timezone -->
+    <property name="SERVER_TIMEZONE" value="${server.timezone:-}"/>
+
     <!-- ==== DLMS Tx/Rx Logger (Per Meter, Asynchronous) ==== -->
     <appender name="DLMS_APPENDER" class="ch.qos.logback.classic.sift.SiftingAppender">
         <discriminator>
@@ -24,7 +27,7 @@
                 </rollingPolicy>
 
                 <encoder>
-                    <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level %msg%n</pattern>
+                    <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS, ${SERVER_TIMEZONE}} %-5level %msg%n</pattern>
                 </encoder>
             </appender>
         </sift>
@@ -41,7 +44,6 @@
         <appender-ref ref="ASYNC_DLMS"/>
     </logger>
 
-
     <!-- ==== Main Application Log (Asynchronous, Daily Rollover) ==== -->
     <appender name="MAIN_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
         <file>${LOG_DIR}/applications/application.log</file>
@@ -53,7 +55,7 @@
             <cleanHistoryOnStart>true</cleanHistoryOnStart>
         </rollingPolicy>
         <encoder>
-            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger - %msg%n</pattern>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS, ${SERVER_TIMEZONE}} %-5level [%thread] %logger - %msg%n</pattern>
         </encoder>
     </appender>
 
@@ -67,7 +69,7 @@
     <!-- ==== Console (optional, for dev) ==== -->
     <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
         <encoder>
-            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger - %msg%n</pattern>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS, ${SERVER_TIMEZONE}} %-5level [%thread] %logger - %msg%n</pattern>
         </encoder>
     </appender>
 
