@@ -20,7 +20,9 @@ public class MeterHeartbeatService {
     /**
      * This is your main method for Login / Heartbeat events.
      */
-    public void processLoginFrame(String meterNo, String status) {
+    public void processFrame(String meterNo, String status) {
+
+        log.debug("Push message from meter {}, status: {}", meterNo, status);
 
         MeterStatusEvent event = new MeterStatusEvent(
                 meterNo,
@@ -34,7 +36,7 @@ public class MeterHeartbeatService {
         // 2️⃣ Push into DB buffer (asynchronously flushed)
         heartbeatManager.handleStatus(meterNo, status);
 
-        log.debug("Processed login frame for meter {}", meterNo);
+        log.debug("Processed login/heartbeat frame for meter {}, status: {}", meterNo, status);
     }
 
 }

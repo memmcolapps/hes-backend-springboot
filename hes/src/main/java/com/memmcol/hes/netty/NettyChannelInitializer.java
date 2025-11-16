@@ -1,5 +1,6 @@
 package com.memmcol.hes.netty;
 
+import com.memmcol.hes.gridflex.sse.MeterHeartbeatService;
 import com.memmcol.hes.infrastructure.dlms.DlmsReaderUtils;
 import com.memmcol.hes.nettyUtils.EventNotificationHandler;
 import com.memmcol.hes.nettyUtils.MeterHeartbeatManager;
@@ -21,23 +22,27 @@ import java.util.concurrent.TimeUnit;
 @Component
 public class NettyChannelInitializer extends ChannelInitializer<SocketChannel> {
 
-    private final MeterStatusService meterStatusService;
+//    private final MeterStatusService meterStatusService;
     private final DlmsReaderUtils dlmsReaderUtils;
-    private final MeterHeartbeatManager heartbeatManager;
+//    private final MeterHeartbeatManager heartbeatManager;
     private final ScheduledExecutorService dlmsScheduledExecutor;
     private final EventNotificationHandler handler;
+    private final MeterHeartbeatService heartbeatService;
 
     @Autowired
-    public NettyChannelInitializer(MeterStatusService meterStatusService,
-                                   DlmsReaderUtils dlmsReaderUtils,
-                                   MeterHeartbeatManager heartbeatManager,
-                                   @Qualifier("dlmsScheduledExecutor") ScheduledExecutorService dlmsScheduledExecutor, EventNotificationHandler handler
+    public NettyChannelInitializer(DlmsReaderUtils dlmsReaderUtils,
+//                                   MeterStatusService meterStatusService,
+//                                   MeterHeartbeatManager heartbeatManager,
+                                   @Qualifier("dlmsScheduledExecutor") ScheduledExecutorService dlmsScheduledExecutor,
+                                   EventNotificationHandler handler,
+                                   MeterHeartbeatService heartbeatService
     ) {
-        this.meterStatusService = meterStatusService;
+//        this.meterStatusService = meterStatusService;
         this.dlmsReaderUtils = dlmsReaderUtils;
-        this.heartbeatManager = heartbeatManager;
+//        this.heartbeatManager = heartbeatManager;
         this.dlmsScheduledExecutor = dlmsScheduledExecutor;
         this.handler = handler;
+        this.heartbeatService = heartbeatService;
     }
 
     @Override
@@ -52,7 +57,7 @@ public class NettyChannelInitializer extends ChannelInitializer<SocketChannel> {
         pipeline.addLast("dlmsEncoder", new DLMSFrameEncoder());
 
         // Business logic
-        pipeline.addLast("dlmsHandler", new DLMSMeterHandler(meterStatusService, dlmsReaderUtils, heartbeatManager, dlmsScheduledExecutor, handler));
+        pipeline.addLast("dlmsHandler", new DLMSMeterHandler(dlmsReaderUtils, dlmsScheduledExecutor, handler, heartbeatService));
     }
 
 }
