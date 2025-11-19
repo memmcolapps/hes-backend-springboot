@@ -12,6 +12,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -149,13 +150,18 @@ public class EventNotificationHandler {
     }
 
     public static void main(String[] args) throws Exception {
-        String data = "00 01 00 01 00 66 00 22 C2 00 00 07 00 00 63 62 01 FF 02 01 01 02 02 09 0C 07 E9 0A 1F 05 11 0F 39 FF 80 00 00 06 00 00 00 29";
-        EventNotificationHandler notificationHandler = new EventNotificationHandler();
-        byte[] frame = notificationHandler.hexToBytes(data);
-        notificationHandler.process("123456", frame);
+//        String data = "00 01 00 01 00 66 00 22 C2 00 00 07 00 00 63 62 01 FF 02 01 01 02 02 09 0C 07 E9 0A 1F 05 11 0F 39 FF 80 00 00 06 00 00 00 29";
+//        EventNotificationHandler notificationHandler = new EventNotificationHandler();
+//        byte[] frame = notificationHandler.hexToBytes(data);
+//        notificationHandler.process("123456", frame);
 
-//        log.info("Default time zone: {}", TimeZone.getDefault().getID());
-//        log.info("Current System time: {}", LocalDateTime.now());
+        log.info("OS DEFAULT TIMEZONE: {}", ZoneId.systemDefault());
+        log.info("JVM Default time zone: {}", TimeZone.getDefault().getID());
+        log.info("JVM DEFAULT TIMEZONE: {}", TimeZone.getDefault());
+        log.info("Current System time: {}", LocalDateTime.now());
+
+
+
     }
 
 

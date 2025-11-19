@@ -107,6 +107,7 @@ public class EventLogPersistenceAdapter {
                     .eventTime(dto.getEventTime().truncatedTo(ChronoUnit.SECONDS))
                     .currentThreshold(dto.getCurrentThreshold())
                     .eventName(eventName)
+                    .meterModel(dto.getMeterModel())
                     .createdAt(LocalDateTime.now())
                     .build();
 

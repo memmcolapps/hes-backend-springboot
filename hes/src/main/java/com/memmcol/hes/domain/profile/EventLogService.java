@@ -92,7 +92,7 @@ public class EventLogService {
 
 //                savePartialToJson(rawRows);
 
-                List<EventLogDTO> eventDtos = eventLogMapper.toDTOs(rawRows, meterSerial);
+                List<EventLogDTO> eventDtos = eventLogMapper.toDTOs(rawRows, meterSerial, model);
 
                 ProfileSyncResult syncResult = eventLogPersistenceAdapter.saveBatch(meterSerial, profileObis, eventDtos);
 
