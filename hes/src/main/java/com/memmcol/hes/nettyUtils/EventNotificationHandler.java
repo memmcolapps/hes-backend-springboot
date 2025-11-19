@@ -2,15 +2,13 @@ package com.memmcol.hes.nettyUtils;
 
 import com.memmcol.hes.infrastructure.dlms.DlmsDataDecoder;
 import gurux.dlms.*;
-import gurux.dlms.enums.Authentication;
-import gurux.dlms.enums.Command;
-import gurux.dlms.enums.DataType;
-import gurux.dlms.enums.InterfaceType;
+import gurux.dlms.enums.*;
 import gurux.dlms.internal.GXCommon;
 import gurux.dlms.objects.GXDLMSObject;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
@@ -151,16 +149,46 @@ public class EventNotificationHandler {
 
     public static void main(String[] args) throws Exception {
 //        String data = "00 01 00 01 00 66 00 22 C2 00 00 07 00 00 63 62 01 FF 02 01 01 02 02 09 0C 07 E9 0A 1F 05 11 0F 39 FF 80 00 00 06 00 00 00 29";
-//        EventNotificationHandler notificationHandler = new EventNotificationHandler();
+        EventNotificationHandler notificationHandler = new EventNotificationHandler();
 //        byte[] frame = notificationHandler.hexToBytes(data);
 //        notificationHandler.process("123456", frame);
 
-        log.info("OS DEFAULT TIMEZONE: {}", ZoneId.systemDefault());
-        log.info("JVM Default time zone: {}", TimeZone.getDefault().getID());
-        log.info("JVM DEFAULT TIMEZONE: {}", TimeZone.getDefault());
-        log.info("Current System time: {}", LocalDateTime.now());
+//        log.info("OS DEFAULT TIMEZONE: {}", ZoneId.systemDefault());
+//        log.info("JVM Default time zone: {}", TimeZone.getDefault().getID());
+//        log.info("JVM DEFAULT TIMEZONE: {}", TimeZone.getDefault());
+//        log.info("Current System time: {}", LocalDateTime.now());
 
+        String meterno = "00 01 00 01 00 01 00 12 C4 01 C1 00 09 0C 32 30 32 30 30 36 30 30 31 33 31 34";
+        String clock = "00 01 00 01 00 01 00 12 C4 01 C1 00 09 0C 07 E9 0B 13 03 11 10 3B FF FF C4 00";
+        String formattedValue = "";
+        GXDLMSObject object;
+        byte[] frame = notificationHandler.hexToBytes(clock);
+        GXDLMSClient client = new GXDLMSClient(
+                true, 1, 1,
+                Authentication.LOW,
+                "12345678",
+                InterfaceType.WRAPPER);
 
+//        ObjectType type = ObjectType.forValue(1);
+//        object.setLogicalName("0.0.96.1.0.255");
+        ObjectType type = ObjectType.forValue(8);
+        object = GXDLMSClient.createObject(type);
+        object.setLogicalName("0.0.1.0.0.255");
+        GXReplyData reply = new GXReplyData();
+        client.getData(frame, reply, null);
+        Object result = client.updateValue(object, 2, reply.getValue());
+
+        if (result instanceof byte[]) {
+            result = DlmsDataDecoder.decodeOctetString((byte[]) result);
+            formattedValue = result.toString();
+        } else if (result instanceof Number) {
+            result = new BigDecimal(result.toString());
+            formattedValue = result.toString();
+        } else if (result != null) {
+            result = result.toString();
+            formattedValue = result.toString();
+        }
+        log.info("Result: {}, Formatted value: {}", result, formattedValue);
 
     }
 
