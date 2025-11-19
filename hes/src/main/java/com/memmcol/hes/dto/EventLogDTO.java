@@ -16,4 +16,6 @@ public class EventLogDTO {
     private LocalDateTime eventTime;
     private Double currentThreshold; // optional
     private String eventName;
+    private String meterModel;
+
 }

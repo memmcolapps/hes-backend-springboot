@@ -14,7 +14,7 @@ import java.util.*;
 @Configuration
 @Slf4j
 public class EventLogMapper {
-    public List<EventLogDTO> toDTOs(List<ProfileRowGeneric> rawRows, String meterSerial) {
+    public List<EventLogDTO> toDTOs(List<ProfileRowGeneric> rawRows, String meterSerial, String meterModel) {
         return rawRows.stream().map(raw -> {
             // Convert LinkedHashMap values into ordered list
             List<Object> values = new ArrayList<>(raw.getValues().values());
@@ -49,6 +49,7 @@ public class EventLogMapper {
                     .eventTime(eventTime)
                     .currentThreshold(currentThreshold)
                     .eventName(eventName) // ✅ avoid {}
+                    .meterModel(meterModel)
                     .build();
         }).toList();
     }

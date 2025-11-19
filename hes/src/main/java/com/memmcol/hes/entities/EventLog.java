@@ -44,6 +44,10 @@ public class EventLog {
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 
+    @Column(name = "meter_model", nullable = false, length = 50)
+    private String meterModel;
+
+
 //    @PrePersist
 //    protected void onCreate() {
 //        if (createdAt == null) {

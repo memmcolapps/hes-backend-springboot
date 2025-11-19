@@ -185,15 +185,10 @@ public class MeterReadingService {
             //Establish DLMS Association
             GXDLMSClient client = sessionManagerMultiVendor.getOrCreateClient(meterSerial);
             if (client == null) {
-//                Map<String, Object> error = new HashMap<>();
-//                error.put("error", "No active session for meter: " + meterSerial);
-                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(
-                        Map.of(
-                                "error", "No active session",
-                                "serial", meterSerial,
-                                "tip", "Please establish association before reading OBIS"
-                        )
-                );
+                Map<String, Object> error = new HashMap<>();
+                error.put("error", "No active session for meter: " + meterSerial);
+                error.put("details", "Please establish association before reading OBIS");
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(error);
             }
 
             ObjectType type = ObjectType.forValue(classId);
@@ -340,12 +335,12 @@ public class MeterReadingService {
         } catch (AssociationLostException ex) {
             sessionManagerMultiVendor.removeSession(meterSerial);
             Map<String, Object> error = new HashMap<>();
-            error.put("error", "🔄 Association lost with meter number: " + meterSerial);
+            error.put("error", "Association lost with meter number: " + meterSerial);
             error.put("details", ex.getMessage());
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
         } catch (Exception e) {
             Map<String, Object> error = new HashMap<>();
-            error.put("error", "❌ Failed to read from OBIS");
+            error.put("error", "Failed to read from OBIS");
             error.put("details", e.getMessage());
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
         }
@@ -376,13 +371,8 @@ public class MeterReadingService {
             if (client == null) {
                 Map<String, Object> error = new HashMap<>();
                 error.put("error", "No active session for meter: " + meterSerial);
-                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(
-                        Map.of(
-                                "error", "No active session",
-                                "serial", meterSerial,
-                                "tip", "Please establish association before reading OBIS"
-                        )
-                );
+                error.put("details", "Please establish association before reading OBIS");
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(error);
             }
 
             //Read MD CT and PT ratio
@@ -537,12 +527,12 @@ public class MeterReadingService {
         } catch (AssociationLostException ex) {
             sessionManagerMultiVendor.removeSession(meterSerial);
             Map<String, Object> error = new HashMap<>();
-            error.put("error", "🔄 Association lost with meter number: " + meterSerial);
+            error.put("error", "Association lost with meter number: " + meterSerial);
             error.put("details", ex.getMessage());
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
         } catch (Exception e) {
             Map<String, Object> error = new HashMap<>();
-            error.put("error", "❌ Failed to read from OBIS");
+            error.put("error", "Failed to read from OBIS");
             error.put("details", e.getMessage());
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
         }
