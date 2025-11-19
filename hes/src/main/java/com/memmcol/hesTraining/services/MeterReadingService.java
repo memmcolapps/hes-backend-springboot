@@ -285,7 +285,7 @@ public class MeterReadingService {
 
                     // Format to "YYYY-MM-DD HH:MM:SS"
                     result = localDateTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
-
+                    formattedValue = result.toString();
                     object = clk;
                     unit = null;
                 }
@@ -301,6 +301,8 @@ public class MeterReadingService {
                     } else if (result != null) {
                         result = result.toString();
                     }
+                    assert result != null;
+                    formattedValue = result.toString();
                     object = data;
                     unit = null;
                 }
@@ -316,6 +318,8 @@ public class MeterReadingService {
                     } else if (result != null) {
                         result = result.toString();
                     }
+                    assert result != null;
+                    formattedValue = result.toString();
                     unit = null;
                 }
             }
@@ -476,6 +480,7 @@ public class MeterReadingService {
 
                     // Format to "YYYY-MM-DD HH:MM:SS"
                     result = localDateTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+                    formattedValue = result.toString();
 
                     object = clk;
                     unit = null;
@@ -492,6 +497,8 @@ public class MeterReadingService {
                     } else if (result != null) {
                         result = result.toString();
                     }
+                    assert result != null;
+                    formattedValue = result.toString();
                     object = data;
                     unit = null;
                 }
@@ -507,6 +514,8 @@ public class MeterReadingService {
                     } else if (result != null) {
                         result = result.toString();
                     }
+                    assert result != null;
+                    formattedValue = result.toString();
                     unit = null;
                 }
 //                default -> throw new IllegalArgumentException("Unsupported object type: " + type);
@@ -538,7 +547,7 @@ public class MeterReadingService {
         }
     }
 
-    static String getUnitSymbol(Unit unit) {
+    static public String getUnitSymbol(Unit unit) {
         return switch (unit) {
             case VOLTAGE -> "V";
             case CURRENT -> "A";

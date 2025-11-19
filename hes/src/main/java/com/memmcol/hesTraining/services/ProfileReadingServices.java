@@ -408,6 +408,4 @@ public class ProfileReadingServices {
                 && (minute <= 59)
                 && (second <= 59);
     }
-
-
 }
