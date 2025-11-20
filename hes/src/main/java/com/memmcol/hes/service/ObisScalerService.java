@@ -9,6 +9,7 @@ import gurux.dlms.GXDLMSClient;
 import gurux.dlms.enums.ObjectType;
 import gurux.dlms.enums.Unit;
 import gurux.dlms.objects.GXDLMSDemandRegister;
+import gurux.dlms.objects.GXDLMSExtendedRegister;
 import gurux.dlms.objects.GXDLMSRegister;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -34,6 +35,7 @@ public class ObisScalerService {
     public Map<String, Object> updateScalerUnitForMeter(String meterSerial, String model) throws Exception {
         Map<String, Object> report = new LinkedHashMap<>();
         List<Map<String, Object>> failures = new ArrayList<>();
+        int success = 0;
 
         List<Integer> classIds = List.of(4, 3);
         // Step 2: Get relevant OBIS mappings
@@ -64,9 +66,8 @@ public class ObisScalerService {
                 Map<String, Object> scalerUnit = readScalerUnit(
                         client,
                         meterSerial,
-                        mapping.getObisCodeCombined(),
-                        mapping.getClassId(),
-                        mapping.getAttributeIndex()
+                        mapping.getObisCode(),
+                        mapping.getClassId()
                 );
 
                 double scaler = (double) scalerUnit.get("scaler");
@@ -82,15 +83,17 @@ public class ObisScalerService {
                 mapping.setUnit(unit);
                 obisMappingRepository.save(mapping);
 
-                log.info("Updated {} for meter {}: scaler={}, unit={}", mapping.getObisCodeCombined(),
+                success++;
+
+                log.info("Updated {} for meter {}: scaler={}, unit={}", mapping.getObisCode(),
                         meterSerial, scaler, unit);
 
             } catch (Exception ex) {
                 log.error("Failed to read scaler/unit for OBIS {} on meter {}: {}",
-                        mapping.getObisCodeCombined(), meterSerial, ex.getMessage());
+                        mapping.getObisCode(), meterSerial, ex.getMessage());
                 failures.add(Map.of(
                         "meterSerial", meterSerial,
-                        "obisCodeCombined", mapping.getObisCodeCombined(),
+                        "obisCode", mapping.getObisCode(),
                         "error", ex.getMessage()
                 ));
             }
@@ -99,6 +102,8 @@ public class ObisScalerService {
         report.put("status", "Completed");
         report.put("meterSerial", meterSerial);
         report.put("totalMappings", mappings.size());
+        report.put("success count", success);
+        report.put("failures count", failures.size());
         report.put("failures", failures);
 
         log.info("One-off OBIS scaler/unit update completed for meter: {}", meterSerial);
@@ -106,7 +111,7 @@ public class ObisScalerService {
     }
 
     private Map<String, Object> readScalerUnit(GXDLMSClient client, String meterSerial, String captureObis,
-                                               int classId, int attrIndex) throws Exception {
+                                               int classId) throws Exception {
         double scaler = 1.0;
         String units = "";
 
@@ -122,11 +127,18 @@ public class ObisScalerService {
             case DEMAND_REGISTER -> {
                 GXDLMSDemandRegister dr = new GXDLMSDemandRegister();
                 dr.setLogicalName(captureObis);
-                dlmsReaderUtils.readScalerUnit(client, meterSerial, dr, 4);
+                dlmsReaderUtils.readScalerUnit(client, meterSerial, dr, 3);
                 scaler = (dr.getScaler() == 0) ? 1.0 : dr.getScaler();
                 units = getUnitSymbol(dr.getUnit());
             }
-            default -> log.warn("Unsupported object type for OBIS: {}", captureObis);
+            case EXTENDED_REGISTER -> {
+                GXDLMSExtendedRegister dr = new GXDLMSExtendedRegister();
+                dr.setLogicalName(captureObis);
+                dlmsReaderUtils.readScalerUnit(client, meterSerial, dr, 3);
+                scaler = (dr.getScaler() == 0) ? 1.0 : dr.getScaler();
+                units = getUnitSymbol(dr.getUnit());
+            }
+            default -> log.warn("Unsupported object type for OBIS: {}, Class ID: {}", captureObis, classId);
         }
 
         Map<String, Object> response = new LinkedHashMap<>();

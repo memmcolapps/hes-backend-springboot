@@ -235,12 +235,42 @@ public class MeterReadingService {
                     formattedValue = formatter.format(finalValue);
                 }
 
+                case EXTENDED_REGISTER -> {
+                    GXDLMSExtendedRegister dr = new GXDLMSExtendedRegister();
+                    dr.setLogicalName(obisCode);
+
+                    // Read Scaler+Unit
+                    dlmsReaderUtils.readScalerUnit(client, meterSerial, dr, 3);
+                    scaler = dr.getScaler();
+                    if (scaler == 0) {
+                        scaler = 1.0;
+                    }
+                    unit = dr.getUnit();
+
+                    // Read value
+                    result = dlmsReaderUtils.readAttribute(client, meterSerial, dr, attributeIndex);
+                    if (result instanceof Number) {
+                        String unitSymbol = getUnitSymbol(unit);
+                        switch (unitSymbol) {
+                            case "kW", "kVA", "kVar", "kWh", "kVAh", "KVarh" -> // power/energy-related
+                                    finalValue = new BigDecimal(result.toString())
+                                            .divide(new BigDecimal(1000), 2, RoundingMode.HALF_UP);  //divide by 1,000 to convert to Kilo.....
+
+                            default -> // fallback (no scaling)
+                                    finalValue = new BigDecimal(result.toString()).setScale(2, RoundingMode.HALF_UP);
+                        }
+                    }
+                    object = dr;
+                    // Format with comma separators
+                    formattedValue = formatter.format(finalValue);
+                }
+
                 case DEMAND_REGISTER -> {
                     GXDLMSDemandRegister dr = new GXDLMSDemandRegister();
                     dr.setLogicalName(obisCode);
 
                     // Read Scaler+Unit
-                    dlmsReaderUtils.readScalerUnit(client, meterSerial, dr, 4);
+                    dlmsReaderUtils.readScalerUnit(client, meterSerial, dr, 3);
                     scaler = dr.getScaler();
                     if (scaler == 0) {
                         scaler = 1.0;
@@ -429,12 +459,43 @@ public class MeterReadingService {
                     formattedValue = formatter.format(finalValue);
                 }
 
+                case EXTENDED_REGISTER -> {
+                    GXDLMSExtendedRegister dr = new GXDLMSExtendedRegister();
+                    dr.setLogicalName(obisCode);
+
+                    // Read Scaler+Unit
+                    dlmsReaderUtils.readScalerUnit(client, meterSerial, dr, 3);
+                    scaler = dr.getScaler();
+                    if (scaler == 0) {
+                        scaler = 1.0;
+                    }
+                    unit = dr.getUnit();
+
+                    // Read value
+                    result = dlmsReaderUtils.readAttribute(client, meterSerial, dr, attributeIndex);
+                    if (result instanceof Number) {
+                        String unitSymbol = getUnitSymbol(unit);
+                        switch (unitSymbol) {
+                            case "kW", "kVA", "kVar", "kWh", "kVAh", "KVarh" -> // power/energy-related
+                                    finalValue = new BigDecimal(result.toString())
+                                            .multiply(BigDecimal.valueOf(meterRatios.getCtRatio()))
+                                            .divide(new BigDecimal(1000), 2, RoundingMode.HALF_UP);  //divide by 1,000 to convert to Kilo.....
+
+                            default -> // fallback (no scaling)
+                                    finalValue = new BigDecimal(result.toString()).setScale(2, RoundingMode.HALF_UP);
+                        }
+                    }
+                    object = dr;
+                    // Format with comma separators
+                    formattedValue = formatter.format(finalValue);
+                }
+
                 case DEMAND_REGISTER -> {
                     GXDLMSDemandRegister dr = new GXDLMSDemandRegister();
                     dr.setLogicalName(obisCode);
 
                     // Read Scaler+Unit
-                    dlmsReaderUtils.readScalerUnit(client, meterSerial, dr, 4);
+                    dlmsReaderUtils.readScalerUnit(client, meterSerial, dr, 3);
                     scaler = dr.getScaler();
                     if (scaler == 0) {
                         scaler = 1.0;
