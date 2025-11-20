@@ -34,6 +34,7 @@ public class ObisScalerService {
     public Map<String, Object> updateScalerUnitForMeter(String meterSerial, String model) throws Exception {
         Map<String, Object> report = new LinkedHashMap<>();
         List<Map<String, Object>> failures = new ArrayList<>();
+        int success = 0;
 
         List<Integer> classIds = List.of(4, 3);
         // Step 2: Get relevant OBIS mappings
@@ -64,7 +65,7 @@ public class ObisScalerService {
                 Map<String, Object> scalerUnit = readScalerUnit(
                         client,
                         meterSerial,
-                        mapping.getObisCodeCombined(),
+                        mapping.getObisCode(),
                         mapping.getClassId(),
                         mapping.getAttributeIndex()
                 );
@@ -82,15 +83,17 @@ public class ObisScalerService {
                 mapping.setUnit(unit);
                 obisMappingRepository.save(mapping);
 
-                log.info("Updated {} for meter {}: scaler={}, unit={}", mapping.getObisCodeCombined(),
+                success++;
+
+                log.info("Updated {} for meter {}: scaler={}, unit={}", mapping.getObisCode(),
                         meterSerial, scaler, unit);
 
             } catch (Exception ex) {
                 log.error("Failed to read scaler/unit for OBIS {} on meter {}: {}",
-                        mapping.getObisCodeCombined(), meterSerial, ex.getMessage());
+                        mapping.getObisCode(), meterSerial, ex.getMessage());
                 failures.add(Map.of(
                         "meterSerial", meterSerial,
-                        "obisCodeCombined", mapping.getObisCodeCombined(),
+                        "obisCodeCombined", mapping.getObisCode(),
                         "error", ex.getMessage()
                 ));
             }
@@ -99,6 +102,8 @@ public class ObisScalerService {
         report.put("status", "Completed");
         report.put("meterSerial", meterSerial);
         report.put("totalMappings", mappings.size());
+        report.put("success count", success);
+        report.put("failures count", failures.size());
         report.put("failures", failures);
 
         log.info("One-off OBIS scaler/unit update completed for meter: {}", meterSerial);
