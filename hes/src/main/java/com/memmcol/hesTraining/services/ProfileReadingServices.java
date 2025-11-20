@@ -307,7 +307,15 @@ public class ProfileReadingServices {
             case DEMAND_REGISTER -> {
                 GXDLMSDemandRegister dr = new GXDLMSDemandRegister();
                 dr.setLogicalName(captureObis);
-                dlmsReaderUtils.readScalerUnit(client, meterSerial, dr, 4);
+                dlmsReaderUtils.readScalerUnit(client, meterSerial, dr, 3);
+                scaler = (dr.getScaler() == 0) ? 1.0 : dr.getScaler();
+                units = getUnitSymbol(dr.getUnit());
+            }
+
+            case EXTENDED_REGISTER -> {
+                GXDLMSExtendedRegister dr = new GXDLMSExtendedRegister();
+                dr.setLogicalName(captureObis);
+                dlmsReaderUtils.readScalerUnit(client, meterSerial, dr, 3);
                 scaler = (dr.getScaler() == 0) ? 1.0 : dr.getScaler();
                 units = getUnitSymbol(dr.getUnit());
             }
