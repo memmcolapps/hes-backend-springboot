@@ -67,8 +67,7 @@ public class ObisScalerService {
                         client,
                         meterSerial,
                         mapping.getObisCode(),
-                        mapping.getClassId(),
-                        mapping.getAttributeIndex()
+                        mapping.getClassId()
                 );
 
                 double scaler = (double) scalerUnit.get("scaler");
@@ -112,7 +111,7 @@ public class ObisScalerService {
     }
 
     private Map<String, Object> readScalerUnit(GXDLMSClient client, String meterSerial, String captureObis,
-                                               int classId, int attrIndex) throws Exception {
+                                               int classId) throws Exception {
         double scaler = 1.0;
         String units = "";
 
@@ -128,18 +127,16 @@ public class ObisScalerService {
             case DEMAND_REGISTER -> {
                 GXDLMSDemandRegister dr = new GXDLMSDemandRegister();
                 dr.setLogicalName(captureObis);
-                dlmsReaderUtils.readScalerUnit(client, meterSerial, dr, 4);
+                dlmsReaderUtils.readScalerUnit(client, meterSerial, dr, 3);
                 scaler = (dr.getScaler() == 0) ? 1.0 : dr.getScaler();
                 units = getUnitSymbol(dr.getUnit());
             }
             case EXTENDED_REGISTER -> {
                 GXDLMSExtendedRegister dr = new GXDLMSExtendedRegister();
                 dr.setLogicalName(captureObis);
-                dlmsReaderUtils.readScalerUnit(client, meterSerial, dr, 4);
+                dlmsReaderUtils.readScalerUnit(client, meterSerial, dr, 3);
                 scaler = (dr.getScaler() == 0) ? 1.0 : dr.getScaler();
                 units = getUnitSymbol(dr.getUnit());
-                dlmsReaderUtils.readScalerUnit(client, meterSerial, dr, 3);
-                dlmsReaderUtils.readScalerUnit(client, meterSerial, dr, 5);
             }
             default -> log.warn("Unsupported object type for OBIS: {}, Class ID: {}", captureObis, classId);
         }
