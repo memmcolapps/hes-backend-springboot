@@ -9,6 +9,7 @@ import gurux.dlms.GXDLMSClient;
 import gurux.dlms.enums.ObjectType;
 import gurux.dlms.enums.Unit;
 import gurux.dlms.objects.GXDLMSDemandRegister;
+import gurux.dlms.objects.GXDLMSExtendedRegister;
 import gurux.dlms.objects.GXDLMSRegister;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -131,7 +132,16 @@ public class ObisScalerService {
                 scaler = (dr.getScaler() == 0) ? 1.0 : dr.getScaler();
                 units = getUnitSymbol(dr.getUnit());
             }
-            default -> log.warn("Unsupported object type for OBIS: {}", captureObis);
+            case EXTENDED_REGISTER -> {
+                GXDLMSExtendedRegister dr = new GXDLMSExtendedRegister();
+                dr.setLogicalName(captureObis);
+                dlmsReaderUtils.readScalerUnit(client, meterSerial, dr, 4);
+                scaler = (dr.getScaler() == 0) ? 1.0 : dr.getScaler();
+                units = getUnitSymbol(dr.getUnit());
+                dlmsReaderUtils.readScalerUnit(client, meterSerial, dr, 3);
+                dlmsReaderUtils.readScalerUnit(client, meterSerial, dr, 5);
+            }
+            default -> log.warn("Unsupported object type for OBIS: {}, Class ID: {}", captureObis, classId);
         }
 
         Map<String, Object> response = new LinkedHashMap<>();
