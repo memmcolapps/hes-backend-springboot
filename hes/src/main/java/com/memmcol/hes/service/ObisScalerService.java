@@ -93,7 +93,7 @@ public class ObisScalerService {
                         mapping.getObisCode(), meterSerial, ex.getMessage());
                 failures.add(Map.of(
                         "meterSerial", meterSerial,
-                        "obisCodeCombined", mapping.getObisCode(),
+                        "obisCode", mapping.getObisCode(),
                         "error", ex.getMessage()
                 ));
             }
