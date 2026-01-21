@@ -14,7 +14,7 @@ target/
 .sts4-cache
 
 ### IntelliJ IDEA ###
-.idea
+.idea/
 *.iws
 *.iml
 *.ipr
@@ -34,3 +34,19 @@ build/
 
 ### Flyway config
 flyway.conf
+
+# macOS
+.DS_Store
+._*
+.AppleDouble
+.LSOverride
+
+# Maven
+target/
+
+# Logs
+logs/
+*.log
+
+# OS / temp
+tmp/
