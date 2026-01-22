@@ -4,7 +4,7 @@ import com.memmcol.ami.auth.dto.AuthenticationResult;
 import com.memmcol.ami.auth.dto.LoginRequest;
 import com.memmcol.ami.auth.entity.AmiUser;
 import com.memmcol.ami.auth.repository.AmiUserRepository;
-import com.memmcol.ami.auth.service.AccountLockPolicy;
+import com.memmcol.ami.auth.domain.policy.AccountLockPolicy;
 import com.memmcol.ami.auth.service.AuthenticationService;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;

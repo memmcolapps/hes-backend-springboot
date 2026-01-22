@@ -1,4 +1,4 @@
-package com.memmcol.ami.auth.service;
+package com.memmcol.ami.auth.domain.policy;
 
 import com.memmcol.ami.auth.entity.AmiUser;
 

@@ -1,7 +1,7 @@
 package com.memmcol.ami.auth.service.impl;
 
 import com.memmcol.ami.auth.entity.AmiUser;
-import com.memmcol.ami.auth.service.AccountLockPolicy;
+import com.memmcol.ami.auth.domain.policy.AccountLockPolicy;
 import org.springframework.stereotype.Service;
 
 @Service
