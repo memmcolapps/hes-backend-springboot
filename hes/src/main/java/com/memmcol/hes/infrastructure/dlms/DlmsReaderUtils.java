@@ -116,7 +116,14 @@ public class DlmsReaderUtils {
      * @param value  value to write (e.g. GXDateTime for clock)
      */
     public void writeAttribute(GXDLMSClient client, String serial, GXDLMSObject obj, int index, Object value) throws Exception {
-        byte[][] request = client.write(obj, index, value);
+        // Populate the object's attribute with the value before issuing the write.
+        if (obj instanceof GXDLMSClock clock && value instanceof GXDateTime dt) {
+            clock.setTime(dt);
+        } else {
+            client.updateValue(obj, index, value);
+        }
+
+        byte[][] request = client.write(obj, index);
 
         byte[] response = txRxService.sendReceiveWithContext(serial, request[0], 20000);
 
