@@ -106,6 +106,30 @@ public class DlmsReaderUtils {
         client.updateValue(obj, index, reply.getValue());
     }
 
+    /**
+     * Writes a DLMS attribute value using the same pattern as {@link #readAttribute}.
+     *
+     * @param client DLMS client bound to an active association
+     * @param serial meter serial (used for routing)
+     * @param obj    DLMS object whose attribute will be written
+     * @param index  attribute index to write
+     * @param value  value to write (e.g. GXDateTime for clock)
+     */
+    public void writeAttribute(GXDLMSClient client, String serial, GXDLMSObject obj, int index, Object value) throws Exception {
+        byte[][] request = client.write(obj, index, value);
+
+        byte[] response = txRxService.sendReceiveWithContext(serial, request[0], 20000);
+
+        if (sessionManager.isAssociationLost(response)) {
+            sessionManager.removeSession(serial);
+            throw new AssociationLostException();
+        }
+
+        GXReplyData reply = new GXReplyData();
+        client.getData(response, reply, null);
+        DlmsErrorUtils.checkError(reply, serial, "OBIS Write!");
+    }
+
     public Object readAttribute(GXDLMSClient client, String serial, GXDLMSObject obj, int index) throws Exception {
         byte[][] request = client.read(obj, index);
 //        byte[] response = RequestResponseService.sendOnceListen(serial, request[0], 4000, 16000, 100);

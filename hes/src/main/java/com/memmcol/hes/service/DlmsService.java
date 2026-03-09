@@ -3,6 +3,7 @@ package com.memmcol.hes.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.memmcol.hes.domain.clock.ClockWriteService;
 import com.memmcol.hes.domain.limiters.LimiterHelper;
 import com.memmcol.hes.exception.AssociationLostException;
 import com.memmcol.hes.infrastructure.dlms.DlmsReaderUtils;
@@ -64,6 +65,7 @@ public class DlmsService {
     private final RequestResponseService requestResponseService;
     private final LimiterHelper limiterHelper;
     private final DlmsReaderUtils dlmsReaderUtils;
+    private final ClockWriteService clockWriteService;
 
     public DlmsService(SessionManagerMultiVendor sessionManager,
                        DlmsObisObjectRepository repository,
@@ -77,7 +79,8 @@ public class DlmsService {
                        ProfileTimestampResolver profileTimestampResolver,
                        MeterProfileStateRepository meterProfileStateRepository,
                        MeterReadAdapter readAdapter,
-                       RequestResponseService requestResponseService, LimiterHelper limiterHelper, DlmsReaderUtils dlmsReaderUtils) {
+                       RequestResponseService requestResponseService, LimiterHelper limiterHelper, DlmsReaderUtils dlmsReaderUtils,
+                       ClockWriteService clockWriteService) {
         this.sessionManager = sessionManager;
         this.repository = repository;
         this.metadataCache = metadataCache;
@@ -93,6 +96,7 @@ public class DlmsService {
         this.requestResponseService = requestResponseService;
         this.limiterHelper = limiterHelper;
         this.dlmsReaderUtils = dlmsReaderUtils;
+        this.clockWriteService = clockWriteService;
     }
 
     public static final DateTimeFormatter GLOBAL_TS_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
@@ -201,6 +205,10 @@ public class DlmsService {
         log.info("🕒 Meters Clock: {}", strclock);
 
         return strclock;
+    }
+
+    public String setClock(String serial, LocalDateTime dateTime) throws Exception {
+        return clockWriteService.setClock(serial, dateTime);
     }
 
     public String greet(String name) {
