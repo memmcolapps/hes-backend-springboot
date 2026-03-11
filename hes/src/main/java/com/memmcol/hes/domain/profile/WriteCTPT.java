@@ -45,22 +45,27 @@ public class WriteCTPT {
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("meterSerial", meterSerial);
 
-            // NOTE: CT/PT objects are DLMS Data (classId = 1) with type 'long unsigned' → UINT32.
+            // NOTE: CT/PT objects are DLMS Data (classId = 1) with DLMS type 'long-unsigned'.
+            // In Gurux Java this corresponds to DataType.UINT16 (16‑bit unsigned).
 
             // CT numerator: 1.0.0.4.2.255 attr 2
-            dlmsReaderUtils.writeAttribute(client, meterSerial, "1.0.0.4.2.255", 1, 2, ctNumerator, DataType.UINT32);
+            dlmsReaderUtils.writeAttribute(client, meterSerial, "1.0.0.4.2.255", 1, 2,
+                    (int) ctNumerator, DataType.UINT16);
             result.put("ctNumerator", ctNumerator);
 
             // CT denominator: 1.0.0.4.5.255 attr 2
-            dlmsReaderUtils.writeAttribute(client, meterSerial, "1.0.0.4.5.255", 1, 2, ctDenominator, DataType.UINT32);
+            dlmsReaderUtils.writeAttribute(client, meterSerial, "1.0.0.4.5.255", 1, 2,
+                    (int) ctDenominator, DataType.UINT16);
             result.put("ctDenominator", ctDenominator);
 
             // PT numerator: 1.0.0.4.3.255 attr 2
-            dlmsReaderUtils.writeAttribute(client, meterSerial, "1.0.0.4.3.255", 1, 2, ptNumerator, DataType.UINT32);
+            dlmsReaderUtils.writeAttribute(client, meterSerial, "1.0.0.4.3.255", 1, 2,
+                    (int) ptNumerator, DataType.UINT16);
             result.put("ptNumerator", ptNumerator);
 
             // PT denominator: 1.0.0.4.6.255 attr 2
-            dlmsReaderUtils.writeAttribute(client, meterSerial, "1.0.0.4.6.255", 1, 2, ptDenominator, DataType.UINT32);
+            dlmsReaderUtils.writeAttribute(client, meterSerial, "1.0.0.4.6.255", 1, 2,
+                    (int) ptDenominator, DataType.UINT16);
             result.put("ptDenominator", ptDenominator);
 
             log.info("✅ CT/PT written meter={} ct={}/{} pt={}/{}",
