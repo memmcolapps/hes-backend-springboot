@@ -13,6 +13,7 @@ import com.memmcol.hes.exception.AssociationLostException;
 import com.memmcol.hes.service.DlmsUtils;
 import com.memmcol.hes.service.GuruxObjectFactory;
 import gurux.dlms.*;
+import gurux.dlms.enums.DataType;
 import gurux.dlms.enums.Unit;
 import gurux.dlms.internal.GXCommon;
 import gurux.dlms.internal.GXDataInfo;
@@ -124,6 +125,32 @@ public class DlmsReaderUtils {
         }
 
         byte[][] request = client.write(obj, index);
+
+        byte[] response = txRxService.sendReceiveWithContext(serial, request[0], 20000);
+
+        if (sessionManager.isAssociationLost(response)) {
+            sessionManager.removeSession(serial);
+            throw new AssociationLostException();
+        }
+
+        GXReplyData reply = new GXReplyData();
+        client.getData(response, reply, null);
+        DlmsErrorUtils.checkError(reply, serial, "OBIS Write!");
+    }
+
+    /**
+     * Writes a DLMS attribute value using an explicit DLMS DataType, via the logical name
+     * and class id. Useful when the meter is strict about the DLMS type (e.g. CT/PT long unsigned).
+     */
+    public void writeAttribute(GXDLMSClient client,
+                               String serial,
+                               String logicalName,
+                               int classId,
+                               int index,
+                               Object value,
+                               DataType dataType) throws Exception {
+
+        byte[][] request = client.write(logicalName, value, dataType, gurux.dlms.enums.ObjectType.forValue(classId), index);
 
         byte[] response = txRxService.sendReceiveWithContext(serial, request[0], 20000);
 
