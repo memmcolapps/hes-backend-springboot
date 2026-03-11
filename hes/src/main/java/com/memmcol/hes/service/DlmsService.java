@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.memmcol.hes.domain.clock.ClockWriteService;
 import com.memmcol.hes.domain.limiters.LimiterHelper;
+import com.memmcol.hes.domain.profile.WriteCTPT;
 import com.memmcol.hes.exception.AssociationLostException;
 import com.memmcol.hes.infrastructure.dlms.DlmsReaderUtils;
 import com.memmcol.hes.model.*;
@@ -66,6 +67,7 @@ public class DlmsService {
     private final LimiterHelper limiterHelper;
     private final DlmsReaderUtils dlmsReaderUtils;
     private final ClockWriteService clockWriteService;
+    private final WriteCTPT writeCTPT;
 
     public DlmsService(SessionManagerMultiVendor sessionManager,
                        DlmsObisObjectRepository repository,
@@ -80,7 +82,8 @@ public class DlmsService {
                        MeterProfileStateRepository meterProfileStateRepository,
                        MeterReadAdapter readAdapter,
                        RequestResponseService requestResponseService, LimiterHelper limiterHelper, DlmsReaderUtils dlmsReaderUtils,
-                       ClockWriteService clockWriteService) {
+                       ClockWriteService clockWriteService,
+                       WriteCTPT writeCTPT) {
         this.sessionManager = sessionManager;
         this.repository = repository;
         this.metadataCache = metadataCache;
@@ -97,6 +100,7 @@ public class DlmsService {
         this.limiterHelper = limiterHelper;
         this.dlmsReaderUtils = dlmsReaderUtils;
         this.clockWriteService = clockWriteService;
+        this.writeCTPT = writeCTPT;
     }
 
     public static final DateTimeFormatter GLOBAL_TS_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
@@ -209,6 +213,14 @@ public class DlmsService {
 
     public String setClock(String serial, LocalDateTime dateTime) throws Exception {
         return clockWriteService.setClock(serial, dateTime);
+    }
+
+    public Map<String, Object> setCtPt(String serial,
+                                      long ctNumerator,
+                                      long ctDenominator,
+                                      long ptNumerator,
+                                      long ptDenominator) throws Exception {
+        return writeCTPT.writeCtPt(serial, ctNumerator, ctDenominator, ptNumerator, ptDenominator);
     }
 
     public String greet(String name) {
