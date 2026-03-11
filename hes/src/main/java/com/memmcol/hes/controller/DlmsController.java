@@ -86,6 +86,32 @@ public class DlmsController {
         }
     }
 
+    @PostMapping("/setCtpt")
+    @Tag(name = "CTPT", description = "Set CT/PT numerator and denominator values on the meter remotely.")
+    public ResponseEntity<Map<String, Object>> setCtpt(
+            @RequestParam String serial,
+            @RequestParam long ctNumerator,
+            @RequestParam long ctDenominator,
+            @RequestParam long ptNumerator,
+            @RequestParam long ptDenominator
+    ) {
+        Map<String, Object> response = new HashMap<>();
+        try {
+            Map<String, Object> data = dlmsService.setCtPt(serial, ctNumerator, ctDenominator, ptNumerator, ptDenominator);
+            response.put("status", "success");
+            response.put("data", data);
+            response.put("timestamp", LocalDateTime.now());
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            response.put("status", "error");
+            response.put("message", "Failed to set CT/PT values");
+            response.put("details", e.getMessage());
+            response.put("serial", serial);
+            response.put("timestamp", LocalDateTime.now());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
+    }
+
     @GetMapping("/obis")
     public ResponseEntity<Map<String, Object>> readObisValue(
             @RequestParam String serial,
