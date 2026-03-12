@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.memmcol.hes.domain.clock.ClockWriteService;
 import com.memmcol.hes.domain.limiters.LimiterHelper;
+import com.memmcol.hes.domain.network.NetworkWriteService;
 import com.memmcol.hes.domain.profile.WriteCTPT;
 import com.memmcol.hes.exception.AssociationLostException;
 import com.memmcol.hes.infrastructure.dlms.DlmsReaderUtils;
@@ -68,6 +69,7 @@ public class DlmsService {
     private final DlmsReaderUtils dlmsReaderUtils;
     private final ClockWriteService clockWriteService;
     private final WriteCTPT writeCTPT;
+    private final NetworkWriteService networkWriteService;
 
     public DlmsService(SessionManagerMultiVendor sessionManager,
                        DlmsObisObjectRepository repository,
@@ -83,7 +85,8 @@ public class DlmsService {
                        MeterReadAdapter readAdapter,
                        RequestResponseService requestResponseService, LimiterHelper limiterHelper, DlmsReaderUtils dlmsReaderUtils,
                        ClockWriteService clockWriteService,
-                       WriteCTPT writeCTPT) {
+                       WriteCTPT writeCTPT,
+                       NetworkWriteService networkWriteService) {
         this.sessionManager = sessionManager;
         this.repository = repository;
         this.metadataCache = metadataCache;
@@ -101,6 +104,7 @@ public class DlmsService {
         this.dlmsReaderUtils = dlmsReaderUtils;
         this.clockWriteService = clockWriteService;
         this.writeCTPT = writeCTPT;
+        this.networkWriteService = networkWriteService;
     }
 
     public static final DateTimeFormatter GLOBAL_TS_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
@@ -221,6 +225,14 @@ public class DlmsService {
                                       long ptNumerator,
                                       long ptDenominator) throws Exception {
         return writeCTPT.writeCtPt(serial, ctNumerator, ctDenominator, ptNumerator, ptDenominator);
+    }
+
+    public Map<String, Object> setApn(String serial, String apn) throws Exception {
+        return networkWriteService.writeApn(serial, apn);
+    }
+
+    public Map<String, Object> setIpPort(String serial, List<String> ipPorts) throws Exception {
+        return networkWriteService.writeIpPort(serial, ipPorts);
     }
 
     public String greet(String name) {
