@@ -88,7 +88,7 @@ jobs:
              export SPRING_SECURITY_PASSWORD=${{ secrets.SPRING_SECURITY_PASSWORD }}
 
              nohup java -jar "$jar_file" --spring.profiles.active=prod > app.log 2>&1 &
-             disown
+             
 
              echo "Application started."
              
