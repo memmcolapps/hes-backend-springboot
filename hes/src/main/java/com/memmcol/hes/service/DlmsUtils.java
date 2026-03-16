@@ -9,6 +9,8 @@ import gurux.dlms.GXStructure;
 import gurux.dlms.enums.DateTimeSkips;
 import gurux.dlms.enums.ObjectType;
 import gurux.dlms.objects.*;
+import gurux.dlms.objects.GXDLMSAutoConnect;
+import gurux.dlms.objects.GXDLMSGprsSetup;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,6 +34,8 @@ public class DlmsUtils {
             case 5  -> new GXDLMSExtendedRegister();
             case 7  -> new GXDLMSProfileGeneric();
             case 8  -> new GXDLMSClock(); // 🔁 Added support for Clock
+            case 29 -> new GXDLMSAutoConnect();
+            case 45 -> new GXDLMSGprsSetup();
             case 70 -> new GXDLMSDisconnectControl(); // Disconnect unit
             case 71 -> new GXDLMSLimiter();           // Load limiter
             // Add more if needed (e.g., 11 → Register Activation, 15 → Script Table)
