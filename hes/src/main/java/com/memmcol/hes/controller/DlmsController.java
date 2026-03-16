@@ -61,6 +61,103 @@ public class DlmsController {
         return dlmsService.readClock(serial);
     }
 
+    @PostMapping("/setClock")
+    @Tag(name = "Clock", description = "Set meter clock date and time.")
+    public ResponseEntity<Map<String, Object>> setClock(
+            @RequestParam String serial,
+            @RequestParam
+            @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+            LocalDateTime dateTime) {
+        Map<String, Object> response = new HashMap<>();
+        try {
+            String message = dlmsService.setClock(serial, dateTime);
+            response.put("status", "success");
+            response.put("message", message);
+            response.put("serial", serial);
+            response.put("timestamp", LocalDateTime.now());
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            response.put("status", "error");
+            response.put("message", "Failed to set meter clock");
+            response.put("details", e.getMessage());
+            response.put("serial", serial);
+            response.put("timestamp", LocalDateTime.now());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
+    }
+
+    @PostMapping("/setCtpt")
+    @Tag(name = "CTPT", description = "Set CT/PT numerator and denominator values on the meter remotely.")
+    public ResponseEntity<Map<String, Object>> setCtpt(
+            @RequestParam String serial,
+            @RequestParam long ctNumerator,
+            @RequestParam long ctDenominator,
+            @RequestParam long ptNumerator,
+            @RequestParam long ptDenominator
+    ) {
+        Map<String, Object> response = new HashMap<>();
+        try {
+            Map<String, Object> data = dlmsService.setCtPt(serial, ctNumerator, ctDenominator, ptNumerator, ptDenominator);
+            response.put("status", "success");
+            response.put("data", data);
+            response.put("timestamp", LocalDateTime.now());
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            response.put("status", "error");
+            response.put("message", "Failed to set CT/PT values");
+            response.put("details", e.getMessage());
+            response.put("serial", serial);
+            response.put("timestamp", LocalDateTime.now());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
+    }
+
+    @PostMapping("/setApn")
+    @Tag(name = "Network", description = "Set GPRS APN on the meter remotely.")
+    public ResponseEntity<Map<String, Object>> setApn(
+            @RequestParam String serial,
+            @RequestParam String apn
+    ) {
+        Map<String, Object> response = new HashMap<>();
+        try {
+            Map<String, Object> data = dlmsService.setApn(serial, apn);
+            response.put("status", "success");
+            response.put("data", data);
+            response.put("timestamp", LocalDateTime.now());
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            response.put("status", "error");
+            response.put("message", "Failed to set APN");
+            response.put("details", e.getMessage());
+            response.put("serial", serial);
+            response.put("timestamp", LocalDateTime.now());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
+    }
+
+    @PostMapping("/setIpPort")
+    @Tag(name = "Network", description = "Set Auto Connect IP Address and Port on the meter remotely.")
+    public ResponseEntity<Map<String, Object>> setIpPort(
+            @RequestParam String serial,
+            @RequestParam List<String> ipPorts
+    ) {
+        Map<String, Object> response = new HashMap<>();
+        try {
+            Map<String, Object> data = dlmsService.setIpPort(serial, ipPorts);
+            response.put("status", "success");
+            response.put("data", data);
+            response.put("timestamp", LocalDateTime.now());
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            response.put("status", "error");
+            response.put("message", "Failed to set IP/Port");
+            response.put("details", e.getMessage());
+            response.put("serial", serial);
+            response.put("timestamp", LocalDateTime.now());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
+    }
+
     @GetMapping("/obis")
     public ResponseEntity<Map<String, Object>> readObisValue(
             @RequestParam String serial,
