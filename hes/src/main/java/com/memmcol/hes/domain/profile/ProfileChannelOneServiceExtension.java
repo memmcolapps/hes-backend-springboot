@@ -9,10 +9,10 @@ import com.memmcol.hes.dto.ProfileChannelOneDTO;
 import com.memmcol.hes.infrastructure.dlms.DlmsReaderUtils;
 import com.memmcol.hes.infrastructure.dlms.ProfileMetadataProvider;
 import com.memmcol.hes.infrastructure.persistence.ProfileChannelOnePersistAdapter;
+import com.memmcol.hes.repository.MeterRepository;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -21,7 +21,6 @@ import java.util.List;
 @Slf4j
 @Service
 public class ProfileChannelOneServiceExtension {
-    private final ProfileTimestampPortImpl timestampPort;
     private final CapturePeriodPort capturePeriodPort;
     private final DlmsReaderUtils dlmsReaderUtils;
     private final ProfileChannelOneMapper channelOneMapper;
@@ -29,13 +28,29 @@ public class ProfileChannelOneServiceExtension {
     private final ProfileMetricsPort metricsPort;
     private final ProfileStatePort statePort;
     private final ProfileMetadataProvider metadataProvider;
+    private final MeterRepository meterRepository;
 
        public void readProfileAndSave(String model, String meterSerial, String profileObis, boolean isMD) {
         try {
-            //Step 1: Get last timestamp read from the meter or default to yesterday
-            ProfileTimestamp cursor = new ProfileTimestamp(
-                    timestampPort.resolveLastTimestamp(meterSerial, profileObis)
-            );
+            // Step 1: Seed initial range start using DB-first priority:
+            // 1) meter_profile_state.last_timestamp (if any record exists)
+            // 2) meters.created_at
+            // 3) now - 1 day
+            LocalDateTime seedFrom = null;
+            ProfileState st = statePort.loadState(meterSerial, profileObis);
+            if (st != null && st.lastTimestamp() != null) {
+                seedFrom = st.lastTimestamp().value();
+            }
+            if (seedFrom == null) {
+                seedFrom = meterRepository.findMeterDetailsByMeterNumber(meterSerial)
+                        .map(m -> m.getCreatedAt())
+                        .orElse(null);
+            }
+            if (seedFrom == null) {
+                seedFrom = LocalDateTime.now().minusDays(1);
+            }
+            ProfileTimestamp cursor = new ProfileTimestamp(seedFrom);
+
             //Step 2: Get profile capture period
             CapturePeriod cp = new CapturePeriod(
                     capturePeriodPort.resolveCapturePeriodSeconds(meterSerial, profileObis));

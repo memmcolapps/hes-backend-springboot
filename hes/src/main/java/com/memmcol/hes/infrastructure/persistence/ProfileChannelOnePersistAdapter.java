@@ -3,6 +3,7 @@ package com.memmcol.hes.infrastructure.persistence;
 import com.memmcol.hes.application.port.out.ProfileStatePort;
 import com.memmcol.hes.domain.profile.*;
 import com.memmcol.hes.dto.ProfileChannelOneDTO;
+import com.memmcol.hes.dto.ProfileChannelOneDTOV1;
 import com.memmcol.hes.entities.ProfileChannelOne;
 import com.memmcol.hes.entities.ProfileChannelOneId;
 import com.memmcol.hes.entities.ProfileChannelOneToEntity;
@@ -17,7 +18,6 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.sql.Statement;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
@@ -180,7 +180,7 @@ public class ProfileChannelOnePersistAdapter {
     /**
      * Creates monthly partition tables for any missing months found in the DTO list.
      */
-    public void createPartitionsIfMissing(List<ProfileChannelOneDTO> filteredRows) {
+    public void createPartitionsIfMissingV1(List<ProfileChannelOneDTOV1> filteredRows) {
         Session session = entityManager.unwrap(Session.class);
 
         // 1. Extract unique months (YYYYMM format)
@@ -188,7 +188,26 @@ public class ProfileChannelOnePersistAdapter {
                 .map(dto -> dto.getEntryTimestamp().format(DateTimeFormatter.ofPattern("yyyyMM")))
                 .collect(Collectors.toSet());
 
-        // 2. Pre-create missing partitions
+        createPartitionsIfMissingByMonths(session, months);
+    }
+
+    /**
+     * Same partition creation logic, but for the current DTO type.
+     */
+    public void createPartitionsIfMissing(List<ProfileChannelOneDTO> filteredRows) {
+        Session session = entityManager.unwrap(Session.class);
+
+        Set<String> months = filteredRows.stream()
+                .map(ProfileChannelOneDTO::getEntryTimestamp)
+                .filter(Objects::nonNull)
+                .map(ts -> ts.format(DateTimeFormatter.ofPattern("yyyyMM")))
+                .collect(Collectors.toSet());
+
+        createPartitionsIfMissingByMonths(session, months);
+    }
+
+    private void createPartitionsIfMissingByMonths(Session session, Set<String> months) {
+        // Pre-create missing partitions
         months.forEach(month -> {
             String partitionName = "profile_channel_one_" + month;
             String startDate = month + "01";
@@ -208,7 +227,7 @@ public class ProfileChannelOnePersistAdapter {
                     stmt.execute(sql);
                     log.info("🆕 Partition {} created.", partitionName);
                 } catch (Exception e) {
-                    if (e.getMessage().contains("exists")) {
+                    if (e.getMessage() != null && e.getMessage().contains("exists")) {
                         log.debug("Partition {} already exists, skipping.", partitionName);
                     } else {
                         log.error("Error creating partition {}: {}", partitionName, e.getMessage());

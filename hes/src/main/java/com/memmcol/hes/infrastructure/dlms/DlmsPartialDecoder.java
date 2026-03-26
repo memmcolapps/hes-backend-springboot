@@ -8,6 +8,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 /**
  * Responsible for accumulating partial blocks when DLMS profile reads
@@ -79,5 +80,4 @@ public class DlmsPartialDecoder {
         }
         return List.of();
     }
-
 }

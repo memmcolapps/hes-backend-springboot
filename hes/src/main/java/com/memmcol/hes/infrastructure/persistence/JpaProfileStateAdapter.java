@@ -32,7 +32,32 @@ public class JpaProfileStateAdapter implements ProfileStatePort {
     private static final String CACHE_PREFIX = "lastTs::";
 
     @Override
+    @Transactional(readOnly = true)
     public ProfileState loadState(String meterSerial, String profileObis) {
+
+        MeterProfileState e = em.createQuery("""
+                    select s from MeterProfileState s
+                     where s.meterSerial=:m and s.profileObis=:p
+                    """, MeterProfileState.class)
+                .setParameter("m", meterSerial)
+                .setParameter("p", profileObis)
+                .setMaxResults(1)
+                .getResultList()
+                .stream()
+                .findFirst()
+                .orElse(null);
+
+        if (e == null) return null;
+
+        return new ProfileState(
+                e.getMeterSerial(),
+                e.getProfileObis(),
+                e.getLastTimestamp() == null ? null : new ProfileTimestamp(e.getLastTimestamp()),
+                e.getCapturePeriodSec() == null ? null : new CapturePeriod(e.getCapturePeriodSec())
+        );
+    }
+
+    public ProfileState loadStateV1(String meterSerial, String profileObis) {
         MeterProfileState e = em.createQuery("""
                         select s from MeterProfileState s
                          where s.meterSerial=:m and s.profileObis=:p

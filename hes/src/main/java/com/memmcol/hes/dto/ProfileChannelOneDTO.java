@@ -2,27 +2,33 @@ package com.memmcol.hes.dto;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
-import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import lombok.*;
 import java.time.LocalDateTime;
 
-@Data
+@Getter
+@Setter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
 public class ProfileChannelOneDTO {
-    private LocalDateTime entryTimestamp;
+
     private String meterSerial;
     private String modelNumber;
+    private LocalDateTime entryTimestamp;
     private Integer meterHealthIndicator;
-    private Double totalInstantaneousActivePower;
-    private Double totalInstantaneousApparentPower;
-    private Double l1CurrentHarmonicThd;
-    private Double l2CurrentHarmonicThd;
-    private Double l3CurrentHarmonicThd;
-    private Double l1VoltageHarmonicThd;
-    private Double l2VoltageHarmonicThd;
-    private Double l3VoltageHarmonicThd;
+    private Double instantaneousVoltageL1;
+    private Double instantaneousVoltageL2;
+    private Double instantaneousVoltageL3;
+    private Double instantaneousCurrentL1;
+    private Double instantaneousCurrentL2;
+    private Double instantaneousCurrentL3;
+    private Double instantaneousActivePower;
+    private Double instantaneousReactiveImport;
+    private Double instantaneousReactiveExport;
+    private Double instantaneousPowerFactor;
+    private Double instantaneousApparentPower;
+    private Double instantaneousNetFrequency;
     private LocalDateTime receivedAt;
 }
