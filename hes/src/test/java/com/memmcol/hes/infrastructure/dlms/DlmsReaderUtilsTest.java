@@ -5,6 +5,8 @@ import com.memmcol.hes.domain.profile.ObisObjectType;
 import com.memmcol.hes.domain.profile.ProfileRowGeneric;
 import com.memmcol.hes.model.ModelProfileMetadata;
 import com.memmcol.hes.nettyUtils.SessionManager;
+import com.memmcol.hes.repository.MeterRepository;
+import com.memmcol.hes.trackByTimestamp.MeterProfileStateRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -34,6 +36,12 @@ public class DlmsReaderUtilsTest {
 
     @Mock
     private DlmsTimestampDecoder timestampDecoder;
+
+    @Mock
+    private MeterProfileStateRepository meterProfileStateRepository;
+
+    @Mock
+    private MeterRepository meterRepository;
 
     @InjectMocks
     private DlmsReaderUtils utils;  // ✅ constructor injected with mocks

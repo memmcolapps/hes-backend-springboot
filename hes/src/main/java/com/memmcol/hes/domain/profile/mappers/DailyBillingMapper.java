@@ -6,7 +6,6 @@ import com.memmcol.hes.domain.profile.ObisObjectType;
 import com.memmcol.hes.domain.profile.ProfileMetadataResult;
 import com.memmcol.hes.domain.profile.ProfileRowGeneric;
 import com.memmcol.hes.dto.DailyBillingProfileDTO;
-import com.memmcol.hes.dto.MonthlyBillingDTO;
 import com.memmcol.hes.infrastructure.dlms.DlmsTimestampDecoder;
 import com.memmcol.hes.service.MeterRatioService;
 import gurux.dlms.internal.GXCommon;
