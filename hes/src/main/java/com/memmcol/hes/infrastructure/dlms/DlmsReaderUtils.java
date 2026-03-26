@@ -5,13 +5,16 @@ import com.memmcol.hes.application.port.out.ProfileReadException;
 import com.memmcol.hes.application.port.out.TxRxService;
 import com.memmcol.hes.domain.profile.ProfileMetadataResult;
 import com.memmcol.hes.domain.profile.ProfileRowGeneric;
+import com.memmcol.hes.dto.MeterDTO;
 import com.memmcol.hes.mocks.MockRequestResponseService;
 import com.memmcol.hes.mocks.MockRxDecoderWithReply;
 import com.memmcol.hes.model.ModelProfileMetadata;
+import com.memmcol.hes.repository.MeterRepository;
 import com.memmcol.hes.nettyUtils.SessionManagerMultiVendor;
 import com.memmcol.hes.exception.AssociationLostException;
 import com.memmcol.hes.service.DlmsUtils;
 import com.memmcol.hes.service.GuruxObjectFactory;
+import com.memmcol.hes.trackByTimestamp.MeterProfileStateRepository;
 import gurux.dlms.*;
 import gurux.dlms.enums.DataType;
 import gurux.dlms.enums.Unit;
@@ -28,6 +31,7 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
+import java.util.function.Supplier;
 
 import static com.memmcol.hes.nettyUtils.RequestResponseService.logTx;
 
@@ -44,6 +48,50 @@ public class DlmsReaderUtils {
     private final DlmsPartialDecoder partialDecoder;
     private final DlmsTimestampDecoder timestampDecoder;
     private final TxRxService txRxService;
+    private final MeterProfileStateRepository meterProfileStateRepository;
+    private final MeterRepository meterRepository;
+
+    private record DlmsRangeWindow(LocalDateTime from, LocalDateTime to) {}
+
+    private DlmsRangeWindow resolveDlmsRangeWindow(
+            String meterSerial,
+            String profileObis,
+            LocalDateTime requestedTo
+    ) {
+        // Priority:
+        // 1) meter_profile_state.last_timestamp (any record with non-null lastTimestamp)
+        // 2) meters.created_at
+        // 3) yesterday .. yesterday+24h
+        LocalDateTime now = LocalDateTime.now();
+        Optional<LocalDateTime> stateTs = meterProfileStateRepository
+                .findByMeterSerialAndProfileObis(meterSerial, profileObis)
+                .map(s -> s.getLastTimestamp())
+                .filter(Objects::nonNull);
+
+        if (stateTs.isPresent()) {
+            LocalDateTime fromTs = stateTs.get();
+            LocalDateTime toTs = requestedTo != null ? requestedTo : fromTs.plusHours(24);
+            if (toTs.isAfter(now)) toTs = now;
+            log.info("profile state start time A ={} ~ profile state end time A ={}", fromTs, toTs);
+            return new DlmsRangeWindow(fromTs, toTs);
+        }
+
+        Optional<MeterDTO> meterOpt = meterRepository.findMeterDetailsByMeterNumber(meterSerial);
+        if (meterOpt.isPresent() && meterOpt.get().getCreatedAt() != null) {
+            LocalDateTime fromTs = meterOpt.get().getCreatedAt();
+            LocalDateTime toTs = requestedTo != null ? requestedTo : fromTs.plusHours(24);
+            if (toTs.isAfter(now)) toTs = now;
+            log.info("profile state start time B ={} ~ profile state end time B ={}", fromTs, toTs);
+            return new DlmsRangeWindow(fromTs, toTs);
+        }
+
+        // Default bootstrap:
+        // from = now - 1 day, to = open-ended (up to now)
+        LocalDateTime fromTs = now.minusDays(1);
+        LocalDateTime toTs = now;
+        log.info("profile state start time C ={} ~ profile state end time C ={}", fromTs, toTs);
+        return new DlmsRangeWindow(fromTs, toTs);
+    }
 
     /**
      * Reads a DLMS data block, including segmented/multi-frame responses.
@@ -116,7 +164,7 @@ public class DlmsReaderUtils {
      * @param index  attribute index to write
      * @param value  value to write (e.g. GXDateTime for clock)
      */
-    public void writeAttribute(GXDLMSClient client, String serial, GXDLMSObject obj, int index, Object value) throws Exception {
+    public void writeAttributeV1(GXDLMSClient client, String serial, GXDLMSObject obj, int index, Object value) throws Exception {
         // Populate the object's attribute with the value before issuing the write.
         if (obj instanceof GXDLMSClock clock && value instanceof GXDateTime dt) {
             clock.setTime(dt);
@@ -136,6 +184,57 @@ public class DlmsReaderUtils {
         GXReplyData reply = new GXReplyData();
         client.getData(response, reply, null);
         DlmsErrorUtils.checkError(reply, serial, "OBIS Write!");
+    }
+
+    public void writeAttribute(GXDLMSClient client,
+                               String serial,
+                               GXDLMSObject obj,
+                               int index,
+                               Object value) throws Exception {
+
+        // 1. Apply value to object
+        if (obj instanceof GXDLMSClock clock && value instanceof GXDateTime dt) {
+            clock.setTime(dt);
+        } else {
+            client.updateValue(obj, index, value);
+        }
+
+        byte[][] requests = client.write(obj, index);
+
+        if (requests == null || requests.length == 0) {
+            throw new IllegalStateException("DLMS write generated no frames");
+        }
+
+        GXReplyData reply = new GXReplyData();
+
+        long start = System.currentTimeMillis();
+
+        for (int i = 0; i < requests.length; i++) {
+
+            byte[] requestFrame = requests[i];
+
+            log.debug("📤 DLMS TX [{} / {}] → meter={}, bytes={}",
+                    i + 1, requests.length, serial, toHex(requestFrame));
+
+            byte[] response = txRxService.sendReceiveWithContext(serial, requestFrame, 20000);
+
+            if (sessionManager.isAssociationLost(response)) {
+                sessionManager.removeSession(serial);
+                throw new AssociationLostException("Association lost during write → meter=" + serial);
+            }
+
+            processReply(client, serial, response, reply);
+        }
+
+        if (!reply.isComplete()) {
+            throw new IllegalStateException("Incomplete DLMS reply → meter=" + serial);
+        }
+
+        DlmsErrorUtils.checkError(reply, serial, "OBIS Write");
+
+        long duration = System.currentTimeMillis() - start;
+
+        log.info("✅ DLMS write success → meter={}, duration={}ms", serial, duration);
     }
 
     /**
@@ -325,8 +424,96 @@ public class DlmsReaderUtils {
         }
     }
 
-
     public List<ProfileRowGeneric> readRange(String model, String meterSerial, String profileObis,
+                                               ProfileMetadataResult metadataResult,
+                                               LocalDateTime from, LocalDateTime to, boolean mdMeter) throws Exception {
+        GXDLMSClient client = null;
+        long t0 = System.currentTimeMillis();
+        // Clear any stale partial buffer before a fresh read
+        partialDecoder.clear(meterSerial, profileObis);
+        try {
+            client = sessionManager.getOrCreateClient(meterSerial);
+            if (client == null) {
+                throw new IllegalStateException("DLMS client not available for " + meterSerial);
+            }
+            GXDLMSProfileGeneric profile = new GXDLMSProfileGeneric();
+            profile.setLogicalName(profileObis);
+
+            DlmsRangeWindow resolved = resolveDlmsRangeWindow(meterSerial, profileObis, to);
+            from = resolved.from();
+            to = resolved.to();
+
+            // If the caller asked for a range that ends before the resolved start, fall back to a 24h window.
+            if (to.isBefore(from)) {
+                to = from.plusHours(24);
+            }
+
+
+
+            GXDateTime gxFrom = new GXDateTime(Date.from(from.atZone(ZoneId.systemDefault()).toInstant()));
+            GXDateTime gxTo = new GXDateTime(Date.from(to.atZone(ZoneId.systemDefault()).toInstant()));
+
+            String msg = String.format(
+                    "Building DLMS range request model=%s meter=%s obis=%s from=%s to=%s",
+                    model, meterSerial, profileObis, from, to);
+            log.info(msg);
+            logTx(meterSerial, msg);
+
+            // 🔧 Load metadata and setup DLMS profile object
+            // Ensure capture objects are populated (attr 3)
+            //get profile columns objects and scaler
+            List<ModelProfileMetadata> metadataList = metadataResult.getMetadataList();
+            DlmsUtils.populateCaptureObjects(profile, metadataList);
+
+            byte[][] reqFrames = client.readRowsByRange(profile, gxFrom, gxTo);
+
+            if (reqFrames == null || reqFrames.length == 0) {
+                log.warn("readRowsByRange produced no frames meter={} obis={}", meterSerial, profileObis);
+                return List.of();
+            }
+
+            GXReplyData reply = new GXReplyData();
+
+            // --- Send first frame
+            byte[] firstFrame = reqFrames[0];
+            byte[] resp1 = txRxService.sendReceiveWithContext(meterSerial, firstFrame, 20000);
+            if (sessionManager.isAssociationLost(resp1)) {
+                log.warn("Association lost for {} on first frame.", meterSerial);
+                sessionManager.removeSession(meterSerial);
+                log.info("Creating new Association and Reading all over!");
+                readRange(model, meterSerial, profileObis, metadataResult, from, to, mdMeter);
+//                throw new AssociationLostException("Association lost on first frame");
+            }
+            client.getData(resp1, reply, null);
+
+            // After each successful data chunk, accumulate partial rows for fallback
+            updateProfileBufferOnBlock(client, profile, profileObis, meterSerial, reply);
+
+            // --- Multi-block loop
+            while (reply.isMoreData()) {
+                byte[] nextReq = client.receiverReady(reply);
+                if (nextReq == null) break;
+                byte[] resp = txRxService.sendReceiveWithContext(meterSerial, nextReq, 20000);
+                client.getData(resp, reply, null);
+                updateProfileBufferOnBlock(client, profile, profileObis, meterSerial, reply);
+            }
+
+            // SUCCESS PATH: we now have the buffer inside profile (attr 2)
+            List<ProfileRowGeneric> rows = decodeProfileBuffer(profile, meterSerial, profileObis, metadataList);
+            // Clear partial buffer because full read succeeded
+            partialDecoder.clear(meterSerial, profileObis);
+
+            long ms = System.currentTimeMillis() - t0;
+            log.info("Range read complete meter={} obis={} rows={} elapsedMs={}", meterSerial, profileObis, rows.size(), ms);
+            return rows;
+
+        } catch (Exception e) {
+            log.error(e.getMessage(), e);
+            throw new Exception(e.getMessage());
+        }
+    }
+
+    public List<ProfileRowGeneric> readRangeV1(String model, String meterSerial, String profileObis,
                                              ProfileMetadataResult metadataResult,
                                              LocalDateTime from, LocalDateTime to, boolean mdMeter) throws Exception {
         GXDLMSClient client = null;
@@ -371,7 +558,7 @@ public class DlmsReaderUtils {
                 log.warn("Association lost for {} on first frame.", meterSerial);
                 sessionManager.removeSession(meterSerial);
                 log.info("Creating new Association and Reading all over!");
-                readRange(model, meterSerial, profileObis, metadataResult, from, to, mdMeter);
+                readRangeV1(model, meterSerial, profileObis, metadataResult, from, to, mdMeter);
 //                throw new AssociationLostException("Association lost on first frame");
             }
             client.getData(resp1, reply, null);
@@ -666,7 +853,35 @@ public class DlmsReaderUtils {
         };
     }
 
+    private void processReply(GXDLMSClient client,
+                              String serial,
+                              byte[] response,
+                              GXReplyData reply) throws Exception {
 
+        log.debug("📥 DLMS RX → meter={}, bytes={}", serial, toHex(response));
 
+        client.getData(response, reply);
 
+        // Handle segmented / block transfer
+        while (reply.isMoreData()) {
+
+            byte[] rr = client.receiverReady(reply);
+
+            log.debug("📤 DLMS RR → meter={}, bytes={}", serial, toHex(rr));
+
+            response = txRxService.sendReceiveWithContext(serial, rr, 20000);
+
+            log.debug("📥 DLMS RX (segment) → meter={}, bytes={}", serial, toHex(response));
+
+            client.getData(response, reply);
+        }
+    }
+
+    private String toHex(byte[] data) {
+        StringBuilder sb = new StringBuilder();
+        for (byte b : data) {
+            sb.append(String.format("%02X ", b));
+        }
+        return sb.toString().trim();
+    }
 }

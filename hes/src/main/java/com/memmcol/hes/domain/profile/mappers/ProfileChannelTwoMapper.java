@@ -5,7 +5,6 @@ import com.memmcol.hes.domain.profile.MeterRatios;
 import com.memmcol.hes.domain.profile.ObisObjectType;
 import com.memmcol.hes.domain.profile.ProfileMetadataResult;
 import com.memmcol.hes.domain.profile.ProfileRowGeneric;
-import com.memmcol.hes.dto.ProfileChannelOneDTO;
 import com.memmcol.hes.dto.ProfileChannelTwoDTO;
 import com.memmcol.hes.infrastructure.dlms.DlmsTimestampDecoder;
 import com.memmcol.hes.service.MeterRatioService;

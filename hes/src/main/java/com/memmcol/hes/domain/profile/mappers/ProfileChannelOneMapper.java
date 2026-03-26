@@ -8,6 +8,7 @@ import com.memmcol.hes.domain.profile.ProfileRowGeneric;
 import com.memmcol.hes.dto.ProfileChannelOneDTO;
 import com.memmcol.hes.infrastructure.dlms.DlmsTimestampDecoder;
 import com.memmcol.hes.service.MeterRatioService;
+import gurux.dlms.GXDateTime;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -17,6 +18,8 @@ import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
+import java.util.Calendar;
+import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -135,20 +138,76 @@ public class ProfileChannelOneMapper implements GenericDtoMappers<ProfileChannel
 
     @Override
     public void setDtoField(ProfileChannelOneDTO dto, String columnName, BigDecimal value) {
+        log.info("column mapping: {}, value: {}", columnName, value);
         switch (columnName.toLowerCase()) {
-            case "meter_health_indicator" -> dto.setMeterHealthIndicator(value.intValue());
-            case "total_instantaneous_active_power" -> dto.setTotalInstantaneousActivePower(value.doubleValue());
-            case "total_instantaneous_apparent_power" -> dto.setTotalInstantaneousApparentPower(value.doubleValue());
-            case "l1_current_harmonic_thd" -> dto.setL1CurrentHarmonicThd(value.doubleValue());
-            case "l2_current_harmonic_thd" -> dto.setL2CurrentHarmonicThd(value.doubleValue());
-            case "l3_current_harmonic_thd" -> dto.setL3CurrentHarmonicThd(value.doubleValue());
-            case "l1_voltage_harmonic_thd" -> dto.setL1VoltageHarmonicThd(value.doubleValue());
-            case "l2_voltage_harmonic_thd" -> dto.setL2VoltageHarmonicThd(value.doubleValue());
-            case "l3_voltage_harmonic_thd" -> dto.setL3VoltageHarmonicThd(value.doubleValue());
+            case "entry_timestamp" -> dto.setEntryTimestamp(asDateTime(value));
+            case "profile_status" -> dto.setMeterHealthIndicator(value.intValue());
+            case "instantaneous_voltage_l1" -> dto.setInstantaneousVoltageL1(value.doubleValue());
+            case "instantaneous_voltage_l2" -> dto.setInstantaneousVoltageL2(value.doubleValue());
+            case "instantaneous_voltage_l3" -> dto.setInstantaneousVoltageL3(value.doubleValue());
+            case "instantaneous_current_l1" -> dto.setInstantaneousCurrentL1(value.doubleValue());
+            case "instantaneous_current_l2" -> dto.setInstantaneousCurrentL2(value.doubleValue());
+            case "instantaneous_current_l3" -> dto.setInstantaneousCurrentL3(value.doubleValue());
+            case "instantaneous_active_power" -> dto.setInstantaneousActivePower(value.doubleValue());
+            case "instantaneous_reactive_import" -> dto.setInstantaneousReactiveImport(value.doubleValue());
+            case "instantaneous_reactive_export" -> dto.setInstantaneousReactiveExport(value.doubleValue());
+            case "instantaneous_power_factor" -> dto.setInstantaneousPowerFactor(value.doubleValue());
+            case "instantaneous_apparent_power" -> dto.setInstantaneousApparentPower(value.doubleValue());
+            case "instantaneous_net_frequency" -> dto.setInstantaneousNetFrequency(value.doubleValue());
             default -> log.warn("Unknown column mapping: {}", columnName);
         }
 
     }
 
+    private LocalDateTime asDateTime(Object value) {
+
+        if (value == null) return null;
+
+        // 1. Gurux DLMS type
+        if (value instanceof GXDateTime gx) {
+            // Preferred if available
+            try {
+                return toLocalDateTime(gx);
+            } catch (Exception e) {
+                // fallback if method not supported
+                return gx.getValue().toInstant()
+                        .atZone(ZoneId.systemDefault())
+                        .toLocalDateTime();
+            }
+        }
+
+        // 2. java.util.Date
+        if (value instanceof Date d) {
+            return d.toInstant()
+                    .atZone(ZoneId.systemDefault())
+                    .toLocalDateTime();
+        }
+
+        // 3. Already LocalDateTime
+        if (value instanceof LocalDateTime ldt) {
+            return ldt;
+        }
+
+        // 4. String fallback (last resort)
+        if (value instanceof String s) {
+            return LocalDateTime.parse(s);
+        }
+
+        throw new IllegalArgumentException(
+                "Unsupported DateTime type: " + value.getClass()
+        );
+    }
+
+    public static LocalDateTime toLocalDateTime(GXDateTime gx) {
+        if (gx == null || gx.getValue() == null) {
+            return null;
+        }
+
+        Date date = gx.getValue();
+
+        return gx.getValue().toInstant()
+                .atZone(ZoneId.systemDefault())
+                .toLocalDateTime();
+    }
 
 }

@@ -2,7 +2,6 @@ package com.memmcol.hes.entities;
 
 import jakarta.persistence.*;
 import lombok.*;
-
 import java.time.LocalDateTime;
 
 @Entity
@@ -23,41 +22,53 @@ public class ProfileChannelOne {
     @Id
     @Column(name = "meter_serial", nullable = false, length = 50)
     private String meterSerial;
-    @Id
-    @Column(name = "entry_timestamp", nullable = false)
-    private LocalDateTime entryTimestamp;
 
     @Column(name = "model_number", nullable = false, length = 50)
     private String modelNumber;
 
+    @Id
+    @Column(name = "entry_timestamp", nullable = false)
+    private LocalDateTime entryTimestamp;
+
     @Column(name = "meter_health_indicator")
     private Integer meterHealthIndicator;
 
-    @Column(name = "total_instantaneous_active_power")
-    private Double totalInstantaneousActivePower;
+    @Column(name = "instantaneous_voltage_l1")
+    private Double instantaneousVoltageL1;
 
-    @Column(name = "total_instantaneous_apparent_power")
-    private Double totalInstantaneousApparentPower;
+    @Column(name = "instantaneous_voltage_l2")
+    private Double instantaneousVoltageL2;
 
-    @Column(name = "l1_current_harmonic_thd")
-    private Double l1CurrentHarmonicThd;
+    @Column(name = "instantaneous_voltage_l3")
+    private Double instantaneousVoltageL3;
 
-    @Column(name = "l2_current_harmonic_thd")
-    private Double l2CurrentHarmonicThd;
+    @Column(name = "instantaneous_current_l1")
+    private Double instantaneousCurrentL1;
 
-    @Column(name = "l3_current_harmonic_thd")
-    private Double l3CurrentHarmonicThd;
+    @Column(name = "instantaneous_current_l2")
+    private Double instantaneousCurrentL2;
 
-    @Column(name = "l1_voltage_harmonic_thd")
-    private Double l1VoltageHarmonicThd;
+    @Column(name = "instantaneous_current_l3")
+    private Double instantaneousCurrentL3;
 
-    @Column(name = "l2_voltage_harmonic_thd")
-    private Double l2VoltageHarmonicThd;
+    @Column(name = "instantaneous_active_power")
+    private Double instantaneousActivePower;
 
-    @Column(name = "l3_voltage_harmonic_thd")
-    private Double l3VoltageHarmonicThd;
+    @Column(name = "instantaneous_reactive_import")
+    private Double instantaneousReactiveImport;
 
-    @Column(name = "received_at")
+    @Column(name = "instantaneous_reactive_export")
+    private Double instantaneousReactiveExport;
+
+    @Column(name = "instantaneous_power_factor")
+    private Double instantaneousPowerFactor;
+
+    @Column(name = "instantaneous_apparent_power")
+    private Double instantaneousApparentPower;
+
+    @Column(name = "instantaneous_net_frequency")
+    private Double instantaneousNetFrequency;
+
+    @Column(name = "received_at", insertable = false, updatable = false)
     private LocalDateTime receivedAt;
 }
-
