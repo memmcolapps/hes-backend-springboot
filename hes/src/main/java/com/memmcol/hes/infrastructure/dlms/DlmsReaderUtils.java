@@ -427,6 +427,12 @@ public class DlmsReaderUtils {
     public List<ProfileRowGeneric> readRange(String model, String meterSerial, String profileObis,
                                                ProfileMetadataResult metadataResult,
                                                LocalDateTime from, LocalDateTime to, boolean mdMeter) throws Exception {
+        if (profileObis == null || profileObis.isBlank()) {
+            throw new IllegalArgumentException("profileObis must not be null/blank");
+        }
+        if (metadataResult == null || metadataResult.getMetadataList() == null || metadataResult.getMetadataList().isEmpty()) {
+            throw new IllegalArgumentException("Capture objects not read.");
+        }
         GXDLMSClient client = null;
         long t0 = System.currentTimeMillis();
         // Clear any stale partial buffer before a fresh read

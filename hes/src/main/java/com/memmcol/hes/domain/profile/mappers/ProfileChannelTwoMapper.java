@@ -128,8 +128,18 @@ public class ProfileChannelTwoMapper implements GenericDtoMappers<ProfileChannel
     @Override
     public void setDtoField(ProfileChannelTwoDTO dto, String columnName, BigDecimal value) {
         switch (columnName.toLowerCase()) {
-            case "total_import_active_energy" -> dto.setTotalImportActiveEnergy(value.doubleValue());
-            case "total_export_active_energy" -> dto.setTotalExportActiveEnergy(value.doubleValue());
+            case "meter_health_indicator" -> dto.setMeterHealthIndicator(value.intValue());
+            case "active_energy_import" -> dto.setActiveEnergyImport(value.doubleValue());
+            case "active_energy_import_rate1" -> dto.setActiveEnergyImportRate1(value.doubleValue());
+            case "active_energy_import_rate2" -> dto.setActiveEnergyImportRate2(value.doubleValue());
+            case "active_energy_import_rate3" -> dto.setActiveEnergyImportRate3(value.doubleValue());
+            case "active_energy_import_rate4" -> dto.setActiveEnergyImportRate4(value.doubleValue());
+            case "active_energy_combined_total" -> dto.setActiveEnergyCombinedTotal(value.doubleValue());
+            case "active_energy_export" -> dto.setActiveEnergyExport(value.doubleValue());
+            case "reactive_energy_import" -> dto.setReactiveEnergyImport(value.doubleValue());
+            case "reactive_energy_export" -> dto.setReactiveEnergyExport(value.doubleValue());
+            case "apparent_energy_import" -> dto.setApparentEnergyImport(value.doubleValue());
+            case "apparent_energy_export" -> dto.setApparentEnergyExport(value.doubleValue());
             default -> log.warn("Unknown column mapping: {}", columnName);
         }
     }
