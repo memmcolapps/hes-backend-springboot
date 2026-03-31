@@ -32,6 +32,13 @@ public class ProfileChannelOneServiceExtension {
 
        public void readProfileAndSave(String model, String meterSerial, String profileObis, boolean isMD) {
         try {
+            final String safeObis = (profileObis == null || profileObis.isBlank()) ? "unknown" : profileObis;
+            if (profileObis == null || profileObis.isBlank()) {
+                log.error("Profile OBIS is null/blank; skipping read meter={} model={}", meterSerial, model);
+                metricsPort.recordFailure(meterSerial, safeObis, "missing_profile_obis");
+                return;
+            }
+
             // Step 1: Seed initial range start using DB-first priority:
             // 1) meter_profile_state.last_timestamp (if any record exists)
             // 2) meters.created_at
@@ -70,7 +77,15 @@ public class ProfileChannelOneServiceExtension {
                 long t0 = System.currentTimeMillis();
                 boolean exceptionOccurred = false;
 
-                ProfileMetadataResult metadataResult = metadataProvider.resolve(meterSerial, profileObis, model);
+                final ProfileMetadataResult metadataResult;
+                try {
+                    metadataResult = metadataProvider.resolve(meterSerial, profileObis, model);
+                } catch (Exception metaEx) {
+                    log.error("Metadata resolve failed meter={} profile={} model={} cause={}",
+                            meterSerial, profileObis, model, metaEx.getMessage(), metaEx);
+                    metricsPort.recordFailure(meterSerial, safeObis, "metadata_resolve_failed");
+                    return;
+                }
                 List<ProfileRowGeneric> rawRows;
 
                 try {
@@ -123,7 +138,8 @@ public class ProfileChannelOneServiceExtension {
             // Final safety: log and exit WITHOUT re-throwing.
             log.error("Fatal exception while reading profile, meter={}, profile={}: {}",
                     meterSerial, profileObis, ex.getMessage(), ex);
-            metricsPort.recordFailure(meterSerial, profileObis, "unhandled_exception");
+            String safeObis = (profileObis == null || profileObis.isBlank()) ? "unknown" : profileObis;
+            metricsPort.recordFailure(meterSerial, safeObis, "unhandled_exception");
         }
     }
 
@@ -135,10 +151,12 @@ public class ProfileChannelOneServiceExtension {
          * */
         try {
             List<ProfileRowGeneric> salvaged = dlmsReaderUtils.recoverPartial(serial, profileObis, model, metadataResult);
-            metricsPort.recordRecovery(serial, profileObis, salvaged.size());
+            String safeObis = (profileObis == null || profileObis.isBlank()) ? "unknown" : profileObis;
+            metricsPort.recordRecovery(serial, safeObis, salvaged.size());
             return salvaged;
         } catch (ProfileReadException e) {
-            metricsPort.recordFailure(serial, profileObis, "recovery_failed");
+            String safeObis = (profileObis == null || profileObis.isBlank()) ? "unknown" : profileObis;
+            metricsPort.recordFailure(serial, safeObis, "recovery_failed");
             log.error("Partial recovery failed meter={} profile={}", serial, profileObis, e);
             return List.of();
         }

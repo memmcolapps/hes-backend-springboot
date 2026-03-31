@@ -30,15 +30,41 @@ public class ProfileChannelTwo {
     @Column(name = "model_number", nullable = false, length = 50)
     private String modelNumber;
 
-    @Column(name = "total_import_active_energy")
-    private Double totalImportActiveEnergy;
+    @Column(name = "meter_health_indicator")
+    private Integer meterHealthIndicator;
 
-    @Column(name = "total_export_active_energy")
-    private Double totalExportActiveEnergy;
+    @Column(name = "active_energy_import")
+    private Double activeEnergyImport;
 
-//    @Column(name = "received_at", insertable = false, updatable = false,
-//            columnDefinition = "timestamp default CURRENT_TIMESTAMP")
-//    private LocalDateTime receivedAt;
+    @Column(name = "active_energy_import_rate1")
+    private Double activeEnergyImportRate1;
+
+    @Column(name = "active_energy_import_rate2")
+    private Double activeEnergyImportRate2;
+
+    @Column(name = "active_energy_import_rate3")
+    private Double activeEnergyImportRate3;
+
+    @Column(name = "active_energy_import_rate4")
+    private Double activeEnergyImportRate4;
+
+    @Column(name = "active_energy_combined_total")
+    private Double activeEnergyCombinedTotal;
+
+    @Column(name = "active_energy_export")
+    private Double activeEnergyExport;
+
+    @Column(name = "reactive_energy_import")
+    private Double reactiveEnergyImport;
+
+    @Column(name = "reactive_energy_export")
+    private Double reactiveEnergyExport;
+
+    @Column(name = "apparent_energy_import")
+    private Double apparentEnergyImport;
+
+    @Column(name = "apparent_energy_export")
+    private Double apparentEnergyExport;
 
     @Column(name = "received_at")
     private LocalDateTime receivedAt;
