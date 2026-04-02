@@ -25,6 +25,9 @@ public class SchedulerJobInfo {
     @Column(name = "job_id")
     private Long jobId;
 
+    @Column(name = "name")
+    private String name;
+
     @Column(name = "job_name")
     private String jobName;
 
