@@ -27,7 +27,7 @@ public class ManageTokenEventJob extends QuartzJobBean {
     @Override
     protected void executeInternal(JobExecutionContext context) throws JobExecutionException {
         String obisCode = context.getMergedJobDataMap().getString("obisCodes");
-        log.info("✅ Executing DailyBillingJob at {}, obis={}", context.getFireTime(), obisCode);
+        log.info("✅ Executing ManageTokenEventJob at {}, obis={}", context.getFireTime(), obisCode);
         profileExecutionService.readEventsForAll(obisCode); // <-- dynamic OBIS now
     }
 }
