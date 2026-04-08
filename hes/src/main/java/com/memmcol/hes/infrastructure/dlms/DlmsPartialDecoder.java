@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.stream.Collectors;
 
 /**
  * Responsible for accumulating partial blocks when DLMS profile reads
@@ -79,5 +80,25 @@ public class DlmsPartialDecoder {
             return rows;
         }
         return List.of();
+    }
+
+    public List<List<Object>> getAccumulated(String meterSerial, String profileObis) {
+        String key = buildKey(meterSerial, profileObis);
+
+        List<List<Object>> data = bufferStore.get(key);
+        if (data == null || data.isEmpty()) {
+            return List.of();
+        }
+
+        // Return defensive copy to avoid mutation side-effects
+        return data.stream()
+                .map(row -> new ArrayList<>(row))
+                .collect(Collectors.toList());
+    }
+
+    private final Map<String, List<List<Object>>> bufferStore = new ConcurrentHashMap<>();
+
+    private String buildKey(String meterSerial, String profileObis) {
+        return meterSerial + "::" + profileObis;
     }
 }

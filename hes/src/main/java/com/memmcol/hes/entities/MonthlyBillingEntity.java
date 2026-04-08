@@ -34,15 +34,14 @@ public class MonthlyBillingEntity {
     private LocalDateTime receivedAt;
 
     // Billing fields
-    private Double totalAbsoluteActiveEnergy;
-    private Double exportActiveEnergy;
-    private Double importActiveEnergy;
-    private Double importReactiveEnergy;
-    private Double exportReactiveEnergy;
-    private Double remainingCreditAmount;
-    private Double importActiveMd;
+//    private Double totalAbsoluteActiveEnergy;
+//    private Double exportActiveEnergy;
+//    private Double importActiveEnergy;
+//    private Double importReactiveEnergy;
+//    private Double exportReactiveEnergy;
+//    private Double remainingCreditAmount;
+//    private Double importActiveMd;
 
-    private LocalDateTime importActiveMdTime;
 
     @Column(name = "t1_active_energy")
     private Double t1ActiveEnergy;
@@ -75,6 +74,7 @@ public class MonthlyBillingEntity {
     private Double totalApparentDemand;
 
     private LocalDateTime totalApparentDemandTime;
+    private LocalDateTime activeMaximumDemandTime;
 
     @Override
     public final boolean equals(Object o) {
