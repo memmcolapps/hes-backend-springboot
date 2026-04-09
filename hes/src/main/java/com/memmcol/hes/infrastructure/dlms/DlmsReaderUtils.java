@@ -424,6 +424,127 @@ public class DlmsReaderUtils {
         }
     }
 
+    public List<ProfileRowGeneric> readRangeV2(String model,
+                                             String meterSerial,
+                                             String profileObis,
+                                             ProfileMetadataResult metadataResult,
+                                             LocalDateTime from,
+                                             LocalDateTime to,
+                                             boolean mdMeter) throws Exception {
+
+        if (profileObis == null || profileObis.isBlank()) {
+            throw new IllegalArgumentException("profileObis must not be null/blank");
+        }
+        if (metadataResult == null || metadataResult.getMetadataList() == null
+                || metadataResult.getMetadataList().isEmpty()) {
+            throw new IllegalArgumentException("Capture objects not read.");
+        }
+
+        long t0 = System.currentTimeMillis();
+        partialDecoder.clear(meterSerial, profileObis);
+
+        GXDLMSClient client = sessionManager.getOrCreateClient(meterSerial);
+        if (client == null) {
+            throw new IllegalStateException("DLMS client not available for " + meterSerial);
+        }
+
+        GXDLMSProfileGeneric profile = new GXDLMSProfileGeneric();
+        profile.setLogicalName(profileObis);
+
+        // Resolve time window
+        DlmsRangeWindow resolved = resolveDlmsRangeWindow(meterSerial, profileObis, to);
+        from = resolved.from();
+        to = resolved.to();
+
+        if (to.isBefore(from)) {
+            to = from.plusHours(24);
+        }
+
+        GXDateTime gxFrom = new GXDateTime(Date.from(from.atZone(ZoneId.systemDefault()).toInstant()));
+        GXDateTime gxTo = new GXDateTime(Date.from(to.atZone(ZoneId.systemDefault()).toInstant()));
+
+        log.info("Building DLMS range request model={} meter={} obis={} from={} to={}",
+                model, meterSerial, profileObis, from, to);
+
+        // Load capture objects
+        List<ModelProfileMetadata> metadataList = metadataResult.getMetadataList();
+        DlmsUtils.populateCaptureObjects(profile, metadataList);
+//        logMeterColumns(meterSerial, profileObis, metadataList);
+
+        byte[][] reqFrames = client.readRowsByRange(profile, gxFrom, gxTo);
+        if (reqFrames == null || reqFrames.length == 0) {
+            log.warn("readRowsByRange produced no frames meter={} obis={}", meterSerial, profileObis);
+            return List.of();
+        }
+
+        GXReplyData reply = new GXReplyData();
+
+        try {
+            // --- First frame
+            byte[] resp = txRxService.sendReceiveWithContext(meterSerial, reqFrames[0], 20000);
+
+            if (sessionManager.isAssociationLost(resp)) {
+                log.warn("Association lost for {} on first frame. Re-establishing session...", meterSerial);
+                sessionManager.removeSession(meterSerial);
+                return readRange(model, meterSerial, profileObis, metadataResult, from, to, mdMeter);
+            }
+
+            client.getData(resp, reply, null);
+
+            // --- Block loop (NO decoding here)
+            while (reply.isMoreData()) {
+                byte[] nextReq = client.receiverReady(reply);
+                if (nextReq == null) break;
+
+                resp = txRxService.sendReceiveWithContext(meterSerial, nextReq, 20000);
+                client.getData(resp, reply, null);
+            }
+
+            // ✅ Only now we finalize the buffer
+            Object finalValue = reply.getValue();
+            if (finalValue == null) {
+                throw new IllegalStateException("DLMS returned null profile buffer.");
+            }
+
+            client.updateValue(profile, 2, finalValue);
+
+            // ✅ Decode safely AFTER full assembly
+            List<List<Object>> rawBuffer = partialDecoder.normalizeProfileBuffer(profile.getBuffer());
+
+            if (rawBuffer != null && !rawBuffer.isEmpty()) {
+                partialDecoder.accumulate(meterSerial, profileObis, rawBuffer);
+            }
+
+            List<ProfileRowGeneric> rows =
+                    decodeProfileBuffer(profile, meterSerial, profileObis, metadataList);
+
+            partialDecoder.clear(meterSerial, profileObis);
+
+            long ms = System.currentTimeMillis() - t0;
+            log.info("Range read complete meter={} obis={} rows={} elapsedMs={}",
+                    meterSerial, profileObis, rows.size(), ms);
+
+            return rows;
+
+        } catch (Exception e) {
+
+            log.error("Range read failed meter={} obis={} cause={}",
+                    meterSerial, profileObis, e.getMessage(), e);
+
+            // ✅ Controlled recovery using accumulated VALID rows only
+            List<List<Object>> recovered = partialDecoder.getAccumulated(meterSerial, profileObis);
+
+            if (recovered != null && !recovered.isEmpty()) {
+                log.warn("Recovered {} partial rows meter={} obis={}",
+                        recovered.size(), meterSerial, profileObis);
+
+                return decodeRecoveredRows(recovered, meterSerial, profileObis, metadataList);
+            }
+
+            throw e;
+        }
+    }
+
     public List<ProfileRowGeneric> readRange(String model, String meterSerial, String profileObis,
                                                ProfileMetadataResult metadataResult,
                                                LocalDateTime from, LocalDateTime to, boolean mdMeter) throws Exception {
@@ -470,6 +591,7 @@ public class DlmsReaderUtils {
             //get profile columns objects and scaler
             List<ModelProfileMetadata> metadataList = metadataResult.getMetadataList();
             DlmsUtils.populateCaptureObjects(profile, metadataList);
+//            this.logMeterColumns(meterSerial, profileObis, metadataList);
 
             byte[][] reqFrames = client.readRowsByRange(profile, gxFrom, gxTo);
 
@@ -889,5 +1011,141 @@ public class DlmsReaderUtils {
             sb.append(String.format("%02X ", b));
         }
         return sb.toString().trim();
+    }
+
+    private void logMeterColumns(String meterSerial, String profileObis, List<ModelProfileMetadata> metadataList) {
+        if (metadataList == null || metadataList.isEmpty()) {
+            log.warn("No capture objects found for meter={} obis={}", meterSerial, profileObis);
+            return;
+        }
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("\n📡 DLMS Capture Objects (Meter Columns)")
+                .append("\nMeter: ").append(meterSerial)
+                .append(" OBIS: ").append(profileObis)
+                .append("\n--------------------------------------------------");
+
+        int index = 1;
+        for (ModelProfileMetadata m : metadataList) {
+            sb.append("\n")
+                    .append(index++)
+                    .append(". Column =").append(m.getColumnName())
+                    .append(" | ClassId=").append(m.getClassId())
+                    .append(" | Attr=").append(m.getAttributeIndex())
+                    .append(" | Scaler=").append(m.getScaler())
+                    .append(" | Unit=").append(m.getUnit());
+        }
+
+        sb.append("\n--------------------------------------------------");
+
+        log.info(sb.toString());
+    }
+
+    public List<ProfileRowGeneric> decodeRecoveredRows(
+            List<List<Object>> recovered,
+            String meterSerial,
+            String profileObis,
+            List<ModelProfileMetadata> metadataList) {
+
+        List<ProfileRowGeneric> result = new ArrayList<>();
+
+        if (recovered == null || recovered.isEmpty()) {
+            return result;
+        }
+
+        int expectedColumns = metadataList.size();
+
+        for (int i = 0; i < recovered.size(); i++) {
+            List<Object> row = recovered.get(i);
+
+            // 🔴 Strict validation
+            if (row == null || row.size() != expectedColumns) {
+                log.warn("Skipping malformed recovered row idx={} meter={} obis={} expectedCols={} actualCols={}",
+                        i, meterSerial, profileObis, expectedColumns,
+                        row == null ? 0 : row.size());
+                continue;
+            }
+
+            try {
+                Map<String, Object> values = new HashMap<>();
+                Instant timestamp = null;
+
+                for (int col = 0; col < expectedColumns; col++) {
+                    ModelProfileMetadata meta = metadataList.get(col);
+                    Object raw = row.get(col);
+
+                    Object safeValue = sanitizeValue(raw, meta);
+
+                    // ✅ Extract timestamp from clock_object
+                    if ("clock_object".equalsIgnoreCase(meta.getColumnName())) {
+                        if (safeValue instanceof Instant inst) {
+                            timestamp = inst;
+                        } else if (safeValue instanceof LocalDateTime ldt) {
+                            timestamp = ldt.atZone(ZoneId.systemDefault()).toInstant();
+                        }
+                    }
+
+                    values.put(meta.getColumnName(), safeValue);
+                }
+
+                // ⚠️ Skip rows without valid timestamp
+                if (timestamp == null) {
+                    log.warn("Recovered row missing timestamp idx={} meter={} obis={}",
+                            i, meterSerial, profileObis);
+                    continue;
+                }
+
+                // ✅ Correct constructor usage
+                ProfileRowGeneric mapped =
+                        new ProfileRowGeneric(timestamp, meterSerial, profileObis, values);
+
+                result.add(mapped);
+
+            } catch (Exception ex) {
+                log.error("Failed to map recovered row idx={} meter={} obis={} cause={}",
+                        i, meterSerial, profileObis, ex.getMessage(), ex);
+            }
+        }
+
+        log.info("Decoded {} recovered rows (out of {}) meter={} obis={}",
+                result.size(), recovered.size(), meterSerial, profileObis);
+
+        return result;
+    }
+
+    private Object sanitizeValue(Object value, ModelProfileMetadata meta) {
+
+        if (value == null) {
+            return null;
+        }
+
+        // ✅ Timestamp handling (convert to Instant)
+        if (value instanceof GXDateTime gxDateTime) {
+            return gxDateTime.getLocalCalendar().toInstant();
+        }
+
+        // ✅ Numeric scaling
+        if (value instanceof Number num) {
+            double scaled = num.doubleValue();
+
+            if (meta.getScaler() != null) {
+                scaled *= meta.getScaler();
+            }
+
+            return scaled;
+        }
+
+        // ✅ Byte[] → hex (safe fallback)
+        if (value instanceof byte[] bytes) {
+            return GXCommon.toHex(bytes, false);
+        }
+
+        // ⚠️ Unknown types
+        log.warn("Unexpected value type for column={} type={} value={}",
+                meta.getColumnName(),
+                value.getClass().getSimpleName(),
+                value);
+
+        return null;
     }
 }

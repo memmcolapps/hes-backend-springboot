@@ -30,7 +30,7 @@ public class MonthlyBillingService {
     private final MonthlyBillingMapper billingMapper;
     private final MonthlyBillingPersistenceAdapter monthlyBillingPersistenceAdapter;
 
-    @Transactional
+
     public void readProfileAndSave(String model, String meterSerial, String profileObis, boolean isMD) {
         try {
             //Step 1: Get last timestamp read from the meter or default to yesterday
@@ -55,7 +55,6 @@ public class MonthlyBillingService {
 
                 ProfileMetadataResult metadataResult = metadataProvider.resolve(meterSerial, profileObis, model);
                 List<ProfileRowGeneric> rawRows;
-
                 try {
                     rawRows = dlmsReaderUtils.readRange(model, meterSerial, profileObis, metadataResult, from, to, isMD);
                 } catch (Exception e) {

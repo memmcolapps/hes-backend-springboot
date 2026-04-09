@@ -25,6 +25,7 @@ public class DailyBillingProfileDTO {
 
     private Double totalApparentEnergy;
     private Double t1TotalApparentEnergy;
+    private Double t2TotalApparentEnergy;
     private Double t3TotalApparentEnergy;
     private Double t4TotalApparentEnergy;
 }
