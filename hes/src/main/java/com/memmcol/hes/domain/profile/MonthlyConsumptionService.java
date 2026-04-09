@@ -50,8 +50,8 @@ public class MonthlyConsumptionService {
                 .orElseThrow(() -> new IllegalStateException("No billing record for " + monthStart));
 
         // 3. Calculate consumption
-        Double prevVal = prev.getTotalAbsoluteActiveEnergy();
-        Double currVal = curr.getTotalAbsoluteActiveEnergy();
+        Double prevVal = prev.getTotalActiveEnergy();
+        Double currVal = curr.getTotalActiveEnergy();
 
         // Assuming prevVal and currVal are Double (nullable)
         BigDecimal consumptionBd = null;

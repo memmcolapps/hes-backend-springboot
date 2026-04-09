@@ -34,6 +34,7 @@ public class DefaultJobInitializer {
                     .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
                     .enable(SerializationFeature.INDENT_OUTPUT);
             InputStream inputStream = new ClassPathResource("default-jobs.json").getInputStream();
+
             List<SchedulerJobInfo> defaultJobs = mapper.readValue(inputStream, new TypeReference<List<SchedulerJobInfo>>() {});
 
             for (SchedulerJobInfo job : defaultJobs) {

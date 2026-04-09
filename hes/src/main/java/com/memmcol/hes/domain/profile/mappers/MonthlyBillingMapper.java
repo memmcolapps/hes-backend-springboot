@@ -87,7 +87,7 @@ public class MonthlyBillingMapper implements GenericDtoMappers<MonthlyBillingDTO
                 if (obisWithAttr.endsWith("-5")) {
                     assert rawValue instanceof byte[];
                     LocalDateTime clock = dlmsTimestampDecoder.decode((byte[]) rawValue);
-                    dto.setImportActiveMdTime(clock);
+                    dto.setActiveMaximumDemandTime(clock);
                     continue;
                 }
             }
@@ -161,13 +161,6 @@ public class MonthlyBillingMapper implements GenericDtoMappers<MonthlyBillingDTO
     @Override
     public void setDtoField(MonthlyBillingDTO dto, String columnName, BigDecimal value) {
         switch (columnName.toLowerCase()) {
-            case "total_absolute_active_energy" -> dto.setTotalAbsoluteActiveEnergy(value.doubleValue());
-            case "export_active_energy" -> dto.setExportActiveEnergy(value.doubleValue());
-            case "import_active_energy" -> dto.setImportActiveEnergy(value.doubleValue());
-            case "import_reactive_energy" -> dto.setImportReactiveEnergy(value.doubleValue());
-            case "export_reactive_energy" -> dto.setExportReactiveEnergy(value.doubleValue());
-            case "remaining_credit_amount" -> dto.setRemainingCreditAmount(value.doubleValue());
-            case "import_active_md" -> dto.setImportActiveMd(value.doubleValue());
             case "t1_active_energy" -> dto.setT1ActiveEnergy(value.doubleValue());
             case "t2_active_energy" -> dto.setT2ActiveEnergy(value.doubleValue());
             case "t3_active_energy" -> dto.setT3ActiveEnergy(value.doubleValue());
@@ -178,9 +171,40 @@ public class MonthlyBillingMapper implements GenericDtoMappers<MonthlyBillingDTO
             case "t2_total_apparent_energy" -> dto.setT2TotalApparentEnergy(value.doubleValue());
             case "t3_total_apparent_energy" -> dto.setT3TotalApparentEnergy(value.doubleValue());
             case "t4_total_apparent_energy" -> dto.setT4TotalApparentEnergy(value.doubleValue());
-            case "active_maximum_demand" -> dto.setActiveMaximumDemand(value.doubleValue());
-            case "total_apparent_demand" -> dto.setTotalApparentDemand(value.doubleValue());
+//            case "active_maximum_demand" -> dto.setActiveMaximumDemand(value.doubleValue());
+//            case "total_apparent_demand" -> dto.setTotalApparentDemand(value.doubleValue());
+            //case "total_apparent_demand_time" -> dto.setTotalApparentDemandTime(resolveDateTime(value));
             default -> log.warn("Unknown column mapping: {}", columnName);
         }
     }
+
+//    private LocalDateTime convertGXDateTime(GXDateTime gxDateTime) {
+//        if (gxDateTime == null) return null;
+//
+//        Calendar cal = gxDateTime.getLocalCalendar();
+//        if (cal == null) return null;
+//
+//        return LocalDateTime.ofInstant(
+//                cal.toInstant(),
+//                ZoneId.systemDefault()
+//        );
+//    }
+//
+//    private LocalDateTime resolveDateTime(Object value) {
+//        if (value == null) return null;
+//
+//        if (value instanceof GXDateTime gx) {
+//            return convertGXDateTime(gx);
+//        }
+//
+//        if (value instanceof byte[] bytes) {
+//            return convertGXDateTime(new GXDateTime(Arrays.toString(bytes)));
+//        }
+//
+//        if (value instanceof String str) {
+//            return LocalDateTime.parse(str);
+//        }
+//
+//        throw new IllegalArgumentException("Unsupported datetime type: " + value.getClass());
+//    }
 }
