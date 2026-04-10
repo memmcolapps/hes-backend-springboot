@@ -44,13 +44,13 @@ public class MonthlyConsumptionServiceTest {
         MonthlyBillingEntity prev = MonthlyBillingEntity.builder()
                 .meterSerial(meterSerial)
                 .entryTimestamp(prevMonth.atDay(1).atStartOfDay())
-                .totalAbsoluteActiveEnergy(1000.0)
+                // .totalAbsoluteActiveEnergy(1000.0)
                 .build();
 
         MonthlyBillingEntity curr = MonthlyBillingEntity.builder()
                 .meterSerial(meterSerial)
                 .entryTimestamp(targetMonth.atDay(1).atStartOfDay())
-                .totalAbsoluteActiveEnergy(1200.0)
+                // .totalAbsoluteActiveEnergy(1200.0)
                 .build();
 
         // Mock repo calls
