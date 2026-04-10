@@ -29,6 +29,7 @@ public class DailyBillingJob extends QuartzJobBean {
     @Override
     protected void executeInternal(JobExecutionContext context) throws JobExecutionException {
         String obisCode = context.getMergedJobDataMap().getString("obisCodes");
+        //----------log-------------
         log.info("✅ Executing DailyBillingJob at {}, obis={}", context.getFireTime(), obisCode);
         profileExecutionService.readDailyBillingForAll(obisCode); // <-- dynamic OBIS now
     }
