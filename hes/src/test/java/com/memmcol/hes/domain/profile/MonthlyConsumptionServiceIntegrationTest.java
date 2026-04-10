@@ -39,7 +39,7 @@ class MonthlyConsumptionServiceIntegrationTest {
         billingRepo.save(MonthlyBillingEntity.builder()
                 .meterSerial(meterSerial)
                 .entryTimestamp(LocalDateTime.of(2025, 3, 1, 0, 0))
-                .totalAbsoluteActiveEnergy(576350.48)
+                // .totalAbsoluteActiveEnergy(576350.48)
                 .meterModel("MMX-313-CT")
                 .build());
 
@@ -47,7 +47,7 @@ class MonthlyConsumptionServiceIntegrationTest {
         billingRepo.save(MonthlyBillingEntity.builder()
                 .meterSerial(meterSerial)
                 .entryTimestamp(LocalDateTime.of(2025, 4, 1, 0, 0))
-                .totalAbsoluteActiveEnergy(672744.24)
+                // .totalAbsoluteActiveEnergy(672744.24)
                 .meterModel("MMX-313-CT")
                 .build());
     }
