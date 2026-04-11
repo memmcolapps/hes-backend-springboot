@@ -127,6 +127,13 @@ public class ProfileMetadataService {
                 String descriptionName = dto.getDescription(); // e.g., "Voltage (V)"
                 String columnName = dto.getColumnName();  // e.g., "voltage"
 
+                ObisObjectType type = ObisObjectType.NON_SCALER;
+                if (obj instanceof GXDLMSClock) {
+                    type = ObisObjectType.CLOCK;
+                } else if (obj instanceof GXDLMSRegister || obj instanceof GXDLMSExtendedRegister || obj instanceof GXDLMSDemandRegister) {
+                    type = ObisObjectType.SCALER;
+                }
+
                 ModelProfileMetadata row = ModelProfileMetadata.builder()
                         .meterModel(meterModel)
                         .profileObis(profileObis)
@@ -139,7 +146,7 @@ public class ProfileMetadataService {
                         .columnName(columnName)
                         .description(descriptionName)
                         .multiplyBy(multiplyBy)
-                        .type(ObisObjectType.NONE)
+                        .type(type)
                         .build();
 
                 rows.add(row);

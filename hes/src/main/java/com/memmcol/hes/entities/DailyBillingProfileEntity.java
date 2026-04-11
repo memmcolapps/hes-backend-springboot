@@ -52,6 +52,9 @@ public class DailyBillingProfileEntity {
     @Column(name = "t1_total_apparent_energy")
     private Double t1TotalApparentEnergy;
 
+//    @Column(name = "t2_total_apparent_energy")
+//    private Double t2TotalApparentEnergy;
+
     @Column(name = "t3_total_apparent_energy")
     private Double t3TotalApparentEnergy;
 
