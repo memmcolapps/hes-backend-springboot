@@ -166,7 +166,7 @@ public class DailyBillingPersistenceAdapter {
         }
         TypedQuery<LocalDateTime> query = entityManager.createQuery(
                 "SELECT r.entryTimestamp " +
-                        "FROM MonthlyBillingEntity r " +
+                        "FROM DailyBillingProfileEntity r " +
                         "WHERE r.meterSerial = :serial " +
                         "AND r.entryTimestamp IN :timestamps",
                 LocalDateTime.class

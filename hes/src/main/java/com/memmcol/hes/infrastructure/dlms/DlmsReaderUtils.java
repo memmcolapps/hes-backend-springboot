@@ -424,7 +424,7 @@ public class DlmsReaderUtils {
         }
     }
 
-    public List<ProfileRowGeneric> readRangeV2(String model,
+    public List<ProfileRowGeneric> readRangeV3(String model,
                                              String meterSerial,
                                              String profileObis,
                                              ProfileMetadataResult metadataResult,
@@ -545,7 +545,7 @@ public class DlmsReaderUtils {
         }
     }
 
-    public List<ProfileRowGeneric> readRange(String model, String meterSerial, String profileObis,
+    public List<ProfileRowGeneric> readRangeV2(String model, String meterSerial, String profileObis,
                                                ProfileMetadataResult metadataResult,
                                                LocalDateTime from, LocalDateTime to, boolean mdMeter) throws Exception {
         if (profileObis == null || profileObis.isBlank()) {
@@ -641,7 +641,7 @@ public class DlmsReaderUtils {
         }
     }
 
-    public List<ProfileRowGeneric> readRangeV1(String model, String meterSerial, String profileObis,
+    public List<ProfileRowGeneric> readRange(String model, String meterSerial, String profileObis,
                                              ProfileMetadataResult metadataResult,
                                              LocalDateTime from, LocalDateTime to, boolean mdMeter) throws Exception {
         GXDLMSClient client = null;
@@ -686,7 +686,7 @@ public class DlmsReaderUtils {
                 log.warn("Association lost for {} on first frame.", meterSerial);
                 sessionManager.removeSession(meterSerial);
                 log.info("Creating new Association and Reading all over!");
-                readRangeV1(model, meterSerial, profileObis, metadataResult, from, to, mdMeter);
+                readRange(model, meterSerial, profileObis, metadataResult, from, to, mdMeter);
 //                throw new AssociationLostException("Association lost on first frame");
             }
             client.getData(resp1, reply, null);

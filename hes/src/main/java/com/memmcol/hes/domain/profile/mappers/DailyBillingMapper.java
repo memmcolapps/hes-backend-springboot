@@ -73,7 +73,7 @@ public class DailyBillingMapper implements GenericDtoMappers<DailyBillingProfile
                 if (objectType == ObisObjectType.NON_SCALER) {
                     finalValue = value;
 
-                // 3️⃣ If SCALER → apply scaler and CT/PT logic
+                    // 3️⃣ If SCALER → apply scaler and CT/PT logic
                 } else {
                     if (mdMeter) {
                         switch (multiplyBy.toUpperCase()) {
@@ -111,16 +111,16 @@ public class DailyBillingMapper implements GenericDtoMappers<DailyBillingProfile
     @Override
     public void setDtoField(DailyBillingProfileDTO dto, String columnName, BigDecimal value) {
         switch (columnName.toLowerCase()) {
-            case "total_active_energy" -> dto.setTotalActiveEnergy(value.doubleValue());
-            case "t1_active_energy" -> dto.setT1ActiveEnergy(value.doubleValue());
-            case "t2_active_energy" -> dto.setT2ActiveEnergy(value.doubleValue());
-            case "t3_active_energy" -> dto.setT3ActiveEnergy(value.doubleValue());
-            case "t4_active_energy" -> dto.setT4ActiveEnergy(value.doubleValue());
-            case "total_apparent_energy" -> dto.setTotalApparentEnergy(value.doubleValue());
-            case "t1_apparent_energy" -> dto.setT1TotalApparentEnergy(value.doubleValue());
-            case "t2_apparent_energy" -> dto.setT1TotalApparentEnergy(value.doubleValue());
-            case "t3_apparent_energy" -> dto.setT3TotalApparentEnergy(value.doubleValue());
-            case "t4_apparent_energy" -> dto.setT4TotalApparentEnergy(value.doubleValue());
+            case "total_active_energy", "total_import_active_kwh" -> dto.setTotalActiveEnergy(value.doubleValue());
+            case "t1_active_energy", "t1_import_active_kwh" -> dto.setT1ActiveEnergy(value.doubleValue());
+            case "t2_active_energy", "t2_import_active_kwh" -> dto.setT2ActiveEnergy(value.doubleValue());
+            case "t3_active_energy", "t3_import_active_kwh" -> dto.setT3ActiveEnergy(value.doubleValue());
+            case "t4_active_energy", "t4_import_active_kwh" -> dto.setT4ActiveEnergy(value.doubleValue());
+            case "total_apparent_energy", "total_import_apparent_kvah" -> dto.setTotalApparentEnergy(value.doubleValue());
+            case "t1_apparent_energy", "t1_import_apparent_kvah" -> dto.setT1TotalApparentEnergy(value.doubleValue());
+            case "t2_apparent_energy", "t2_import_apparent_kvah" -> dto.setT2TotalApparentEnergy(value.doubleValue());
+            case "t3_apparent_energy", "t3_import_apparent_kvah" -> dto.setT3TotalApparentEnergy(value.doubleValue());
+            case "t4_apparent_energy", "t4_import_apparent_kvah" -> dto.setT4TotalApparentEnergy(value.doubleValue());
             default -> log.warn("Unknown column mapping: {}", columnName);
         }
     }
