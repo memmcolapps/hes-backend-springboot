@@ -64,21 +64,21 @@ public class HESNettyServer {
                  .childHandler(new HESChannelInitializer());
     }
 }
-
+```
 
 ⸻
 
-4. DLMS/COSEM Data Exchange Layer
+## 4. DLMS/COSEM Data Exchange Layer
 
-🎯 Purpose
+### 🎯 Purpose
 
 Facilitates reading and writing of meter data based on the DLMS/COSEM protocol.
 
-🔑 Core Elements
+### 🔑 Core Elements
 	•	AARQ / AARE – Association request and response
 	•	GET / SET / ACTION / RELEASE – DLMS service primitives
 
-🔐 DLMS Authentication
+### 🔐 DLMS Authentication
 	•	Types: Low, High (HLS), or Public
 	•	Parameters:
 	•	Client Address
@@ -86,7 +86,7 @@ Facilitates reading and writing of meter data based on the DLMS/COSEM protocol.
 	•	System Title
 	•	Authentication Key
 
-⚡ Practical Commands
+### ⚡ Practical Commands
 	•	Association Request
 	•	Read Profile Data
 	•	Read Instantaneous Data
@@ -94,87 +94,97 @@ Facilitates reading and writing of meter data based on the DLMS/COSEM protocol.
 
 ⸻
 
-5. OBIS Codes and Data Interpretation
+## 5. OBIS Codes and Data Interpretation
 
-🎯 Purpose
+### 🎯 Purpose
 
 Identify and interpret the type of data being read from each meter register.
 
-📘 Common OBIS Codes
+### 📘 Common OBIS Codes
 
-Description	OBIS Code	Unit
-Active Energy Import (Total)	1-0:1.8.0	kWh
-Active Energy Export	1-0:2.8.0	kWh
-Voltage (L1, L2, L3)	1-0:32.7.0 / 52.7.0 / 72.7.0	V
-Current (L1, L2, L3)	1-0:31.7.0 / 51.7.0 / 71.7.0	A
-Power Factor	1-0:13.7.0	cosΦ
+| Description | OBIS Code | Unit |
+| :--- | :--- | :--- |
+| Active Energy Import (Total) | 1-0:1.8.0 | kWh |
+| Active Energy Export | 1-0:2.8.0 | kWh |
+| Voltage (L1, L2, L3) | 1-0:32.7.0 / 52.7.0 / 72.7.0 | V |
+| Current (L1, L2, L3) | 1-0:31.7.0 / 51.7.0 / 71.7.0 | A |
+| Power Factor | 1-0:13.7.0 | cosΦ |
 
-🧩 Hands-On
+### 🧩 Hands-On
 	•	Demonstrate how profile data maps: OBIS → value → timestamp.
 	•	Example: Decoded JSON output showing time-series readings.
 
 ⸻
 
-6. Data Caching and Entity Management
+## 6. Data Caching and Entity Management
 
-🎯 Goal
+### 🎯 Goal
 
 Improve backend performance and responsiveness using an in-memory cache such as Caffeine Cache.
 
-🔄 Workflow
+### 🔄 Workflow
 	1.	Data received from meter.
 	2.	Data processed and decoded.
 	3.	Data stored in cache for quick access.
 	4.	Data persisted in database asynchronously.
 
-💻 Example Structure
-
+### 💻 Example Structure
+```java
 @Service
 public class CacheManager {
     private final Cache<String, MeterReading> cache = Caffeine.newBuilder()
         .expireAfterWrite(10, TimeUnit.MINUTES)
         .build();
 }
-
+```
 
 ⸻
 
-7. Testing and Validation
+## 7. Testing and Validation
 
-🧪 Local Test
+### 🧪 Local Test
 	•	Use a sample meter or DLMS simulator.
 	•	Validate:
 	•	Heartbeat
 	•	Association
 	•	Read commands
 
-🌐 API Validation
+### 🌐 API Validation
 	•	Common test endpoints:
 	•	/api/profile/read
 	•	/api/instantaneous
 	•	/api/event
 
-🧯 Common Troubleshooting
+### 🧯 Common Troubleshooting
 
-Issue	Possible Cause
-Association Failure	Invalid keys or addresses
-Timeout	Port misconfiguration or closed socket
-Incomplete Data	Incorrect frame size or OBIS mapping
+| Issue | Possible Cause |
+| :--- | :--- |
+| Association Failure | Invalid keys or addresses |
+| Timeout | Port misconfiguration or closed socket |
+| Incomplete Data | Incorrect frame size or OBIS mapping |
 
 
 ⸻
 
-📦 Folder Suggestion for Training Files
+### 📦 Folder Suggestion for Training Files
 
+### Training Resources
+`src/main/resources/training/`
+
+*   **HES_Training_Guide.pdf** - Documentation for the Head-End System.
+*   **SQL_Replication_Scripts.sql** - Database scripts for setup and replication.
+*   **README_HES_Backend.md** - Technical overview of the backend services.
+
+### Directory Tree
+```text
 src/main/resources/training/
-    ├── HES_Training_Guide.pdf
-    ├── SQL_Replication_Scripts.sql
-    ├── README_HES_Backend.md
-
-
+├── HES_Training_Guide.pdf
+├── SQL_Replication_Scripts.sql
+└── README_HES_Backend.md
+```
 ⸻
 
-🗒️ Final Note
+### 🗒️ Final Note
 
 This training material is intended to build a foundational understanding of the HES backend structure and communication flow.
 Continuous testing and documentation are key to mastering HES development.

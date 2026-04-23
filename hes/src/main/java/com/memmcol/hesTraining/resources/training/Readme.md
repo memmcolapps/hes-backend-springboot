@@ -67,9 +67,10 @@ Content-Type: application/json
 ```
 
 ### Retrieve actual online meters and quantity
-
+```json
 GET http://localhost:9061/api/netty/metrics
 Authorization: Bearer {{accessToken}}
+```
 
 ### Response
 
@@ -164,7 +165,7 @@ Content-Type: application/json
 }
 ```
 
-#### Example Response
+#### Example Response showing the capture objects and data.
 
 ```json
 {

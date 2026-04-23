@@ -391,7 +391,7 @@ public class QuartzJobService {
     }
 
     // ---------- Update interval (milliseconds) ----------
-    public boolean updateJobInterval(String jobName, String jobGroup, long intervalMs) {
+    public boolean  updateJobInterval(String jobName, String jobGroup, long intervalMs) {
         try {
             JobKey jobKey = JobKey.jobKey(jobName, jobGroup);
 

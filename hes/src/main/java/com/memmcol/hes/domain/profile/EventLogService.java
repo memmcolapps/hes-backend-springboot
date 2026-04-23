@@ -33,7 +33,10 @@ public class EventLogService {
     private final EventLogMapper eventLogMapper;
 
     /*TODO:
-    *  1. Remove @Transactional from all other profiles readProfileAndSave method*/
+    *  1. Remove @Transactional from all other profiles readProfileAndSave method
+    *  2. Change event_type to profileType
+    *  3. Add description
+       */
     public void readProfileAndSave(String model, String meterSerial, String profileObis, boolean isMD) {
 
         try {
