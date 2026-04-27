@@ -8,15 +8,10 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 import java.util.Collections;
-import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 @Configuration
 public class ExecutorConfig {
-
-    @Value("${hes.meter.executor.size:50}") // fallback to 50 if not set
-    private int poolSize;
 
     @Bean(name = "meterReadExecutor")
     public ExecutorService meterReadExecutor(MeterRegistry registry,
@@ -38,5 +33,17 @@ public class ExecutorConfig {
         );
 
         return executorService;
+    }
+
+    @Bean(name = "realtimeStreamExecutor")
+    public ExecutorService realtimeStreamExecutor(@Value("${hes.realtime-read.stream-executor.size:10}") int poolSize) {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(poolSize);
+        executor.setMaxPoolSize(poolSize);
+        executor.setQueueCapacity(100);
+        executor.setThreadNamePrefix("realtime-stream-");
+        executor.initialize();
+
+        return executor.getThreadPoolExecutor();
     }
 }
