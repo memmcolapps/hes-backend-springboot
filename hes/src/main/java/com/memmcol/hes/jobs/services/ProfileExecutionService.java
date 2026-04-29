@@ -1,31 +1,31 @@
 package com.memmcol.hes.jobs.services;
 
-import com.memmcol.hes.application.port.in.ProfileSyncUseCase;
 import com.memmcol.hes.domain.profile.MetersLockService;
 import com.memmcol.hes.dto.MeterDTO;
-import com.memmcol.hes.model.MetersEntity;
 import com.memmcol.hes.repository.MeterRepository;
 import com.memmcol.hes.service.MeterConnections;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.data.domain.Example;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
-import org.springframework.data.repository.query.FluentQuery;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
+import java.time.LocalTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.CompletionService;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorCompletionService;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.function.BiConsumer;
-import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 @Slf4j
@@ -36,11 +36,28 @@ public class ProfileExecutionService {
     @Qualifier("meterReadAdaptiveExecutor")
     private final ExecutorService meterReadExecutor; // must be a Spring bean
     private final Duration perMeterTimeout = Duration.ofMinutes(10);
+    private final int meterBatchSize;
+    private final ZoneId executionWindowZone;
+    private final LocalTime executionWindowStart;
+    private final LocalTime executionWindowEnd;
+    private final boolean executionWindowEnabled;
 
-    public ProfileExecutionService(MetersLockService metersLockService, MeterRepository meterRepository, ExecutorService meterReadExecutor) {
+    public ProfileExecutionService(MetersLockService metersLockService,
+                                   MeterRepository meterRepository,
+                                   @Qualifier("meterReadAdaptiveExecutor") ExecutorService meterReadExecutor,
+                                   @Value("${hes.profile.execution.batch-size:${hes.meter.executor.size:50}}") int meterBatchSize,
+                                   @Value("${hes.profile.execution.window.zone:Africa/Lagos}") String executionWindowZone,
+                                   @Value("${hes.profile.execution.window.start:22:00}") String executionWindowStart,
+                                   @Value("${hes.profile.execution.window.end:06:00}") String executionWindowEnd,
+                                   @Value("${hes.profile.execution.window.enabled:true}") boolean executionWindowEnabled) {
         this.metersLockService = metersLockService;
         this.meterRepository = meterRepository;
         this.meterReadExecutor = meterReadExecutor;
+        this.meterBatchSize = Math.max(1, meterBatchSize);
+        this.executionWindowZone = ZoneId.of(executionWindowZone);
+        this.executionWindowStart = LocalTime.parse(executionWindowStart);
+        this.executionWindowEnd = LocalTime.parse(executionWindowEnd);
+        this.executionWindowEnabled = executionWindowEnabled;
     }
 
     /**
@@ -52,41 +69,175 @@ public class ProfileExecutionService {
     private void executeForAllMeters(String profileName,
                                      BiConsumer<MeterDTO, String> reader,
                                      String obisCode) {
-        List<String> activeMeters = new ArrayList<>(MeterConnections.getAllActiveSerials());
-        List<Future<Boolean>> futures = new ArrayList<>(activeMeters.size());
-
-        for (String serial : activeMeters) {
-            Future<Boolean> fut = meterReadExecutor.submit(() -> {
-                try {
-
-                    MeterDTO dto = meterRepository.findMeterDetailsByMeterNumber(serial)
-                            .orElseThrow(() -> new IllegalArgumentException("Meter not found: " + serial));
-                    dto.determineMD();
-
-                    reader.accept(dto, obisCode);
-                    return true;
-                } catch (Exception e) {
-                    log.warn("{} read failed for {}: {}", profileName, serial, e.getMessage());
-                    return false;
-                }
-            });
-            futures.add(fut);
+        if (!isWithinExecutionWindow()) {
+            log.info("{} read skipped. Current time is outside configured execution window {}-{} {}.",
+                    profileName, executionWindowStart, executionWindowEnd, executionWindowZone);
+            return;
         }
 
+        List<String> activeMeters = new ArrayList<>(MeterConnections.getAllActiveSerials());
+
+        if (activeMeters.isEmpty()) {
+            log.info("{} read skipped. No active meters found.", profileName);
+            return;
+        }
+
+        int missing = 0;
         int success = 0;
-        for (Future<Boolean> f : futures) {
+        int failed = 0;
+        int timedOut = 0;
+
+        log.info("{} read starting. activeMeters={}, batchSize={}",
+                profileName, activeMeters.size(), meterBatchSize);
+
+        for (int from = 0; from < activeMeters.size(); from += meterBatchSize) {
+            if (!isWithinExecutionWindow()) {
+                log.info("{} read paused at meter offset {}. Execution window {}-{} {} has closed.",
+                        profileName, from, executionWindowStart, executionWindowEnd, executionWindowZone);
+                break;
+            }
+
+            int to = Math.min(from + meterBatchSize, activeMeters.size());
+            List<String> serialBatch = activeMeters.subList(from, to);
+
+            Map<String, MeterDTO> meterDetailsBySerial = meterRepository.findMeterDetailsByMeterNumberIn(serialBatch)
+                    .stream()
+                    .peek(MeterDTO::determineMD)
+                    .collect(Collectors.toMap(
+                            MeterDTO::getMeterNumber,
+                            dto -> dto,
+                            (existing, replacement) -> existing
+                    ));
+
+            Set<String> missingSerials = new HashSet<>(serialBatch);
+            missingSerials.removeAll(meterDetailsBySerial.keySet());
+            missing += missingSerials.size();
+            if (!missingSerials.isEmpty()) {
+                log.warn("{} read skipped {} meter(s) missing DB details in batch {}-{}",
+                        profileName, missingSerials.size(), from + 1, to);
+            }
+
+            List<MeterDTO> metersToRead = serialBatch.stream()
+                    .map(meterDetailsBySerial::get)
+                    .filter(dto -> dto != null)
+                    .toList();
+
+            BatchResult batchResult = executeBatch(profileName, metersToRead, obisCode, reader);
+            success += batchResult.success();
+            failed += batchResult.failed();
+            timedOut += batchResult.timedOut();
+
+            log.info("{} batch complete. range={}-{}, success={}, failed={}, timeout={}, missing={}",
+                    profileName, from + 1, to, batchResult.success(), batchResult.failed(),
+                    batchResult.timedOut(), missingSerials.size());
+        }
+
+        log.info("{} read complete. success={}, failed={}, timeout={}, missing={}, total={}",
+                profileName, success, failed, timedOut, missing, activeMeters.size());
+    }
+
+    private boolean isWithinExecutionWindow() {
+        if (!executionWindowEnabled) {
+            return true;
+        }
+
+        LocalTime now = ZonedDateTime.now(executionWindowZone).toLocalTime();
+        if (executionWindowStart.equals(executionWindowEnd)) {
+            return true;
+        }
+
+        if (executionWindowStart.isBefore(executionWindowEnd)) {
+            return !now.isBefore(executionWindowStart) && now.isBefore(executionWindowEnd);
+        }
+
+        return !now.isBefore(executionWindowStart) || now.isBefore(executionWindowEnd);
+    }
+
+    private BatchResult executeBatch(String profileName,
+                                     List<MeterDTO> metersToRead,
+                                     String obisCode,
+                                     BiConsumer<MeterDTO, String> reader) {
+        CompletionService<MeterReadResult> completionService = new ExecutorCompletionService<>(meterReadExecutor);
+        List<Future<MeterReadResult>> submitted = new ArrayList<>(metersToRead.size());
+
+        for (MeterDTO dto : metersToRead) {
+            submitted.add(completionService.submit(() -> readMeter(profileName, dto, obisCode, reader)));
+        }
+
+        return awaitBatch(profileName, completionService, submitted);
+    }
+
+    private MeterReadResult readMeter(String profileName,
+                                      MeterDTO dto,
+                                      String obisCode,
+                                      BiConsumer<MeterDTO, String> reader) {
+        try {
+            reader.accept(dto, obisCode);
+            return MeterReadResult.success(dto.getMeterNumber());
+        } catch (Exception e) {
+            log.warn("{} read failed for {}: {}", profileName, dto.getMeterNumber(), e.getMessage());
+            return MeterReadResult.failed(dto.getMeterNumber());
+        }
+    }
+
+    private BatchResult awaitBatch(String profileName,
+                                   CompletionService<MeterReadResult> completionService,
+                                   List<Future<MeterReadResult>> submitted) {
+        int success = 0;
+        int failed = 0;
+        int completed = 0;
+        long deadlineNanos = System.nanoTime() + perMeterTimeout.toNanos();
+
+        while (completed < submitted.size()) {
             try {
-                Boolean ok = f.get(perMeterTimeout.toMillis(), TimeUnit.MILLISECONDS);
-                if (Boolean.TRUE.equals(ok)) success++;
-            } catch (TimeoutException te) {
-                f.cancel(true);
-                log.warn("{} read timed out and was cancelled", profileName);
-            } catch (Exception ex) {
+                long remainingNanos = deadlineNanos - System.nanoTime();
+                if (remainingNanos <= 0) {
+                    break;
+                }
+
+                Future<MeterReadResult> future = completionService.poll(remainingNanos, TimeUnit.NANOSECONDS);
+                if (future == null) {
+                    break;
+                }
+
+                completed++;
+                MeterReadResult result = future.get();
+                if (result.success()) {
+                    success++;
+                } else {
+                    failed++;
+                }
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+                break;
+            } catch (ExecutionException ex) {
+                failed++;
                 log.warn("{} read error: {}", profileName, ex.getMessage());
             }
         }
 
-        log.info("{} read complete. success={}, total={}", profileName, success, activeMeters.size());
+        int timedOut = submitted.size() - completed;
+        if (timedOut > 0) {
+            submitted.stream()
+                    .filter(future -> !future.isDone())
+                    .forEach(future -> future.cancel(true));
+            log.warn("{} batch timed out. cancelled {} pending meter read(s)", profileName, timedOut);
+        }
+
+        return new BatchResult(success, failed, timedOut);
+    }
+
+    private record MeterReadResult(String serial, boolean success) {
+        private static MeterReadResult success(String serial) {
+            return new MeterReadResult(serial, true);
+        }
+
+        private static MeterReadResult failed(String serial) {
+            return new MeterReadResult(serial, false);
+        }
+    }
+
+    private record BatchResult(int success, int failed, int timedOut) {
     }
 
     // === Channel 1 ===

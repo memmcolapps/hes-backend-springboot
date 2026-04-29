@@ -23,8 +23,10 @@ public class RealtimeReadController {
     @PostMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     @Operation(summary = "Read instantaneous data")
     public SseEmitter streamRealtimeRead(@RequestBody RealtimeReadRequest request) {
+        int meterCount = request != null && request.getMeters() != null ? request.getMeters().size() : 0;
+        int obisCount = request != null && request.getObisString() != null ? request.getObisString().size() : 0;
         log.info("🔌 Starting real-time OBIS streaming for {} meters and {} OBIS",
-                request.getMeters().size(), request.getObisString().size());
+                meterCount, obisCount);
 
         return realtimeReadSseService.streamRealtimeRead(request);
     }
