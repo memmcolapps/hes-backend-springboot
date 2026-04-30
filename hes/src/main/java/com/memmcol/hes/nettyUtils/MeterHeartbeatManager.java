@@ -1,97 +1,172 @@
 package com.memmcol.hes.nettyUtils;
 
-import com.memmcol.hes.gridflex.services.MetersConnectionEventService;
+import com.memmcol.hes.dto.MeterUpdateDTO;
+import com.memmcol.hes.repository.MetersConnectionEventBatchRepository;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
-import java.time.ZoneId;
-import java.time.ZonedDateTime;
-import java.util.Map;
+import java.time.LocalDateTime;
+import java.util.*;
 import java.util.concurrent.*;
 
 @Slf4j
 @Component
 public class MeterHeartbeatManager {
-    /*TODO:
-    *  1. Create a new buffer for Offline meters.
-    *  2. Remove from lastSeenBuffer and add to Offline meters buffer.
-    *  3. use flyway script to rename update_at to offline_time in the meters_connection_event table.
-    *  4. But lastSeenBuffer and Offline meters buffer should run under the schedule executor.
-    *  5.   */
 
-    // --- Configurable parameters ---
-    private static final int BATCH_FLUSH_INTERVAL_MINUTES = 5;
-    private static final int BUFFER_FLUSH_THRESHOLD = 500;  // Immediate flush if buffer exceeds this
+    // --- Tuned for near real-time ---
+    private static final int FLUSH_INTERVAL_SECONDS = 15;
+    private static final int OFFLINE_CHECK_INTERVAL_SECONDS = 10;
+    private static final int OFFLINE_THRESHOLD_MINUTES = 2;
+    private static final int BUFFER_FLUSH_THRESHOLD = 1000;
 
-    // Thread-safe buffer for lastSeen timestamps
-    private final ConcurrentHashMap<String, String> lastSeenBuffer = new ConcurrentHashMap<>();
+    // --- State tracking ---
+    private final ConcurrentHashMap<String, MeterState> stateMap = new ConcurrentHashMap<>();
 
-    // Shared executor for async operations
-    private final ExecutorService meterOpsExecutor = Executors.newFixedThreadPool(10);
+    // --- Write buffer (latest per meter) ---
+    private final ConcurrentHashMap<String, MeterUpdateDTO> writeBuffer = new ConcurrentHashMap<>();
 
-    // Scheduler for periodic batch flush
-    private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+    // --- Executors ---
+    private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(2);
 
-    @Autowired
-    private MetersConnectionEventService connectionEventService;
+    private final ExecutorService dbExecutor = new ThreadPoolExecutor(
+            10,
+            10,
+            0L,
+            TimeUnit.MILLISECONDS,
+            new LinkedBlockingQueue<>(2000),
+            new ThreadPoolExecutor.CallerRunsPolicy()
+    );
 
-    public MeterHeartbeatManager() {
-        // Schedule timed flush every 2 minutes
-        scheduler.scheduleAtFixedRate(this::flushToDatabase,
-                BATCH_FLUSH_INTERVAL_MINUTES,
-                BATCH_FLUSH_INTERVAL_MINUTES,
-                TimeUnit.MINUTES);
+    private final MetersConnectionEventBatchRepository batchRepository;
+
+    public MeterHeartbeatManager(MetersConnectionEventBatchRepository batchRepository) {
+        this.batchRepository = batchRepository;
+
+        scheduler.scheduleAtFixedRate(
+                this::flushToDatabase,
+                FLUSH_INTERVAL_SECONDS,
+                FLUSH_INTERVAL_SECONDS,
+                TimeUnit.SECONDS
+        );
+
+        scheduler.scheduleAtFixedRate(
+                this::detectOfflineMeters,
+                OFFLINE_CHECK_INTERVAL_SECONDS,
+                OFFLINE_CHECK_INTERVAL_SECONDS,
+                TimeUnit.SECONDS
+        );
     }
 
-    /** Called whenever Netty receives a heartbeat, login and disconnect event */
+    /**
+     * Called on every heartbeat / login / disconnect
+     */
     public void handleStatus(String meterId, String status) {
-        lastSeenBuffer.put(meterId, status);
 
-        // Optional fallback: flush early if buffer too large
-        if (lastSeenBuffer.size() >= BUFFER_FLUSH_THRESHOLD) {
-            log.info("⚡ Buffer threshold reached ({} entries). Triggering early flush...", lastSeenBuffer.size());
+        long now = System.currentTimeMillis();
+        LocalDateTime time = LocalDateTime.now();
+
+        // 🔥 ALWAYS update buffer (latest wins)
+        writeBuffer.put(meterId, new MeterUpdateDTO(meterId, status, time));
+
+        // Update in-memory state
+        stateMap.compute(meterId, (k, state) -> {
+            if (state == null) {
+                return new MeterState(status, now);
+            }
+            state.status = status;
+            state.lastSeenEpoch = now;
+            return state;
+        });
+
+        // Early flush under pressure
+        if (writeBuffer.size() >= BUFFER_FLUSH_THRESHOLD) {
             flushToDatabase();
         }
     }
 
-    /** Periodically flush batched updates to DB */
-    private synchronized void flushToDatabase() {
-        if (lastSeenBuffer.isEmpty()) return;
+    /**
+     * Detect offline meters based on heartbeat timeout
+     */
+    private void detectOfflineMeters() {
 
-        Map<String, String> snapshot = Map.copyOf(lastSeenBuffer);
-        lastSeenBuffer.clear();
+        long now = System.currentTimeMillis();
+        long thresholdMillis = TimeUnit.MINUTES.toMillis(OFFLINE_THRESHOLD_MINUTES);
+
+        for (Map.Entry<String, MeterState> entry : stateMap.entrySet()) {
+
+            String meterId = entry.getKey();
+            MeterState state = entry.getValue();
+
+            if ("ONLINE".equals(state.status) &&
+                    (now - state.lastSeenEpoch) > thresholdMillis) {
+
+                log.info("🔻 Meter {} marked OFFLINE (timeout)", meterId);
+
+                state.status = "OFFLINE";
+
+                // Buffer OFFLINE update (same pipeline)
+                writeBuffer.put(
+                        meterId,
+                        new MeterUpdateDTO(meterId, "OFFLINE", LocalDateTime.now())
+                );
+            }
+        }
+    }
+
+    /**
+     * Batch flush to DB (UPSERT latest state)
+     */
+    private void flushToDatabase() {
+
+        if (writeBuffer.isEmpty()) return;
+
+        Map<String, MeterUpdateDTO> snapshot = new HashMap<>();
+
+        for (Map.Entry<String, MeterUpdateDTO> entry : writeBuffer.entrySet()) {
+
+            if (snapshot.size() >= BUFFER_FLUSH_THRESHOLD) break;
+
+            if (writeBuffer.remove(entry.getKey(), entry.getValue())) {
+                snapshot.put(entry.getKey(), entry.getValue());
+            }
+        }
+
+        if (snapshot.isEmpty()) return;
 
         CompletableFuture.runAsync(() -> {
             try {
-                int successCount = 0;
-                for (Map.Entry<String, String> entry : snapshot.entrySet()) {
-                    String meterNo = entry.getKey();
-                    String status = entry.getValue();
 
-                    try {
-                        connectionEventService.updateConnectionStatus(meterNo, status, ZonedDateTime.now(ZoneId.systemDefault()).toLocalDateTime());
-                        successCount++;
-                    } catch (Exception ex) {
-                        log.warn("⚠️ Failed to update meter {}: {}", meterNo, ex.getMessage());
-                        // Reinsert failed record into buffer for retry
-                        lastSeenBuffer.put(meterNo, status);
-                    }
-                }
+                List<MeterUpdateDTO> batch = new ArrayList<>(snapshot.values());
 
-                log.info("✅ Flushed {} / {} meter lastSeen updates to DB", successCount, snapshot.size());
+                batchRepository.batchUpsert(batch);
+
+                log.info("✅ Flushed {} meter updates", batch.size());
+
             } catch (Exception e) {
-                log.error("❌ Failed to flush lastSeen batch: {}", e.getMessage());
-                // Restore all in case of fatal failure
-                lastSeenBuffer.putAll(snapshot);
+
+                log.error("❌ Batch flush failed. Re-queueing {}", snapshot.size(), e);
+
+                writeBuffer.putAll(snapshot);
             }
-        }, meterOpsExecutor);
+
+        }, dbExecutor);
     }
 
     @PreDestroy
     public void shutdown() {
         scheduler.shutdown();
-        meterOpsExecutor.shutdown();
+        dbExecutor.shutdown();
+    }
+
+    // --- Internal state model ---
+    static class MeterState {
+        volatile String status;
+        volatile long lastSeenEpoch;
+
+        MeterState(String status, long lastSeenEpoch) {
+            this.status = status;
+            this.lastSeenEpoch = lastSeenEpoch;
+        }
     }
 }

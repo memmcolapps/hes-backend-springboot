@@ -14,10 +14,12 @@ public class MetersLockService {
     private final MeterLockPort lockPort;
     private final ProfileMetricsPort metricsPort;
     private final ProfileChannelOneServiceExtension channelOneServiceExtension;
+    private final ProfileChannelOneHouseholdService channelOneHouseholdService;
     private final MonthlyBillingService monthlyBillingService;
     private final DailyBillingService dailyBillingService;
     private final EventLogService eventLogService;
     private final ProfileChannelTwoService profileChannelTwoService;
+    private final ProfileChannelTwoHouseholdService channelTwoHouseholdService;
 
     public void readChannelOneWithLock(String model, String meterSerial, String profileObis, boolean isMD) {
         try {
@@ -38,12 +40,50 @@ public class MetersLockService {
         }
     }
 
+    public void readChannelOneHouseholdWithLock(String model, String meterSerial, String profileObis, boolean isMD) {
+        try {
+            assert lockPort != null;
+            lockPort.withExclusive(meterSerial, () -> {
+                channelOneHouseholdService.readProfileAndSave(model, meterSerial, profileObis, isMD);
+                log.info("Household profile reading completed or aborted. meter={} profile={}", meterSerial, profileObis);
+                return null;
+            });
+        } catch (IllegalStateException e2) {
+            log.error("Sync fatal meter={} profile={} reason={}", meterSerial, profileObis, e2.getMessage(), e2);
+            assert metricsPort != null;
+            metricsPort.recordFailure(meterSerial, profileObis, "Server restarted");
+        } catch (Exception e) {
+            log.error("Sync fatal meter={} profile={} reason={}", meterSerial, profileObis, e.getMessage(), e);
+            assert metricsPort != null;
+            metricsPort.recordFailure(meterSerial, profileObis, "lock_or_sync_error");
+        }
+    }
+
     public void readChannelTwoWithLock(String model, String meterSerial, String profileObis, boolean isMD) {
         try {
             assert lockPort != null;
             lockPort.withExclusive(meterSerial, () -> {
                 profileChannelTwoService.readProfileAndSave(model, meterSerial, profileObis, isMD);
                 log.info("Profile reading completed or aborted. meter={} profile={}", meterSerial, profileObis);
+                return null;
+            });
+        } catch (IllegalStateException e2) {
+            log.error("Sync fatal meter={} profile={} reason={}", meterSerial, profileObis, e2.getMessage(), e2);
+            assert metricsPort != null;
+            metricsPort.recordFailure(meterSerial, profileObis, "Server restarted");
+        } catch (Exception e) {
+            log.error("Sync fatal meter={} profile={} reason={}", meterSerial, profileObis, e.getMessage(), e);
+            assert metricsPort != null;
+            metricsPort.recordFailure(meterSerial, profileObis, "lock_or_sync_error");
+        }
+    }
+
+    public void readChannelTwoHouseholdWithLock(String model, String meterSerial, String profileObis, boolean isMD) {
+        try {
+            assert lockPort != null;
+            lockPort.withExclusive(meterSerial, () -> {
+                channelTwoHouseholdService.readProfileAndSave(model, meterSerial, profileObis, isMD);
+                log.info("Household profile reading completed or aborted. meter={} profile={}", meterSerial, profileObis);
                 return null;
             });
         } catch (IllegalStateException e2) {

@@ -239,6 +239,9 @@ public class QuartzJobService {
             JobDataMap jobDataMap = new JobDataMap();
             jobDataMap.put("description", jobInfo.getDescription());
             jobDataMap.put("interfaceName", jobInfo.getInterfaceName());
+            if (jobInfo.getObisCodes() != null && !jobInfo.getObisCodes().isEmpty()) {
+                jobDataMap.put("obisCodes", jobInfo.getObisCodes());
+            }
 
             JobDetail newJobDetail = JobBuilder.newJob(jobClazz)
                     .withIdentity(jobKey)
@@ -336,6 +339,7 @@ public class QuartzJobService {
         if (incoming.getInterfaceName() != null) existingJob.setInterfaceName(incoming.getInterfaceName());
         if (incoming.getJobClass() != null) existingJob.setJobClass(incoming.getJobClass());
         if (incoming.getCronExpression() != null) existingJob.setCronExpression(incoming.getCronExpression());
+        if (incoming.getObisCodes() != null) existingJob.setObisCodes(incoming.getObisCodes());
 
         if (incoming.getRepeatTime() != null) existingJob.setRepeatTime(incoming.getRepeatTime());
         if (incoming.getRepeatSeconds() != null) existingJob.setRepeatSeconds(incoming.getRepeatSeconds());
