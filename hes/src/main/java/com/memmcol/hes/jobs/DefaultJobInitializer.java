@@ -39,7 +39,7 @@ public class DefaultJobInitializer {
 
             for (SchedulerJobInfo job : defaultJobs) {
                 try {
-                    quartzJobService.saveIfNew(job);
+                    quartzJobService.saveOrUpdate(job);
                 } catch (Exception e) {
                     log.error("Failed to insert/update job [{}]: {}", job.getJobName(), e.getMessage());
                 }
