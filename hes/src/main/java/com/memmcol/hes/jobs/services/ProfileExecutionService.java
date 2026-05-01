@@ -14,6 +14,7 @@ import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -41,6 +42,7 @@ public class ProfileExecutionService {
     private final LocalTime executionWindowStart;
     private final LocalTime executionWindowEnd;
     private final boolean executionWindowEnabled;
+    private final Set<String> householdMeterModels;
 
     public ProfileExecutionService(MetersLockService metersLockService,
                                    MeterRepository meterRepository,
@@ -49,7 +51,8 @@ public class ProfileExecutionService {
                                    @Value("${hes.profile.execution.window.zone:Africa/Lagos}") String executionWindowZone,
                                    @Value("${hes.profile.execution.window.start:22:00}") String executionWindowStart,
                                    @Value("${hes.profile.execution.window.end:06:00}") String executionWindowEnd,
-                                   @Value("${hes.profile.execution.window.enabled:true}") boolean executionWindowEnabled) {
+                                    @Value("${hes.profile.execution.window.enabled:true}") boolean executionWindowEnabled,
+                                    @Value("${hes.profile.household.models:}") String householdModelsCsv) {
         this.metersLockService = metersLockService;
         this.meterRepository = meterRepository;
         this.meterReadExecutor = meterReadExecutor;
@@ -58,6 +61,17 @@ public class ProfileExecutionService {
         this.executionWindowStart = LocalTime.parse(executionWindowStart);
         this.executionWindowEnd = LocalTime.parse(executionWindowEnd);
         this.executionWindowEnabled = executionWindowEnabled;
+        this.householdMeterModels = parseCsvSet(householdModelsCsv);
+    }
+
+    private static Set<String> parseCsvSet(String csv) {
+        if (csv == null || csv.isBlank()) {
+            return Set.of();
+        }
+        return Arrays.stream(csv.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isBlank())
+                .collect(Collectors.toUnmodifiableSet());
     }
 
     /**
@@ -69,6 +83,13 @@ public class ProfileExecutionService {
     private void executeForAllMeters(String profileName,
                                      BiConsumer<MeterDTO, String> reader,
                                      String obisCode) {
+        executeForAllMeters(profileName, reader, obisCode, null);
+    }
+
+    private void executeForAllMeters(String profileName,
+                                     BiConsumer<MeterDTO, String> reader,
+                                     String obisCode,
+                                     Set<String> allowedModels) {
         if (!isWithinExecutionWindow()) {
             log.info("{} read skipped. Current time is outside configured execution window {}-{} {}.",
                     profileName, executionWindowStart, executionWindowEnd, executionWindowZone);
@@ -120,6 +141,7 @@ public class ProfileExecutionService {
             List<MeterDTO> metersToRead = serialBatch.stream()
                     .map(meterDetailsBySerial::get)
                     .filter(dto -> dto != null)
+                    .filter(dto -> allowedModels == null || allowedModels.isEmpty() || allowedModels.contains(dto.getMeterModel()))
                     .toList();
 
             BatchResult batchResult = executeBatch(profileName, metersToRead, obisCode, reader);
@@ -252,6 +274,21 @@ public class ProfileExecutionService {
                 obisCode);
     }
 
+    public void readChannelOneHouseholdForAll(String obisCode) {
+        if (householdMeterModels.isEmpty()) {
+            log.warn("Channel1Household read skipped. No models configured in hes.profile.household.models");
+            return;
+        }
+        executeForAllMeters("Channel1Household",
+                (dto, obis) -> metersLockService.readChannelOneHouseholdWithLock(
+                        dto.getMeterModel(),
+                        dto.getMeterNumber(),
+                        obis,
+                        dto.isMD()),
+                obisCode,
+                householdMeterModels);
+    }
+
     // === Channel 2 ===
     public void readChannelTwoForAll(String obisCode) {
         executeForAllMeters("Channel2",
@@ -261,6 +298,21 @@ public class ProfileExecutionService {
                         obis,
                         dto.isMD()),
                 obisCode);
+    }
+
+    public void readChannelTwoHouseholdForAll(String obisCode) {
+        if (householdMeterModels.isEmpty()) {
+            log.warn("Channel2Household read skipped. No models configured in hes.profile.household.models");
+            return;
+        }
+        executeForAllMeters("Channel2Household",
+                (dto, obis) -> metersLockService.readChannelTwoHouseholdWithLock(
+                        dto.getMeterModel(),
+                        dto.getMeterNumber(),
+                        obis,
+                        dto.isMD()),
+                obisCode,
+                householdMeterModels);
     }
 
     // === Events ===
@@ -285,6 +337,36 @@ public class ProfileExecutionService {
                 obisCode);
     }
 
+    public void readDailyBillingDataHouseholdForAll(String obisCode) {
+        if (householdMeterModels.isEmpty()) {
+            log.warn("DailyBillingDataHousehold read skipped. No models configured in hes.profile.household.models");
+            return;
+        }
+        executeForAllMeters("DailyBillingDataHousehold",
+                (dto, obis) -> metersLockService.readDailyBillingDataHouseholdWithLock(
+                        dto.getMeterModel(),
+                        dto.getMeterNumber(),
+                        obis,
+                        dto.isMD()),
+                obisCode,
+                householdMeterModels);
+    }
+
+    public void readDailyBillingEnergyHouseholdForAll(String obisCode) {
+        if (householdMeterModels.isEmpty()) {
+            log.warn("DailyBillingEnergyHousehold read skipped. No models configured in hes.profile.household.models");
+            return;
+        }
+        executeForAllMeters("DailyBillingEnergyHousehold",
+                (dto, obis) -> metersLockService.readDailyBillingEnergyHouseholdWithLock(
+                        dto.getMeterModel(),
+                        dto.getMeterNumber(),
+                        obis,
+                        dto.isMD()),
+                obisCode,
+                householdMeterModels);
+    }
+
     // === Monthly Billing ===
     public void readMonthlyBillingForAll(String obisCode) {
         executeForAllMeters("MonthlyBilling",
@@ -294,5 +376,35 @@ public class ProfileExecutionService {
                         obis,
                         dto.isMD()),
                 obisCode);
+    }
+
+    public void readMonthlyBillingDataHouseholdForAll(String obisCode) {
+        if (householdMeterModels.isEmpty()) {
+            log.warn("MonthlyBillingDataHousehold read skipped. No models configured in hes.profile.household.models");
+            return;
+        }
+        executeForAllMeters("MonthlyBillingDataHousehold",
+                (dto, obis) -> metersLockService.readMonthlyBillingDataHouseholdWithLock(
+                        dto.getMeterModel(),
+                        dto.getMeterNumber(),
+                        obis,
+                        dto.isMD()),
+                obisCode,
+                householdMeterModels);
+    }
+
+    public void readMonthlyBillingEnergyHouseholdForAll(String obisCode) {
+        if (householdMeterModels.isEmpty()) {
+            log.warn("MonthlyBillingEnergyHousehold read skipped. No models configured in hes.profile.household.models");
+            return;
+        }
+        executeForAllMeters("MonthlyBillingEnergyHousehold",
+                (dto, obis) -> metersLockService.readMonthlyBillingEnergyHouseholdWithLock(
+                        dto.getMeterModel(),
+                        dto.getMeterNumber(),
+                        obis,
+                        dto.isMD()),
+                obisCode,
+                householdMeterModels);
     }
 }
