@@ -16,7 +16,11 @@ public class MetersLockService {
     private final ProfileChannelOneServiceExtension channelOneServiceExtension;
     private final ProfileChannelOneHouseholdService channelOneHouseholdService;
     private final MonthlyBillingService monthlyBillingService;
+    private final MonthlyBillingDataHouseholdService monthlyBillingDataHouseholdService;
+    private final MonthlyBillingEnergyHouseholdService monthlyBillingEnergyHouseholdService;
     private final DailyBillingService dailyBillingService;
+    private final DailyBillingDataHouseholdService dailyBillingDataHouseholdService;
+    private final DailyBillingEnergyHouseholdService dailyBillingEnergyHouseholdService;
     private final EventLogService eventLogService;
     private final ProfileChannelTwoService profileChannelTwoService;
     private final ProfileChannelTwoHouseholdService channelTwoHouseholdService;
@@ -116,12 +120,88 @@ public class MetersLockService {
         }
     }
 
+    public void readMonthlyBillingDataHouseholdWithLock(String model, String meterSerial, String profileObis, boolean isMD) {
+        try {
+            assert lockPort != null;
+            lockPort.withExclusive(meterSerial, () -> {
+                monthlyBillingDataHouseholdService.readProfileAndSave(model, meterSerial, profileObis, isMD);
+                log.info("Household monthly billing data read completed or aborted. meter={} profile={}", meterSerial, profileObis);
+                return null;
+            });
+        } catch (IllegalStateException e2) {
+            log.error("Sync fatal meter={} profile={} reason={}", meterSerial, profileObis, e2.getMessage(), e2);
+            assert metricsPort != null;
+            metricsPort.recordFailure(meterSerial, profileObis, "Server restarted");
+        } catch (Exception e) {
+            log.error("Sync fatal meter={} profile={} reason={}", meterSerial, profileObis, e.getMessage(), e);
+            assert metricsPort != null;
+            metricsPort.recordFailure(meterSerial, profileObis, "lock_or_sync_error");
+        }
+    }
+
+    public void readMonthlyBillingEnergyHouseholdWithLock(String model, String meterSerial, String profileObis, boolean isMD) {
+        try {
+            assert lockPort != null;
+            lockPort.withExclusive(meterSerial, () -> {
+                monthlyBillingEnergyHouseholdService.readProfileAndSave(model, meterSerial, profileObis, isMD);
+                log.info("Household monthly billing energy read completed or aborted. meter={} profile={}", meterSerial, profileObis);
+                return null;
+            });
+        } catch (IllegalStateException e2) {
+            log.error("Sync fatal meter={} profile={} reason={}", meterSerial, profileObis, e2.getMessage(), e2);
+            assert metricsPort != null;
+            metricsPort.recordFailure(meterSerial, profileObis, "Server restarted");
+        } catch (Exception e) {
+            log.error("Sync fatal meter={} profile={} reason={}", meterSerial, profileObis, e.getMessage(), e);
+            assert metricsPort != null;
+            metricsPort.recordFailure(meterSerial, profileObis, "lock_or_sync_error");
+        }
+    }
+
     public void readDailyBillWithLock(String model, String meterSerial, String profileObis, boolean isMD) {
         try {
             assert lockPort != null;
             lockPort.withExclusive(meterSerial, () -> {
                 dailyBillingService.readProfileAndSave(model, meterSerial, profileObis, isMD);
                 log.info("Profile reading completed or aborted. meter={} profile={}", meterSerial, profileObis);
+                return null;
+            });
+        } catch (IllegalStateException e2) {
+            log.error("Sync fatal meter={} profile={} reason={}", meterSerial, profileObis, e2.getMessage(), e2);
+            assert metricsPort != null;
+            metricsPort.recordFailure(meterSerial, profileObis, "Server restarted");
+        } catch (Exception e) {
+            log.error("Sync fatal meter={} profile={} reason={}", meterSerial, profileObis, e.getMessage(), e);
+            assert metricsPort != null;
+            metricsPort.recordFailure(meterSerial, profileObis, "lock_or_sync_error");
+        }
+    }
+
+    public void readDailyBillingDataHouseholdWithLock(String model, String meterSerial, String profileObis, boolean isMD) {
+        try {
+            assert lockPort != null;
+            lockPort.withExclusive(meterSerial, () -> {
+                dailyBillingDataHouseholdService.readProfileAndSave(model, meterSerial, profileObis, isMD);
+                log.info("Household daily billing data read completed or aborted. meter={} profile={}", meterSerial, profileObis);
+                return null;
+            });
+        } catch (IllegalStateException e2) {
+            log.error("Sync fatal meter={} profile={} reason={}", meterSerial, profileObis, e2.getMessage(), e2);
+            assert metricsPort != null;
+            metricsPort.recordFailure(meterSerial, profileObis, "Server restarted");
+        } catch (Exception e) {
+            log.error("Sync fatal meter={} profile={} reason={}", meterSerial, profileObis, e.getMessage(), e);
+            assert metricsPort != null;
+            metricsPort.recordFailure(meterSerial, profileObis, "lock_or_sync_error");
+        }
+    }
+
+    public void readDailyBillingEnergyHouseholdWithLock(String model, String meterSerial, String profileObis, boolean isMD) {
+        try {
+            assert lockPort != null;
+            lockPort.withExclusive(meterSerial, () -> {
+                dailyBillingEnergyHouseholdService.readProfileAndSave(model, meterSerial, profileObis, isMD);
+                log.info("Household daily billing energy read completed or aborted. meter={} profile={}", meterSerial, profileObis);
                 return null;
             });
         } catch (IllegalStateException e2) {

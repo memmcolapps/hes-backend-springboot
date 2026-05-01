@@ -337,6 +337,36 @@ public class ProfileExecutionService {
                 obisCode);
     }
 
+    public void readDailyBillingDataHouseholdForAll(String obisCode) {
+        if (householdMeterModels.isEmpty()) {
+            log.warn("DailyBillingDataHousehold read skipped. No models configured in hes.profile.household.models");
+            return;
+        }
+        executeForAllMeters("DailyBillingDataHousehold",
+                (dto, obis) -> metersLockService.readDailyBillingDataHouseholdWithLock(
+                        dto.getMeterModel(),
+                        dto.getMeterNumber(),
+                        obis,
+                        dto.isMD()),
+                obisCode,
+                householdMeterModels);
+    }
+
+    public void readDailyBillingEnergyHouseholdForAll(String obisCode) {
+        if (householdMeterModels.isEmpty()) {
+            log.warn("DailyBillingEnergyHousehold read skipped. No models configured in hes.profile.household.models");
+            return;
+        }
+        executeForAllMeters("DailyBillingEnergyHousehold",
+                (dto, obis) -> metersLockService.readDailyBillingEnergyHouseholdWithLock(
+                        dto.getMeterModel(),
+                        dto.getMeterNumber(),
+                        obis,
+                        dto.isMD()),
+                obisCode,
+                householdMeterModels);
+    }
+
     // === Monthly Billing ===
     public void readMonthlyBillingForAll(String obisCode) {
         executeForAllMeters("MonthlyBilling",
@@ -346,5 +376,35 @@ public class ProfileExecutionService {
                         obis,
                         dto.isMD()),
                 obisCode);
+    }
+
+    public void readMonthlyBillingDataHouseholdForAll(String obisCode) {
+        if (householdMeterModels.isEmpty()) {
+            log.warn("MonthlyBillingDataHousehold read skipped. No models configured in hes.profile.household.models");
+            return;
+        }
+        executeForAllMeters("MonthlyBillingDataHousehold",
+                (dto, obis) -> metersLockService.readMonthlyBillingDataHouseholdWithLock(
+                        dto.getMeterModel(),
+                        dto.getMeterNumber(),
+                        obis,
+                        dto.isMD()),
+                obisCode,
+                householdMeterModels);
+    }
+
+    public void readMonthlyBillingEnergyHouseholdForAll(String obisCode) {
+        if (householdMeterModels.isEmpty()) {
+            log.warn("MonthlyBillingEnergyHousehold read skipped. No models configured in hes.profile.household.models");
+            return;
+        }
+        executeForAllMeters("MonthlyBillingEnergyHousehold",
+                (dto, obis) -> metersLockService.readMonthlyBillingEnergyHouseholdWithLock(
+                        dto.getMeterModel(),
+                        dto.getMeterNumber(),
+                        obis,
+                        dto.isMD()),
+                obisCode,
+                householdMeterModels);
     }
 }
