@@ -25,6 +25,7 @@ import static com.memmcol.hes.nettyUtils.RequestResponseService.logTx;
 public class ProfileMetadataService {
 
     private static final String CACHE = "profileMetadata";
+    private static final String EVENT_LOG_PREFIX = "0.0.99.98.";
     private final CacheManager cacheManager;                       // ← Caffeine
     private final ModelProfileMetadataRepository repo;             // ← JPA
     private final SessionManager sessionManager;
@@ -61,10 +62,64 @@ public class ProfileMetadataService {
         log.info("📡 No cache/DB hit – reading metadata from meter {}", sampleSerial);
         List<ModelProfileMetadata> fresh = loadFromMeterAndPersist(sampleSerial, meterModel, profileObis);
 
+        // If meter association fails (or any other reason), fall back for event logs.
+        // Event logs are always 2 columns (datetime, event_code) per provided OBIS documentation.
+        if (fresh.isEmpty() && isEventLogProfileObis(profileObis)) {
+            log.warn("⚠️ Metadata could not be learned from meter. Falling back to default event-log capture objects for {}", key);
+            fresh = buildDefaultEventLogMetadata(meterModel, profileObis);
+            repo.saveAll(fresh);
+        }
+
         if (!fresh.isEmpty()) {
             Objects.requireNonNull(cacheManager.getCache(CACHE)).put(key, fresh);
         }
         return fresh;
+    }
+
+    private static boolean isEventLogProfileObis(String profileObis) {
+        if (profileObis == null) return false;
+        return profileObis.startsWith(EVENT_LOG_PREFIX) && profileObis.endsWith(".255");
+    }
+
+    /**
+     * Default capture objects for event logs:
+     * - Clock (class 8, LN 0.0.1.0.0.255, attribute 2)
+     * - Event code as Data (class 1, LN 0.0.96.11.0.255, attribute 2)
+     *
+     * Note: these are used only when the meter cannot be associated to learn capture objects (attr 3).
+     */
+    private static List<ModelProfileMetadata> buildDefaultEventLogMetadata(String meterModel, String profileObis) {
+        ModelProfileMetadata ts = ModelProfileMetadata.builder()
+                .meterModel(meterModel)
+                .profileObis(profileObis)
+                .captureObis("0.0.1.0.0.255")
+                .classId(8)
+                .attributeIndex(2)
+                .scaler(1.0)
+                .unit("N/A")
+                .captureIndex(0)
+                .columnName("event_time")
+                .description("Event timestamp")
+                .multiplyBy("CTPT")
+                .type(ObisObjectType.NONE)
+                .build();
+
+        ModelProfileMetadata code = ModelProfileMetadata.builder()
+                .meterModel(meterModel)
+                .profileObis(profileObis)
+                .captureObis("0.0.96.11.0.255")
+                .classId(1)
+                .attributeIndex(2)
+                .scaler(1.0)
+                .unit("N/A")
+                .captureIndex(1)
+                .columnName("event_code")
+                .description("Event code")
+                .multiplyBy("CTPT")
+                .type(ObisObjectType.NONE)
+                .build();
+
+        return List.of(ts, code);
     }
 
     /**
