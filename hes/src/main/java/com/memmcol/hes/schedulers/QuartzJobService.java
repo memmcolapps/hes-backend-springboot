@@ -9,6 +9,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.quartz.*;
 import org.quartz.impl.matchers.GroupMatcher;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.scheduling.quartz.QuartzJobBean;
 import org.springframework.scheduling.quartz.SchedulerFactoryBean;
@@ -25,14 +26,17 @@ import java.util.*;
 public class QuartzJobService {
     private final Scheduler scheduler;
     private final SchedulerRepository schedulerRepository;
+    private final TimeZone cronTimeZone;
 
     @Autowired
     public QuartzJobService(
             Scheduler scheduler,
-            SchedulerRepository schedulerRepository
+            SchedulerRepository schedulerRepository,
+            @Value("${hes.quartz.cron.time-zone:Africa/Lagos}") String cronTimeZone
     ) {
         this.scheduler = scheduler;
         this.schedulerRepository = schedulerRepository;
+        this.cronTimeZone = TimeZone.getTimeZone(cronTimeZone);
     }
 
     // ---------------- META ----------------
@@ -189,6 +193,7 @@ public class QuartzJobService {
                     .withIdentity(jobInfo.getJobName(), jobInfo.getJobGroup())
                     .usingJobData(jobDetail.getJobDataMap())
                     .withSchedule(CronScheduleBuilder.cronSchedule(jobInfo.getCronExpression())
+                            .inTimeZone(cronTimeZone)
                             .withMisfireHandlingInstructionFireAndProceed())
                     .build()
                     : TriggerBuilder.newTrigger()
@@ -234,6 +239,9 @@ public class QuartzJobService {
             JobDataMap jobDataMap = new JobDataMap();
             jobDataMap.put("description", jobInfo.getDescription());
             jobDataMap.put("interfaceName", jobInfo.getInterfaceName());
+            if (jobInfo.getObisCodes() != null && !jobInfo.getObisCodes().isEmpty()) {
+                jobDataMap.put("obisCodes", jobInfo.getObisCodes());
+            }
 
             JobDetail newJobDetail = JobBuilder.newJob(jobClazz)
                     .withIdentity(jobKey)
@@ -331,6 +339,7 @@ public class QuartzJobService {
         if (incoming.getInterfaceName() != null) existingJob.setInterfaceName(incoming.getInterfaceName());
         if (incoming.getJobClass() != null) existingJob.setJobClass(incoming.getJobClass());
         if (incoming.getCronExpression() != null) existingJob.setCronExpression(incoming.getCronExpression());
+        if (incoming.getObisCodes() != null) existingJob.setObisCodes(incoming.getObisCodes());
 
         if (incoming.getRepeatTime() != null) existingJob.setRepeatTime(incoming.getRepeatTime());
         if (incoming.getRepeatSeconds() != null) existingJob.setRepeatSeconds(incoming.getRepeatSeconds());
@@ -363,6 +372,7 @@ public class QuartzJobService {
                     .forJob(jobDetail)
                     .withIdentity(jobInfo.getJobName(), jobInfo.getJobGroup())
                     .withSchedule(CronScheduleBuilder.cronSchedule(jobInfo.getCronExpression())
+                            .inTimeZone(cronTimeZone)
                             .withMisfireHandlingInstructionFireAndProceed())
                     .build();
         } else {
@@ -464,6 +474,7 @@ public class QuartzJobService {
                     .forJob(jobKey)
                     .withIdentity(triggerKey)
                     .withSchedule(CronScheduleBuilder.cronSchedule(cronExpression)
+                            .inTimeZone(cronTimeZone)
                             .withMisfireHandlingInstructionDoNothing())
                     .build();
 

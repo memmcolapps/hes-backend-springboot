@@ -29,7 +29,7 @@ public class ClockWriteService {
      * @param serial   meter serial number
      * @param dateTime local date-time to set on the meter
      */
-    public String setClockV1(String serial, LocalDateTime dateTime) throws Exception {
+    public String setClock(String serial, LocalDateTime dateTime) throws Exception {
         GXDLMSClient client = sessionManager.getOrCreateClient(serial);
         if (client == null) {
             throw new IllegalStateException("No DLMS session found for meter: " + serial);
@@ -49,7 +49,7 @@ public class ClockWriteService {
         return message;
     }
 
-    public String setClock(String serial, LocalDateTime dateTime) throws Exception {
+    public String setClockV1(String serial, LocalDateTime dateTime) throws Exception {
 
         GXDLMSClient client = sessionManager.getOrCreateClient(serial);
         if (client == null) {

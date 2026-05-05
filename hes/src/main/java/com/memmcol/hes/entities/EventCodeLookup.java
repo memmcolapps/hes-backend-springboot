@@ -33,4 +33,7 @@ public class EventCodeLookup {
 
     @Column(name = "event_name", nullable = false)
     private String eventName;
+
+    @Column(name = "critical_level", nullable = false)
+    private int criticalLevel;
 }
