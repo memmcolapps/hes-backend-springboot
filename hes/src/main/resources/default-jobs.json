@@ -270,5 +270,22 @@
     "lastRunTime": "2025-10-06T16:56:37.359852",
     "obisCodes": "0.0.99.98.11.255",
     "name": "Management Token Event Logs"
+  },
+  {
+    "jobName": "HouseholdEventJob",
+    "jobGroup": "event",
+    "jobStatus": "COMPLETED",
+    "jobClass": "com.memmcol.hes.jobs.HouseholdEventJob",
+    "cronExpression": "0 35 0,2,4,22 * * ?",
+    "description": "Off-peak scheduled job: HouseholdEventJob",
+    "interfaceName": "Event Jobs",
+    "repeatTime": 0,
+    "cronJob": true,
+    "repeatSeconds": 0,
+    "repeatMinutes": 0,
+    "repeatHours": 0,
+    "lastRunTime": "2026-04-10T16:56:37.359852",
+    "obisCodes": "0.0.99.98.0.255,0.0.99.98.1.255,0.0.99.98.2.255,0.0.99.98.4.255",
+    "name": "Event Logs (Household)"
   }
 ]

@@ -326,6 +326,21 @@ public class ProfileExecutionService {
                 obisCode);
     }
 
+    public void readEventsHouseholdForAll(String obisCode) {
+        if (householdMeterModels.isEmpty()) {
+            log.warn("EventsHousehold read skipped. No models configured in hes.profile.household.models");
+            return;
+        }
+        executeForAllMeters("EventsHousehold",
+                (dto, obis) -> metersLockService.readEventsWithLock(
+                        dto.getMeterModel(),
+                        dto.getMeterNumber(),
+                        obis,
+                        dto.isMD()),
+                obisCode,
+                householdMeterModels);
+    }
+
     // === Daily Billing ===
     public void readDailyBillingForAll(String obisCode) {
         executeForAllMeters("DailyBilling",

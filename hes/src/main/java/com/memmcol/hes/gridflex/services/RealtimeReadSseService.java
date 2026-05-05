@@ -243,6 +243,8 @@ public class RealtimeReadSseService {
                         meter.getMeterModel(), meter.getMeterSerial(), obis.getObisString());
             }
 
+            String desc = mapObisCode(obis.getObisString());
+            responseData.put("desc", desc);
             responseData.put("value", extractValue(value));
             responseData.put("statusmessage", "SUCCESS");
         } catch (Exception e) {
@@ -313,5 +315,163 @@ public class RealtimeReadSseService {
     }
 
     private record RealtimeReadSummary(int success, int failed) {
+    }
+
+    private String mapObisCode(String obisCode) {
+
+        if (obisCode == null) return null;
+        System.out.println(">>>>:"+obisCode);
+
+        switch (obisCode) {
+
+            //Energy
+            case "3;1.0.1.8.0.255;2;0":
+                return "Active energy Import (+A)";
+            case "3;1.0.1.8.1.255;2;0":
+                return "Active energy Import (+A) of public grid";
+            case "3;1.0.1.8.2.255;2;0":
+                return "Active energy Import (+A) of private grid";
+            case "3;1.0.2.8.0.255;2;0":
+                return "Active energy Export (-A)";
+            case "3;1.0.2.8.1.255;2;0":
+                return "Active energy Export (-A) of public grid";
+            case "3;1.0.2.8.2.255;2;0":
+                return "Active energy Export (-A) of private grid";
+
+            case "3;1.0.3.8.0.255;2;0":
+                return "Reactive energy Import (+A)";
+            case "3;1.0.3.8.1.255;2;0":
+                return "Reactive energy Import (+A) of public grid";
+            case "3;1.0.3.8.2.255;2;0":
+                return "Reactive energy Import (+A) of private grid";
+            case "3;1.0.4.8.0.255;2;0":
+                return "Reactive energy Export (-A)";
+            case "3;1.0.4.8.1.255;2;0":
+                return "Reactive energy Export (-A) of public grid";
+            case "3;1.0.4.8.2.255;2;0":
+                return "Reactive energy Export (-A) of private grid";
+
+            //Demand
+            case "4;1.0.1.6.0.255;2;0":
+                return "Maximum Demand Register  - Active energy import (+A)";
+            case "4;1.0.2.6.1.255;2;0":
+                return "Maximum Demand Register  - Active energy export (-A)";
+            case "4;1.0.2.6.2.255;2;0":
+                return "Maximum Demand Register  - Active energy export (-A)";
+
+            case "4;1.0.3.6.0.255;2;0":
+                return "Maximum Demand Register  - Reactive energy import (+A)";
+            case "4;1.0.3.6.1.255;2;0":
+                return "Maximum Demand Register  - Reactive energy import (+A)";
+            case "4;1.0.3.6.2.255;2;0":
+                return "Maximum Demand Register  - Reactive energy import (+A)";
+            case "4;1.0.4.6.0.255;2;0":
+                return "Maximum Demand Register  - Reactive energy export (-A)";
+            case "4;1.0.4.6.1.255;2;0":
+                return "Maximum Demand Register  - Reactive energy export (-A)";
+            case "4;1.0.4.6.2.255;2;0":
+                return "Maximum Demand Register  - Reactive energy export (-A)";
+
+            case "4;1.0.9.6.0.255;2;0":
+                return "Maximum Demand Register  - Apparent energy import (+A)";
+            case "4;1.0.9.6.1.255;2;0":
+                return "Maximum Demand Register  - Apparent energy import (+A)";
+            case "4;1.0.9.6.2.255;2;0":
+                return "Maximum Demand Register  - Apparent energy import (+A) ";
+            case "4;1.0.10.6.0.255;2;0":
+                return "Maximum Demand Register  - Apparent energy export (-A)";
+            case "4;1.0.10.6.1.255;2;0":
+                return "Maximum Demand Register  - Apparent energy export (-A)";
+            case "4;1.0.10.6.2.255;2;0":
+                return "Maximum Demand Register  - Apparent energy export (-A)";
+
+            case "4;1.0.1.6.0.255;5;0":
+                return "Maximum Demand Register  - Active energy import (+A) occurrence time";
+            case "4;1.0.2.6.1.255;5;0":
+                return "Maximum Demand Register  - Active energy export (-A) occurrence time of public grid";
+            case "4;1.0.2.6.2.255;5;0":
+                return "Maximum Demand Register  - Active energy export (-A) occurrence time of private grid";
+
+
+            case "4;1.0.3.6.0.255;5;0":
+                return "Maximum Demand Register  - Reactive energy import (+A) occurrence time";
+            case "4;1.0.3.6.1.255;5;0":
+                return "Maximum Demand Register  - Reactive energy import (+A) occurrence time of public grid";
+            case "4;1.0.3.6.2.255;5;0":
+                return "Maximum Demand Register  - Reactive energy import (+A) occurrence time of private grid";
+            case "4;1.0.4.6.0.255;5;0":
+                return "Maximum Demand Register  - Reactive energy export (-A) occurrence time";
+            case "4;1.0.4.6.1.255;5;0":
+                return "Maximum Demand Register  - Reactive energy export (-A) occurrence time of public grid";
+            case "4;1.0.4.6.2.255;5;0":
+                return "Maximum Demand Register  - Reactive energy export (-A) occurrence time of private grid";
+
+            case "4;1.0.9.6.0.255;5;0":
+                return "Maximum Demand Register  - Apparent energy import (+A) occurrence time";
+            case "4;1.0.9.6.1.255;5;0":
+                return "Maximum Demand Register  - Apparent energy import (+A) occurrence time of public grid";
+            case "4;1.0.9.6.2.255;5;0":
+                return "Maximum Demand Register  - Apparent energy import (+A) occurrence time of private grid";
+            case "4;1.0.10.6.0.255;5;0":
+                return "Maximum Demand Register  - Apparent energy export (-A) occurrence time";
+            case "4;1.0.10.6.1.255;5;0":
+                return "Maximum Demand Register  - Apparent energy export (-A) occurrence time of public grid";
+            case "4;1.0.10.6.2.255;5;0":
+                return "Maximum Demand Register  - Apparent energy export (-A) occurrence time of private grid";
+
+                //instantaneous
+            case "3;1.0:32.7.0.255;2;0":
+                return "Voltage in phase L1";
+            case "3;1.0:52.7.0.255;2;0":
+                return "Voltage in phase L2";
+            case "3;1.0:72.7.0.255;2;0":
+                return "Voltage in phase L3";
+            case "3;1.0:31.7.0.255;2;0":
+                return "Current in phase L1";
+            case "3;1.0:51.7.0.255;2;0":
+                return "Current in phase L2";
+            case "3;1.0:71.7.0.255;2;0":
+                return "Current in phase L3";
+
+            case "3;1.0:91.7.0.255;2;0":
+                return "Neutral Current";
+            case "3;1.0:14.7.0.255;2;0":
+                return "Frequency";
+            case "3;1.0:1.7.0.255;2;0":
+                return "Total active power";
+            case "3;1.0:21.7.0.255;2;0":
+                return "Active power in phase L1";
+            case "3;1.0:41.7.0.255;2;0":
+                return "Active power in phase L2";
+            case "3;1.0:61.7.0.255;2;0":
+                return "Active power in phase L3";
+
+            case "3;1.0:3.7.0.255;2;0":
+                return "Total reactive power";
+            case "3;1.0:23.7.0.255;2;0":
+                return "Reactive power in phase L1";
+            case "3;1.0:43.7.0.255;2;0":
+                return "Reactive power in phase L2";
+            case "3;1.0:63.7.0.255;2;0":
+                return "Reactive power in phase L3";
+            case "3;1.0:9.7.0.255;2;0":
+                return "Total apparent power";
+            case "3;1.0:29.7.0.255;2;0":
+                return "Apparent power in phase L1";
+            case "3;1.0:49.7.0.255;2;0":
+                return "Apparent power in phase L2";
+            case "3;1.0:69.7.0.255;2;0":
+                return "Apparent power in phase L3";
+            case "3;1.0:13.7.0.255;2;0":
+                return "Total power factor";
+            case "3;1.0:33.7.0.255;2;0":
+                return "Power factor in phase L1";
+            case "3;1.0:53.7.0.255;2;0":
+                return "Power factor in phase L2";
+            case "3;1.0:73.7.0.255;2;0":
+                return "Power factor in phase L3";
+            default:
+                return null;
+        }
     }
 }
