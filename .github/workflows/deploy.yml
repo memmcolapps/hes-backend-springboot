@@ -2,7 +2,7 @@ name: HES CI/CD Pipeline
 
 on:
   push:
-    branches: ["ci-cd"]
+    branches: ["main"]
 
 jobs:
   build:
