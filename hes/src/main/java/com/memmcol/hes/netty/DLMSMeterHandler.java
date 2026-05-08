@@ -44,7 +44,12 @@ public class DLMSMeterHandler extends SimpleChannelInboundHandler<byte[]> {
     public void channelInactive(ChannelHandlerContext ctx) {
 //        meterStatusService.broadcastMeterOffline(MeterConnections.getSerial(ctx.channel()));
 //        heartbeatManager.handleStatus(MeterConnections.getSerial(ctx.channel()), "OFFLINE");
-        heartbeatService.processFrame(MeterConnections.getSerial(ctx.channel()), "OFFLINE");
+        String serial = MeterConnections.getSerial(ctx.channel());
+        if (serial != null) {
+            heartbeatService.processFrame(serial, "OFFLINE");
+        } else {
+            log.info("❌ Disconnected unknown channel (no meter serial bound) {}", ctx.channel().remoteAddress());
+        }
         MeterConnections.remove(ctx.channel());
         log.info("🛑 Disconnected channel {}", ctx.channel().remoteAddress());
         ctx.close();

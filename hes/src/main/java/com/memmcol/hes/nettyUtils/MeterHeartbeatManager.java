@@ -63,18 +63,26 @@ public class MeterHeartbeatManager {
      */
     public void handleStatus(String meterId, String status) {
 
+        // Netty can call disconnect handlers before a meter has bound its serial.
+        // ConcurrentHashMap does not allow null keys/values, so guard aggressively here.
+        if (meterId == null || meterId.isBlank()) {
+            log.warn("⚠️ Ignoring meter status update with null/blank meterId (status={})", status);
+            return;
+        }
+        final String safeStatus = (status == null) ? "UNKNOWN" : status;
+
         long now = System.currentTimeMillis();
         LocalDateTime time = LocalDateTime.now();
 
         // 🔥 ALWAYS update buffer (latest wins)
-        writeBuffer.put(meterId, new MeterUpdateDTO(meterId, status, time));
+        writeBuffer.put(meterId, new MeterUpdateDTO(meterId, safeStatus, time));
 
         // Update in-memory state
         stateMap.compute(meterId, (k, state) -> {
             if (state == null) {
-                return new MeterState(status, now);
+                return new MeterState(safeStatus, now);
             }
-            state.status = status;
+            state.status = safeStatus;
             state.lastSeenEpoch = now;
             return state;
         });
@@ -134,23 +142,29 @@ public class MeterHeartbeatManager {
 
         if (snapshot.isEmpty()) return;
 
-        CompletableFuture.runAsync(() -> {
-            try {
+        try {
+            CompletableFuture.runAsync(() -> {
+                try {
 
-                List<MeterUpdateDTO> batch = new ArrayList<>(snapshot.values());
+                    List<MeterUpdateDTO> batch = new ArrayList<>(snapshot.values());
 
-                batchRepository.batchUpsert(batch);
+                    batchRepository.batchUpsert(batch);
 
-                log.info("✅ Flushed {} meter updates", batch.size());
+                    log.info("✅ Flushed {} meter updates", batch.size());
 
-            } catch (Exception e) {
+                } catch (Exception e) {
 
-                log.error("❌ Batch flush failed. Re-queueing {}", snapshot.size(), e);
+                    log.error("❌ Batch flush failed. Re-queueing {}", snapshot.size(), e);
 
-                writeBuffer.putAll(snapshot);
-            }
+                    writeBuffer.putAll(snapshot);
+                }
 
-        }, dbExecutor);
+            }, dbExecutor);
+        } catch (RejectedExecutionException e) {
+            // If the DB executor is saturated, never block the scheduler thread (and never drop updates).
+            log.warn("⚠️ DB executor saturated; re-queueing {} meter updates", snapshot.size(), e);
+            writeBuffer.putAll(snapshot);
+        }
     }
 
     @PreDestroy
