@@ -315,6 +315,21 @@ public class ProfileExecutionService {
                 householdMeterModels);
     }
 
+    public void readChannelThreeHouseholdForAll(String obisCode) {
+        if (householdMeterModels.isEmpty()) {
+            log.warn("Channel3Household read skipped. No models configured in hes.profile.household.models");
+            return;
+        }
+        executeForAllMeters("Channel3Household",
+                (dto, obis) -> metersLockService.readChannelThreeHouseholdWithLock(
+                        dto.getMeterModel(),
+                        dto.getMeterNumber(),
+                        obis,
+                        dto.isMD()),
+                obisCode,
+                householdMeterModels);
+    }
+
     // === Events ===
     public void readEventsForAll(String obisCode) {
         executeForAllMeters("Events",

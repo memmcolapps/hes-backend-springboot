@@ -5,7 +5,7 @@ import com.memmcol.hes.domain.profile.MeterRatios;
 import com.memmcol.hes.domain.profile.ObisObjectType;
 import com.memmcol.hes.domain.profile.ProfileMetadataResult;
 import com.memmcol.hes.domain.profile.ProfileRowGeneric;
-import com.memmcol.hes.dto.ProfileChannelOneHouseholdDTO;
+import com.memmcol.hes.dto.ProfileChannelThreeHouseholdDTO;
 import com.memmcol.hes.infrastructure.dlms.DlmsTimestampDecoder;
 import com.memmcol.hes.service.MeterRatioService;
 import lombok.RequiredArgsConstructor;
@@ -24,17 +24,19 @@ import java.util.stream.Collectors;
 @Slf4j
 @RequiredArgsConstructor
 @Service
-public class ProfileChannelOneHouseholdMapper implements GenericDtoMappers<ProfileChannelOneHouseholdDTO> {
-    private static final BigDecimal THOUSAND = BigDecimal.valueOf(1000);
+public class ProfileChannelThreeHouseholdMapper implements GenericDtoMappers<ProfileChannelThreeHouseholdDTO> {
+    private static final String SINGLE_PHASE_MODEL_HINT = "SINGLE";
+    private static final String SINGLE_PHASE_MODEL_HINT_ALT = "SNGLE";
+
     private final MeterRatioService ratioService;
     private final DlmsTimestampDecoder dlmsTimestampDecoder;
 
     @Override
-    public List<ProfileChannelOneHouseholdDTO> toDTO(List<ProfileRowGeneric> rawRows,
-                                                     String meterSerial,
-                                                     String modelNumber,
-                                                     boolean mdMeter,
-                                                     ProfileMetadataResult metadataResult) throws Exception {
+    public List<ProfileChannelThreeHouseholdDTO> toDTO(List<ProfileRowGeneric> rawRows,
+                                                       String meterSerial,
+                                                       String modelNumber,
+                                                       boolean mdMeter,
+                                                       ProfileMetadataResult metadataResult) throws Exception {
         MeterRatios meterRatios = mdMeter ? ratioService.readMeterRatios(modelNumber, meterSerial) : null;
         return rawRows.stream()
                 .map(raw -> mapRow(raw, meterSerial, modelNumber, mdMeter, metadataResult, meterRatios))
@@ -42,15 +44,17 @@ public class ProfileChannelOneHouseholdMapper implements GenericDtoMappers<Profi
     }
 
     @Override
-    public ProfileChannelOneHouseholdDTO mapRow(ProfileRowGeneric raw,
-                                                String meterSerial,
-                                                String modelNumber,
-                                                boolean mdMeter,
-                                                ProfileMetadataResult metadataResult,
-                                                MeterRatios meterRatios) {
-        ProfileChannelOneHouseholdDTO dto = new ProfileChannelOneHouseholdDTO();
+    public ProfileChannelThreeHouseholdDTO mapRow(ProfileRowGeneric raw,
+                                                  String meterSerial,
+                                                  String modelNumber,
+                                                  boolean mdMeter,
+                                                  ProfileMetadataResult metadataResult,
+                                                  MeterRatios meterRatios) {
+        ProfileChannelThreeHouseholdDTO dto = new ProfileChannelThreeHouseholdDTO();
         dto.setMeterSerial(meterSerial);
         dto.setModelNumber(modelNumber);
+
+        boolean singlePhase = isSinglePhaseModel(modelNumber);
 
         for (Map.Entry<String, Object> entry : raw.getValues().entrySet()) {
             String obisWithAttr = entry.getKey();
@@ -62,7 +66,6 @@ public class ProfileChannelOneHouseholdMapper implements GenericDtoMappers<Profi
             if (persistenceInfo == null) continue;
 
             ObisObjectType objectType = persistenceInfo.getType();
-
             if (objectType == ObisObjectType.CLOCK) {
                 LocalDateTime tsInstant;
                 switch (rawValue) {
@@ -106,7 +109,7 @@ public class ProfileChannelOneHouseholdMapper implements GenericDtoMappers<Profi
 
                 ProfileMetadataResult.ProfileMappingInfo mappingInfo = metadataResult.forMapping(obisCode);
                 if (mappingInfo != null) {
-                    setDtoField(dto, mappingInfo.getColumnName(), finalValue);
+                    setDtoField(dto, mappingInfo.getColumnName(), finalValue, singlePhase);
                 }
             } catch (NumberFormatException e) {
                 log.error("NumberFormatException for obis={} multiplyBy={} type={} value={}",
@@ -119,17 +122,43 @@ public class ProfileChannelOneHouseholdMapper implements GenericDtoMappers<Profi
     }
 
     @Override
-    public void setDtoField(ProfileChannelOneHouseholdDTO dto, String columnName, BigDecimal value) {
-        BigDecimal normalized = value.divide(THOUSAND, 2, RoundingMode.HALF_UP);
-        switch (columnName.toLowerCase()) {
-            case "active_energy_import" -> dto.setActiveEnergyImport(normalized.doubleValue());
-            case "active_energy_import_ongrid" -> dto.setActiveEnergyImportOnGrid(normalized.doubleValue());
-            case "active_energy_import_offgrid" -> dto.setActiveEnergyImportOffGrid(normalized.doubleValue());
-            case "active_energy_export" -> dto.setActiveEnergyExport(normalized.doubleValue());
-            case "active_energy_export_ongrid" -> dto.setActiveEnergyExportOnGrid(normalized.doubleValue());
-            case "active_energy_export_offgrid" -> dto.setActiveEnergyExportOffGrid(normalized.doubleValue());
-            default -> log.warn("Unknown column mapping (hh ch1): {}", columnName);
+    public void setDtoField(ProfileChannelThreeHouseholdDTO dto, String columnName, BigDecimal value) {
+        setDtoField(dto, columnName, value, false);
+    }
+
+    private void setDtoField(ProfileChannelThreeHouseholdDTO dto, String columnName, BigDecimal value, boolean singlePhase) {
+        String normalized = columnName.toLowerCase();
+
+        if (singlePhase && !isSinglePhaseAllowedColumn(normalized)) {
+            return;
+        }
+
+        switch (normalized) {
+            case "active_power_l1" -> dto.setActivePowerL1(value.doubleValue());
+            case "active_power_l2" -> dto.setActivePowerL2(value.doubleValue());
+            case "active_power_l3" -> dto.setActivePowerL3(value.doubleValue());
+            case "power_factor_l1" -> dto.setPowerFactorL1(value.doubleValue());
+            case "power_factor_l2" -> dto.setPowerFactorL2(value.doubleValue());
+            case "power_factor_l3" -> dto.setPowerFactorL3(value.doubleValue());
+            case "grid_frequency" -> dto.setGridFrequency(value.doubleValue());
+            case "volt_angle_l1_l2" -> dto.setVoltAngleL1L2(value.doubleValue());
+            default -> log.warn("Unknown column mapping (hh ch3): {}", columnName);
         }
     }
-}
 
+    private boolean isSinglePhaseAllowedColumn(String columnName) {
+        return switch (columnName) {
+            case "entry_timestamp", "active_power_l1", "active_power_l2",
+                    "power_factor_l1", "power_factor_l2", "grid_frequency" -> true;
+            default -> false;
+        };
+    }
+
+    private boolean isSinglePhaseModel(String modelNumber) {
+        if (modelNumber == null) {
+            return false;
+        }
+        String normalized = modelNumber.toUpperCase();
+        return normalized.contains(SINGLE_PHASE_MODEL_HINT) || normalized.contains(SINGLE_PHASE_MODEL_HINT_ALT);
+    }
+}
