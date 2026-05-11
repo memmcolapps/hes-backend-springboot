@@ -141,7 +141,6 @@ public class ProfileChannelThreeHouseholdMapper implements GenericDtoMappers<Pro
             case "power_factor_l2" -> dto.setPowerFactorL2(value.doubleValue());
             case "power_factor_l3" -> dto.setPowerFactorL3(value.doubleValue());
             case "grid_frequency" -> dto.setGridFrequency(value.doubleValue());
-            case "volt_angle_l1_l2" -> dto.setVoltAngleL1L2(value.doubleValue());
             default -> log.warn("Unknown column mapping (hh ch3): {}", columnName);
         }
     }

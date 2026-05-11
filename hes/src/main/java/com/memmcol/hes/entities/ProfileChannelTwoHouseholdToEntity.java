@@ -15,6 +15,8 @@ public class ProfileChannelTwoHouseholdToEntity {
                 .currentL1(dto.getCurrentL1())
                 .currentL2(dto.getCurrentL2())
                 .currentL3(dto.getCurrentL3())
+                .voltAngleL1L2(dto.getVoltAngleL1L2())
+                .voltAngleL1L3(dto.getVoltAngleL1L3())
                 .receivedAt(dto.getReceivedAt())
                 .build();
     }

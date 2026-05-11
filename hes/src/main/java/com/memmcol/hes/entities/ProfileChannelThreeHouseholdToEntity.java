@@ -16,7 +16,6 @@ public class ProfileChannelThreeHouseholdToEntity {
                 .powerFactorL2(dto.getPowerFactorL2())
                 .powerFactorL3(dto.getPowerFactorL3())
                 .gridFrequency(dto.getGridFrequency())
-                .voltAngleL1L2(dto.getVoltAngleL1L2())
                 .receivedAt(dto.getReceivedAt())
                 .build();
     }
