@@ -4,9 +4,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.memmcol.hes.domain.clock.ClockWriteService;
+import com.memmcol.hes.domain.controlRelay.ControlModeService;
+import com.memmcol.hes.domain.controlRelay.ControlRelayService;
 import com.memmcol.hes.domain.limiters.LimiterHelper;
 import com.memmcol.hes.domain.network.NetworkWriteService;
 import com.memmcol.hes.domain.profile.WriteCTPT;
+import com.memmcol.hes.domain.token.TokenWriteService;
 import com.memmcol.hes.exception.AssociationLostException;
 import com.memmcol.hes.infrastructure.dlms.DlmsReaderUtils;
 import com.memmcol.hes.model.*;
@@ -70,6 +73,10 @@ public class DlmsService {
     private final ClockWriteService clockWriteService;
     private final WriteCTPT writeCTPT;
     private final NetworkWriteService networkWriteService;
+    private final TokenWriteService tokenWriteService;
+    private final ControlRelayService controlRelayService;
+    private final ControlModeService controlModeService;
+
 
     public DlmsService(SessionManagerMultiVendor sessionManager,
                        DlmsObisObjectRepository repository,
@@ -86,7 +93,10 @@ public class DlmsService {
                        RequestResponseService requestResponseService, LimiterHelper limiterHelper, DlmsReaderUtils dlmsReaderUtils,
                        ClockWriteService clockWriteService,
                        WriteCTPT writeCTPT,
-                       NetworkWriteService networkWriteService) {
+                       NetworkWriteService networkWriteService,
+                       TokenWriteService tokenWriteService,
+                       ControlRelayService controlRelayService,
+                       ControlModeService controlModeService) {
         this.sessionManager = sessionManager;
         this.repository = repository;
         this.metadataCache = metadataCache;
@@ -105,6 +115,9 @@ public class DlmsService {
         this.clockWriteService = clockWriteService;
         this.writeCTPT = writeCTPT;
         this.networkWriteService = networkWriteService;
+        this.tokenWriteService = tokenWriteService;
+        this.controlRelayService = controlRelayService;
+        this.controlModeService = controlModeService;
     }
 
     public static final DateTimeFormatter GLOBAL_TS_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
@@ -233,6 +246,18 @@ public class DlmsService {
 
     public Map<String, Object> setIpPort(String serial, List<String> ipPorts) throws Exception {
         return networkWriteService.writeIpPort(serial, ipPorts);
+    }
+
+    public Map<String, Object> setToken(String serial, String token) throws Exception {
+        return tokenWriteService.writeToken(serial, token);
+    }
+
+    public Map<String, Object> controlRelay(String serial, boolean state) throws Exception {
+        return controlRelayService.controlRelay(serial, state);
+    }
+
+    public Map<String, Object> controlMode(String serial, int mode) throws Exception {
+        return controlModeService.setControlMode(serial, mode);
     }
 
     public String greet(String name) {

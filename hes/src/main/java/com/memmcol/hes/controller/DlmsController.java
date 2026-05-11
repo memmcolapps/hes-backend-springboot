@@ -3,6 +3,7 @@ package com.memmcol.hes.controller;
 import com.memmcol.hes.domain.profile.ProfileProcessRequest;
 import com.memmcol.hes.domain.profile.ProfileProcessor;
 import com.memmcol.hes.domain.profile.ProfileTimestampPortImpl;
+import com.memmcol.hes.dto.ApiResponse;
 import com.memmcol.hes.infrastructure.dlms.CapturePeriodAdapter;
 import com.memmcol.hes.model.ProfileRowDTO;
 import com.memmcol.hes.model.TimestampRequest;
@@ -132,6 +133,89 @@ public class DlmsController {
             response.put("serial", serial);
             response.put("timestamp", LocalDateTime.now());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
+    }
+
+    @PostMapping("/setToken")
+    @Tag(name = "Token", description = "Set Token on the meter remotely.")
+    public ResponseEntity<Map<String, Object>> setToken(
+            @RequestParam String serial,
+            @RequestParam String token
+    ) {
+        Map<String, Object> response = new HashMap<>();
+        try {
+            Map<String, Object> data = dlmsService.setToken(serial, token);
+            response.put("status", "success");
+            response.put("data", data);
+            response.put("timestamp", LocalDateTime.now());
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            response.put("status", "error");
+            response.put("message", "Failed to set Token");
+            response.put("details", e.getMessage());
+            response.put("serial", serial);
+            response.put("timestamp", LocalDateTime.now());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
+    }
+
+    @PostMapping("/setRelayMode")
+    @Tag(name = "Control Mode", description = "Set meter control mode")
+    public ResponseEntity<Map<String, Object>> setControlMode(
+            @RequestParam String serial,
+            @RequestParam int mode
+    ) {
+        Map<String, Object> response = new HashMap<>();
+
+        try {
+            Map<String, Object> data = dlmsService.controlMode(serial, mode);
+
+            response.put("status", "success");
+            response.put("message", "Control mode updated");
+            response.put("data", data);
+            response.put("timestamp", LocalDateTime.now());
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+
+            response.put("status", "error");
+            response.put("message", "Failed to set control mode");
+            response.put("details", e.getMessage());
+            response.put("timestamp", LocalDateTime.now());
+
+            return ResponseEntity.status(500).body(response);
+        }
+    }
+
+
+    @PostMapping("/controlRelay")
+    public ResponseEntity<ApiResponse<Object>> controlRelay(
+            @RequestParam String serial,
+            @RequestParam boolean state
+    ) {
+        try {
+            Map<String, Object> data =
+                    dlmsService.controlRelay(serial, state);
+
+            return ResponseEntity.ok(
+                    ApiResponse.builder()
+                            .status("success")
+                            .message(state ? "Relay Closed" : "Relay Open")
+                            .data(data)
+                            .timestamp(LocalDateTime.now())
+                            .build()
+            );
+
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body(
+                    ApiResponse.builder()
+                            .status("error")
+                            .message("Failed to control relay")
+                            .data(null)
+                            .timestamp(LocalDateTime.now())
+                            .build()
+            );
         }
     }
 

@@ -36,9 +36,10 @@ public class DlmsUtils {
             case 8  -> new GXDLMSClock(); // 🔁 Added support for Clock
             case 29 -> new GXDLMSAutoConnect();
             case 45 -> new GXDLMSGprsSetup();
-            case 70 -> new GXDLMSDisconnectControl(); // Disconnect unit
-            case 71 -> new GXDLMSLimiter();           // Load limiter
-            // Add more if needed (e.g., 11 → Register Activation, 15 → Script Table)
+            case 70 -> new GXDLMSDisconnectControl();
+            case 71 -> new GXDLMSLimiter();
+            case 11 -> new GXDLMSRegisterActivation();
+            case 15 -> new GXDLMSScriptTable();
             default -> throw new IllegalArgumentException("Unsupported DLMS classId: " + classId);
         };
     }
