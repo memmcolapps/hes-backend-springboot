@@ -20,6 +20,8 @@ public class ProfileChannelTwoHouseholdDTO {
     private Double currentL1;
     private Double currentL2;
     private Double currentL3;
+    private Double voltAngleL1L2;
+    private Double voltAngleL1L3;
 
     private LocalDateTime receivedAt;
 }

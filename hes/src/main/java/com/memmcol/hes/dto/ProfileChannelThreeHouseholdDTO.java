@@ -25,7 +25,6 @@ public class ProfileChannelThreeHouseholdDTO {
     private Double powerFactorL2;
     private Double powerFactorL3;
     private Double gridFrequency;
-    private Double voltAngleL1L2;
 
     private LocalDateTime receivedAt;
 }

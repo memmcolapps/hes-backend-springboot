@@ -125,6 +125,8 @@ public class ProfileChannelTwoHouseholdMapper implements GenericDtoMappers<Profi
             case "current_l1" -> dto.setCurrentL1(value.doubleValue());
             case "current_l2" -> dto.setCurrentL2(value.doubleValue());
             case "current_l3" -> dto.setCurrentL3(value.doubleValue());
+            case "volt_angle_l1_l2" -> dto.setVoltAngleL1L2(value.doubleValue());
+            case "volt_angle_l1_l3" -> dto.setVoltAngleL1L3(value.doubleValue());
             default -> log.warn("Unknown column mapping (hh ch2): {}", columnName);
         }
     }

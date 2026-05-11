@@ -54,9 +54,6 @@ public class ProfileChannelThreeHousehold {
     @Column(name = "grid_frequency")
     private Double gridFrequency;
 
-    @Column(name = "volt_angle_l1_l2")
-    private Double voltAngleL1L2;
-
     @Column(name = "received_at", insertable = false, updatable = false)
     private LocalDateTime receivedAt;
 }

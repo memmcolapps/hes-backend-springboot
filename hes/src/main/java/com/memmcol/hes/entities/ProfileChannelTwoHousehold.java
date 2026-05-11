@@ -43,6 +43,12 @@ public class ProfileChannelTwoHousehold {
     @Column(name = "current_l3")
     private Double currentL3;
 
+    @Column(name = "volt_angle_l1_l2")
+    private Double voltAngleL1L2;
+
+    @Column(name = "volt_angle_l1_l3")
+    private Double voltAngleL1L3;
+
     @Column(name = "received_at", insertable = false, updatable = false)
     private LocalDateTime receivedAt;
 }
