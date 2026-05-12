@@ -2,6 +2,8 @@ package com.memmcol.hes.domain.network;
 
 import com.memmcol.hes.application.port.out.MeterLockPort;
 import com.memmcol.hes.infrastructure.dlms.DlmsReaderUtils;
+import com.memmcol.hes.model.DlmsResponse;
+import com.memmcol.hes.model.DlmsResponseStatus;
 import com.memmcol.hes.nettyUtils.SessionManagerMultiVendor;
 import gurux.dlms.GXDLMSClient;
 import gurux.dlms.enums.DataType;
@@ -53,29 +55,43 @@ public class NetworkWriteServiceTest {
     void testWriteApn() throws Exception {
         // Arrange
         String apn = "Internet.ng.airtel.com";
+        DlmsResponse response = DlmsResponse.builder()
+                .status(DlmsResponseStatus.SUCCESS)
+                .message("Success")
+                .meterSerial(serial)
+                .build();
         when(sessionManager.getOrCreateClient(serial)).thenReturn(dlmsClient);
+        when(dlmsReaderUtils.writeAttribute(eq(dlmsClient), eq(serial), eq("0.0.25.4.0.255"), eq(45), eq(2), any(byte[].class), eq(DataType.OCTET_STRING)))
+                .thenReturn(response);
 
         // Act
         Map<String, Object> result = networkWriteService.writeApn(serial, apn);
 
         // Assert
         assertEquals("success", result.get("status"));
+        assertEquals(DlmsResponseStatus.SUCCESS, result.get("dlmsStatus"));
         assertEquals(apn, result.get("apn"));
-        verify(dlmsReaderUtils).writeAttribute(eq(dlmsClient), eq(serial), eq("0.0.25.4.0.255"), eq(45), eq(2), any(byte[].class), eq(DataType.OCTET_STRING));
     }
 
     @Test
     void testWriteIpPort() throws Exception {
         // Arrange
         List<String> ipPorts = List.of("41.216.166.165:29064");
+        DlmsResponse response = DlmsResponse.builder()
+                .status(DlmsResponseStatus.SUCCESS)
+                .message("Success")
+                .meterSerial(serial)
+                .build();
         when(sessionManager.getOrCreateClient(serial)).thenReturn(dlmsClient);
+        when(dlmsReaderUtils.writeAttribute(eq(dlmsClient), eq(serial), eq("0.0.2.1.0.255"), eq(29), eq(6), anyList(), eq(DataType.ARRAY)))
+                .thenReturn(response);
 
         // Act
         Map<String, Object> result = networkWriteService.writeIpPort(serial, ipPorts);
 
         // Assert
         assertEquals("success", result.get("status"));
+        assertEquals(DlmsResponseStatus.SUCCESS, result.get("dlmsStatus"));
         assertEquals(ipPorts, result.get("ipPorts"));
-        verify(dlmsReaderUtils).writeAttribute(eq(dlmsClient), eq(serial), eq("0.0.2.1.0.255"), eq(29), eq(6), anyList(), eq(DataType.ARRAY));
     }
 }

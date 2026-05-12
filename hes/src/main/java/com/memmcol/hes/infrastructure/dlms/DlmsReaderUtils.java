@@ -8,6 +8,8 @@ import com.memmcol.hes.domain.profile.ProfileRowGeneric;
 import com.memmcol.hes.dto.MeterDTO;
 import com.memmcol.hes.mocks.MockRequestResponseService;
 import com.memmcol.hes.mocks.MockRxDecoderWithReply;
+import com.memmcol.hes.model.DlmsResponse;
+import com.memmcol.hes.model.DlmsResponseStatus;
 import com.memmcol.hes.model.ModelProfileMetadata;
 import com.memmcol.hes.repository.MeterRepository;
 import com.memmcol.hes.nettyUtils.SessionManagerMultiVendor;
@@ -50,6 +52,7 @@ public class DlmsReaderUtils {
     private final TxRxService txRxService;
     private final MeterProfileStateRepository meterProfileStateRepository;
     private final MeterRepository meterRepository;
+    private final DlmsResponseDecoder responseDecoder;
 
     private record DlmsRangeWindow(LocalDateTime from, LocalDateTime to) {}
 
@@ -164,84 +167,122 @@ public class DlmsReaderUtils {
      * @param index  attribute index to write
      * @param value  value to write (e.g. GXDateTime for clock)
      */
-    public void writeAttributeV1(GXDLMSClient client, String serial, GXDLMSObject obj, int index, Object value) throws Exception {
-        // Populate the object's attribute with the value before issuing the write.
-        if (obj instanceof GXDLMSClock clock && value instanceof GXDateTime dt) {
-            clock.setTime(dt);
-        } else {
-            client.updateValue(obj, index, value);
+    public DlmsResponse writeAttributeV1(GXDLMSClient client, String serial, GXDLMSObject obj, int index, Object value) throws Exception {
+        try {
+            // Populate the object's attribute with the value before issuing the write.
+            if (obj instanceof GXDLMSClock clock && value instanceof GXDateTime dt) {
+                clock.setTime(dt);
+            } else {
+                client.updateValue(obj, index, value);
+            }
+
+            byte[][] request = client.write(obj, index);
+
+            byte[] response = txRxService.sendReceiveWithContext(serial, request[0], 20000);
+
+            if (sessionManager.isAssociationLost(response)) {
+                sessionManager.removeSession(serial);
+                throw new AssociationLostException();
+            }
+
+            GXReplyData reply = new GXReplyData();
+            client.getData(response, reply, null);
+
+            DlmsResponseStatus status = responseDecoder.decodeStatus(reply);
+            return DlmsResponse.builder()
+                    .status(status)
+                    .message(reply.getErrorMessage())
+                    .meterSerial(serial)
+                    .build();
+        } catch (java.net.SocketTimeoutException | java.util.concurrent.TimeoutException te) {
+            return DlmsResponse.builder()
+                    .status(DlmsResponseStatus.TIMEOUT)
+                    .message("Connection timeout: " + te.getMessage())
+                    .meterSerial(serial)
+                    .build();
+        } catch (Exception e) {
+            return DlmsResponse.builder()
+                    .status(DlmsResponseStatus.COMMUNICATION_ERROR)
+                    .message("Communication error: " + e.getMessage())
+                    .meterSerial(serial)
+                    .build();
         }
-
-        byte[][] request = client.write(obj, index);
-
-        byte[] response = txRxService.sendReceiveWithContext(serial, request[0], 20000);
-
-        if (sessionManager.isAssociationLost(response)) {
-            sessionManager.removeSession(serial);
-            throw new AssociationLostException();
-        }
-
-        GXReplyData reply = new GXReplyData();
-        client.getData(response, reply, null);
-        DlmsErrorUtils.checkError(reply, serial, "OBIS Write!");
     }
 
-    public void writeAttribute(GXDLMSClient client,
+    public DlmsResponse writeAttribute(GXDLMSClient client,
                                String serial,
                                GXDLMSObject obj,
                                int index,
                                Object value) throws Exception {
 
-        // 1. Apply value to object
-        if (obj instanceof GXDLMSClock clock && value instanceof GXDateTime dt) {
-            clock.setTime(dt);
-        } else {
-            client.updateValue(obj, index, value);
-        }
-
-        byte[][] requests = client.write(obj, index);
-
-        if (requests == null || requests.length == 0) {
-            throw new IllegalStateException("DLMS write generated no frames");
-        }
-
-        GXReplyData reply = new GXReplyData();
-
-        long start = System.currentTimeMillis();
-
-        for (int i = 0; i < requests.length; i++) {
-
-            byte[] requestFrame = requests[i];
-
-            log.debug("📤 DLMS TX [{} / {}] → meter={}, bytes={}",
-                    i + 1, requests.length, serial, toHex(requestFrame));
-
-            byte[] response = txRxService.sendReceiveWithContext(serial, requestFrame, 20000);
-
-            if (sessionManager.isAssociationLost(response)) {
-                sessionManager.removeSession(serial);
-                throw new AssociationLostException("Association lost during write → meter=" + serial);
+        try {
+            // 1. Apply value to object
+            if (obj instanceof GXDLMSClock clock && value instanceof GXDateTime dt) {
+                clock.setTime(dt);
+            } else {
+                client.updateValue(obj, index, value);
             }
 
-            processReply(client, serial, response, reply);
+            byte[][] requests = client.write(obj, index);
+
+            if (requests == null || requests.length == 0) {
+                throw new IllegalStateException("DLMS write generated no frames");
+            }
+
+            GXReplyData reply = new GXReplyData();
+
+            long start = System.currentTimeMillis();
+
+            for (int i = 0; i < requests.length; i++) {
+
+                byte[] requestFrame = requests[i];
+
+                log.debug("📤 DLMS TX [{} / {}] → meter={}, bytes={}",
+                        i + 1, requests.length, serial, toHex(requestFrame));
+
+                byte[] response = txRxService.sendReceiveWithContext(serial, requestFrame, 20000);
+
+                if (sessionManager.isAssociationLost(response)) {
+                    sessionManager.removeSession(serial);
+                    throw new AssociationLostException("Association lost during write → meter=" + serial);
+                }
+
+                processReply(client, serial, response, reply);
+            }
+
+            if (!reply.isComplete()) {
+                throw new IllegalStateException("Incomplete DLMS reply → meter=" + serial);
+            }
+
+            long duration = System.currentTimeMillis() - start;
+            log.info("✅ DLMS write completed → meter={}, duration={}ms", serial, duration);
+
+            DlmsResponseStatus status = responseDecoder.decodeStatus(reply);
+            return DlmsResponse.builder()
+                    .status(status)
+                    .message(reply.getErrorMessage())
+                    .meterSerial(serial)
+                    .build();
+        } catch (java.net.SocketTimeoutException | java.util.concurrent.TimeoutException te) {
+            return DlmsResponse.builder()
+                    .status(DlmsResponseStatus.TIMEOUT)
+                    .message("Connection timeout: " + te.getMessage())
+                    .meterSerial(serial)
+                    .build();
+        } catch (Exception e) {
+            return DlmsResponse.builder()
+                    .status(DlmsResponseStatus.COMMUNICATION_ERROR)
+                    .message("Communication error: " + e.getMessage())
+                    .meterSerial(serial)
+                    .build();
         }
-
-        if (!reply.isComplete()) {
-            throw new IllegalStateException("Incomplete DLMS reply → meter=" + serial);
-        }
-
-        DlmsErrorUtils.checkError(reply, serial, "OBIS Write");
-
-        long duration = System.currentTimeMillis() - start;
-
-        log.info("✅ DLMS write success → meter={}, duration={}ms", serial, duration);
     }
 
     /**
      * Writes a DLMS attribute value using an explicit DLMS DataType, via the logical name
      * and class id. Useful when the meter is strict about the DLMS type (e.g. CT/PT long unsigned).
      */
-    public void writeAttribute(GXDLMSClient client,
+    public DlmsResponse writeAttribute(GXDLMSClient client,
                                String serial,
                                String logicalName,
                                int classId,
@@ -249,18 +290,38 @@ public class DlmsReaderUtils {
                                Object value,
                                DataType dataType) throws Exception {
 
-        byte[][] request = client.write(logicalName, value, dataType, gurux.dlms.enums.ObjectType.forValue(classId), index);
+        try {
+            byte[][] request = client.write(logicalName, value, dataType, gurux.dlms.enums.ObjectType.forValue(classId), index);
 
-        byte[] response = txRxService.sendReceiveWithContext(serial, request[0], 20000);
+            byte[] response = txRxService.sendReceiveWithContext(serial, request[0], 20000);
 
-        if (sessionManager.isAssociationLost(response)) {
-            sessionManager.removeSession(serial);
-            throw new AssociationLostException();
+            if (sessionManager.isAssociationLost(response)) {
+                sessionManager.removeSession(serial);
+                throw new AssociationLostException();
+            }
+
+            GXReplyData reply = new GXReplyData();
+            client.getData(response, reply, null);
+
+            DlmsResponseStatus status = responseDecoder.decodeStatus(reply);
+            return DlmsResponse.builder()
+                    .status(status)
+                    .message(reply.getErrorMessage())
+                    .meterSerial(serial)
+                    .build();
+        } catch (java.net.SocketTimeoutException | java.util.concurrent.TimeoutException te) {
+            return DlmsResponse.builder()
+                    .status(DlmsResponseStatus.TIMEOUT)
+                    .message("Connection timeout: " + te.getMessage())
+                    .meterSerial(serial)
+                    .build();
+        } catch (Exception e) {
+            return DlmsResponse.builder()
+                    .status(DlmsResponseStatus.COMMUNICATION_ERROR)
+                    .message("Communication error: " + e.getMessage())
+                    .meterSerial(serial)
+                    .build();
         }
-
-        GXReplyData reply = new GXReplyData();
-        client.getData(response, reply, null);
-        DlmsErrorUtils.checkError(reply, serial, "OBIS Write!");
     }
 
     public Object readAttribute(GXDLMSClient client, String serial, GXDLMSObject obj, int index) throws Exception {

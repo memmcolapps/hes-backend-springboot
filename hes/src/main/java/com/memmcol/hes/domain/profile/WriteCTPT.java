@@ -2,6 +2,8 @@ package com.memmcol.hes.domain.profile;
 
 import com.memmcol.hes.application.port.out.MeterLockPort;
 import com.memmcol.hes.infrastructure.dlms.DlmsReaderUtils;
+import com.memmcol.hes.model.DlmsResponse;
+import com.memmcol.hes.model.DlmsResponseStatus;
 import com.memmcol.hes.nettyUtils.SessionManagerMultiVendor;
 import gurux.dlms.enums.DataType;
 import gurux.dlms.GXDLMSClient;
@@ -49,27 +51,49 @@ public class WriteCTPT {
             // In Gurux Java this corresponds to DataType.UINT16 (16‑bit unsigned).
 
             // CT numerator: 1.0.0.4.2.255 attr 2
-            dlmsReaderUtils.writeAttribute(client, meterSerial, "1.0.0.4.2.255", 1, 2,
+            DlmsResponse ctNumResp = dlmsReaderUtils.writeAttribute(client, meterSerial, "1.0.0.4.2.255", 1, 2,
                     (int) ctNumerator, DataType.UINT16);
             result.put("ctNumerator", ctNumerator);
 
             // CT denominator: 1.0.0.4.5.255 attr 2
-            dlmsReaderUtils.writeAttribute(client, meterSerial, "1.0.0.4.5.255", 1, 2,
+            DlmsResponse ctDenResp = dlmsReaderUtils.writeAttribute(client, meterSerial, "1.0.0.4.5.255", 1, 2,
                     (int) ctDenominator, DataType.UINT16);
             result.put("ctDenominator", ctDenominator);
 
             // PT numerator: 1.0.0.4.3.255 attr 2
-            dlmsReaderUtils.writeAttribute(client, meterSerial, "1.0.0.4.3.255", 1, 2,
+            DlmsResponse ptNumResp = dlmsReaderUtils.writeAttribute(client, meterSerial, "1.0.0.4.3.255", 1, 2,
                     (int) ptNumerator, DataType.UINT16);
             result.put("ptNumerator", ptNumerator);
 
             // PT denominator: 1.0.0.4.6.255 attr 2
-            dlmsReaderUtils.writeAttribute(client, meterSerial, "1.0.0.4.6.255", 1, 2,
+            DlmsResponse ptDenResp = dlmsReaderUtils.writeAttribute(client, meterSerial, "1.0.0.4.6.255", 1, 2,
                     (int) ptDenominator, DataType.UINT16);
             result.put("ptDenominator", ptDenominator);
 
-            log.info("✅ CT/PT written meter={} ct={}/{} pt={}/{}",
-                    meterSerial, ctNumerator, ctDenominator, ptNumerator, ptDenominator);
+            boolean allSuccess = ctNumResp.isSuccess() && ctDenResp.isSuccess() && ptNumResp.isSuccess() && ptDenResp.isSuccess();
+
+            result.put("status", allSuccess ? "success" : "failed");
+
+            // If any failed, provide details. In a more complex scenario, we could provide details per OBIS.
+            if (!allSuccess) {
+                if (!ctNumResp.isSuccess()) {
+                    result.put("ctNumeratorError", ctNumResp.getMessage());
+                    result.put("dlmsStatus", ctNumResp.getStatus());
+                } else if (!ctDenResp.isSuccess()) {
+                    result.put("ctDenominatorError", ctDenResp.getMessage());
+                    result.put("dlmsStatus", ctDenResp.getStatus());
+                } else if (!ptNumResp.isSuccess()) {
+                    result.put("ptNumeratorError", ptNumResp.getMessage());
+                    result.put("dlmsStatus", ptNumResp.getStatus());
+                } else if (!ptDenResp.isSuccess()) {
+                    result.put("ptDenominatorError", ptDenResp.getMessage());
+                    result.put("dlmsStatus", ptDenResp.getStatus());
+                }
+                log.error("❌ Failed to write CT/PT to meter {}: {}", meterSerial, result);
+            } else {
+                log.info("✅ CT/PT written successfully meter={} ct={}/{} pt={}/{}",
+                        meterSerial, ctNumerator, ctDenominator, ptNumerator, ptDenominator);
+            }
 
             return result;
         });
