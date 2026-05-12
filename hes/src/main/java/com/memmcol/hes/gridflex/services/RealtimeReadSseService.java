@@ -419,7 +419,7 @@ public class RealtimeReadSseService {
             case "4;1.0.10.6.2.255;5;0":
                 return "Maximum Demand Register  - Apparent energy export (-A) occurrence time of private grid";
 
-                //instantaneous
+            //instantaneous
             case "3;1.0:32.7.0.255;2;0":
                 return "Voltage in phase L1";
             case "3;1.0:52.7.0.255;2;0":
@@ -470,6 +470,44 @@ public class RealtimeReadSseService {
                 return "Power factor in phase L2";
             case "3;1.0:73.7.0.255;2;0":
                 return "Power factor in phase L3";
+
+            // Clock
+            case "8;0.0:1.0.0.255;2;0":
+                return "Date and time";
+
+//            // Disconnect control
+//            case "70;0.0:96.3.10.255;2;0":
+//                return "Output status";
+//            case "70;0.0:96.3.10.255;4;0":
+//                return "Output status";
+//            case "70;0.0:96.3.10.255;1;0":
+//                return "Disconnect the relay";
+//            case "70;0.0:96.3.10.255;2;0":
+//                return "Connect the relay";
+
+            //Momas requirement
+            case "3;1.0:140.129.0.255;2;0":
+                return "Public Grid Credit";
+            case "3;1.1:140.129.0.255;2;0":
+                return "Private Grid Credit";
+            case "1;0.0:97.97.0.255;2;0":
+                return "Tariff index";
+            case "1;1.0:120.129.0.255;2;0":
+                return "Public Grid SGC Code";
+            case "1;1.1:120.129.0.255;2;0":
+                return "Private Grid SGC Code";
+            case "3;1.0:140.129.2.255;2;0":
+                return "Public Grid Cumulative power purchase credit [kWh]";
+            case "3;1.1:140.129.2.255;2;0":
+                return "Private Grid Cumulative power purchase credit [kWh]";
+            case "3;1.0:1.9.0.255;2;0":
+                return "Current month consumed credit [kWh]";
+
+            case "1;1.0:134.129.2.255;2;0":
+                return " Maximum vend limit [kWh]";
+            case "1;1.0:129.129.2.255;2;0":
+                return "Write TOKEN Code";
+
             default:
                 return null;
         }
