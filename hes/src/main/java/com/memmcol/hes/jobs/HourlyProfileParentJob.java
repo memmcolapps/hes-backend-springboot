@@ -3,10 +3,12 @@ package com.memmcol.hes.jobs;
 import com.memmcol.hes.domain.profile.MetersLockService;
 import com.memmcol.hes.tasks.Channel1ProfileTask;
 import lombok.AllArgsConstructor;
+import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.quartz.DisallowConcurrentExecution;
 import org.quartz.JobExecutionContext;
 import org.quartz.JobExecutionException;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.quartz.QuartzJobBean;
 
 import java.util.concurrent.ExecutorService;
@@ -18,8 +20,10 @@ import java.util.concurrent.Executors;
 /*
 * This job is expected to run every one hour, and it will execute all the listed profiles runnable
 * */
+@NoArgsConstructor
 public class HourlyProfileParentJob extends QuartzJobBean {
-    private final MetersLockService metersLockService;
+    @Autowired
+    private MetersLockService metersLockService;
 
     @Override
     protected void executeInternal(JobExecutionContext context) throws JobExecutionException {
