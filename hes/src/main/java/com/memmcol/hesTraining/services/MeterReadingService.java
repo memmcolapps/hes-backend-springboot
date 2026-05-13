@@ -9,6 +9,7 @@ import com.memmcol.hes.exception.AssociationLostException;
 import com.memmcol.hes.service.MeterRatioService;
 import gurux.dlms.*;
 import gurux.dlms.enums.Authentication;
+import gurux.dlms.enums.ErrorCode;
 import gurux.dlms.enums.InterfaceType;
 import gurux.dlms.enums.ObjectType;
 import gurux.dlms.enums.Unit;
@@ -636,27 +637,17 @@ public class MeterReadingService {
                 .toList();
 
         List<Object> values = readListValues(client, meterSerial, valueReads);
-        if (values.size() != parsedObis.size()) {
-            throw new IllegalStateException("Batched OBIS read returned " + values.size()
-                    + " value(s) for " + parsedObis.size() + " requested OBIS code(s).");
-        }
-
         MeterRatios meterRatios = mdMeter ? ratioService.readMeterRatios(meterModel, meterSerial) : null;
         DecimalFormat formatter = new DecimalFormat("#,##0.00");
         List<Map<String, Object>> response = new ArrayList<>(parsedObis.size());
 
         for (int i = 0; i < parsedObis.size(); i++) {
             ParsedObis parsed = parsedObis.get(i);
-            Object rawValue = values.get(i);
-            Object formattedValue = formatBatchValue(parsed, rawValue, mdMeter, meterRatios, formatter);
-
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("Meter No", meterSerial);
             item.put("obisCode", parsed.obisCode());
             item.put("attributeIndex", parsed.attributeIndex());
             item.put("dataIndex", parsed.dataIndex());
-            item.put(mdMeter ? "Raw Value" : "value", rawValue);
-            item.put("Actual Value", formattedValue);
             if (parsed.object() instanceof GXDLMSRegister register) {
                 item.put("scaler", register.getScaler() == 0 ? 1.0 : register.getScaler());
                 item.put("unit", getUnitSymbol(register.getUnit()));
@@ -666,6 +657,34 @@ public class MeterReadingService {
             } else if (parsed.object() instanceof GXDLMSDemandRegister register) {
                 item.put("scaler", register.getScaler() == 0 ? 1.0 : register.getScaler());
                 item.put("unit", getUnitSymbol(register.getUnit()));
+            }
+
+            if (i >= values.size()) {
+                item.put("statuscode", -1);
+                item.put("error", "No DLMS value returned for this OBIS in batched response");
+                item.put("Actual Value", null);
+                response.add(item);
+                continue;
+            }
+
+            Object rawValue = unwrapBatchValue(values.get(i));
+            if (isDlmsFailure(rawValue)) {
+                item.put("statuscode", -1);
+                item.put("error", dlmsFailureMessage(rawValue));
+                item.put("Actual Value", null);
+                response.add(item);
+                continue;
+            }
+
+            try {
+                Object formattedValue = formatBatchValue(parsed, rawValue, mdMeter, meterRatios, formatter);
+                item.put("statuscode", 0);
+                item.put(mdMeter ? "Raw Value" : "value", rawValue);
+                item.put("Actual Value", formattedValue);
+            } catch (Exception ex) {
+                item.put("statuscode", -1);
+                item.put("error", "Failed to format batched OBIS value: " + ex.getMessage());
+                item.put("Actual Value", null);
             }
             response.add(item);
         }
@@ -685,13 +704,25 @@ public class MeterReadingService {
                 .<Map.Entry<GXDLMSObject, Integer>>map(parsed -> new AbstractMap.SimpleEntry<>(parsed.object(), 3))
                 .toList();
         List<Object> scalerValues = readListValues(client, meterSerial, reads);
-        if (scalerValues.size() != scalerReads.size()) {
-            throw new IllegalStateException("Batched scaler/unit read returned " + scalerValues.size()
-                    + " value(s) for " + scalerReads.size() + " requested OBIS code(s).");
-        }
 
         for (int i = 0; i < scalerReads.size(); i++) {
-            client.updateValue(scalerReads.get(i).object(), 3, scalerValues.get(i));
+            if (i >= scalerValues.size()) {
+                log.warn("Batched scaler/unit read returned no value for meter={} obis={}",
+                        meterSerial, scalerReads.get(i).obisCode());
+                continue;
+            }
+            Object scalerValue = unwrapBatchValue(scalerValues.get(i));
+            if (isDlmsFailure(scalerValue)) {
+                log.warn("Batched scaler/unit read failed for meter={} obis={}: {}",
+                        meterSerial, scalerReads.get(i).obisCode(), dlmsFailureMessage(scalerValue));
+                continue;
+            }
+            try {
+                client.updateValue(scalerReads.get(i).object(), 3, scalerValue);
+            } catch (Exception ex) {
+                log.warn("Failed to apply batched scaler/unit for meter={} obis={}: {}",
+                        meterSerial, scalerReads.get(i).obisCode(), ex.getMessage());
+            }
         }
     }
 
@@ -717,6 +748,50 @@ public class MeterReadingService {
             return List.of(value);
         }
         throw new IllegalStateException("Batched OBIS read response was not a value list.");
+    }
+
+    private Object unwrapBatchValue(Object value) {
+        if (value instanceof GXDLMSAccessItem accessItem) {
+            if (accessItem.getError() != null && accessItem.getError() != ErrorCode.OK) {
+                return accessItem;
+            }
+            return accessItem.getValue();
+        }
+        return value;
+    }
+
+    private boolean isDlmsFailure(Object value) {
+        if (value instanceof GXDLMSExceptionResponse) {
+            return true;
+        }
+        if (value instanceof GXDLMSAccessItem accessItem) {
+            return accessItem.getError() != null && accessItem.getError() != ErrorCode.OK;
+        }
+        if (value instanceof ErrorCode errorCode) {
+            return errorCode != ErrorCode.OK;
+        }
+        if (value instanceof Map<?, ?> map) {
+            return map.containsKey("error");
+        }
+        return false;
+    }
+
+    private String dlmsFailureMessage(Object value) {
+        if (value instanceof GXDLMSExceptionResponse exceptionResponse) {
+            return "DLMS exception response: state=" + exceptionResponse.getStateError()
+                    + ", service=" + exceptionResponse.getExceptionServiceError()
+                    + ", value=" + exceptionResponse.getValue();
+        }
+        if (value instanceof GXDLMSAccessItem accessItem) {
+            return "DLMS access error: " + accessItem.getError();
+        }
+        if (value instanceof ErrorCode errorCode) {
+            return "DLMS access error: " + errorCode;
+        }
+        if (value instanceof Map<?, ?> map && map.containsKey("error")) {
+            return String.valueOf(map.get("error"));
+        }
+        return "DLMS access error";
     }
 
     private ParsedObis parseObis(String obis) {
