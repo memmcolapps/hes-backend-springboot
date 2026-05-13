@@ -28,6 +28,8 @@ import java.util.concurrent.ExecutorCompletionService;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 @Service
@@ -65,7 +67,7 @@ public class RealtimeReadSseService {
 
     public SseEmitter streamRealtimeRead(RealtimeReadRequest request) {
         RealtimeReadPlan plan = buildPlan(request);
-        SseEmitter emitter = new SseEmitter(requestTimeout.toMillis());
+        SseEmitter emitter = new SseEmitter(requestTimeout.plusSeconds(5).toMillis());
 
         streamExecutor.execute(() -> {
             try {
@@ -162,17 +164,19 @@ public class RealtimeReadSseService {
 
     private RealtimeReadSummary executeRealtimeRead(RealtimeReadPlan plan, SseEmitter emitter)
             throws InterruptedException, IOException {
-        CompletionService<List<Map<String, Object>>> completionService =
+        CompletionService<RealtimeReadSummary> completionService =
                 new ExecutorCompletionService<>(realtimeReadExecutor);
-        List<Future<List<Map<String, Object>>>> submitted = new ArrayList<>(plan.meters().size());
+        List<Future<RealtimeReadSummary>> submitted = new ArrayList<>(plan.meters().size());
+        AtomicBoolean acceptingEvents = new AtomicBoolean(true);
+        AtomicInteger success = new AtomicInteger();
+        AtomicInteger failed = new AtomicInteger();
 
         for (MeterDto meter : plan.meters()) {
-            submitted.add(completionService.submit(() -> readMeterObisValues(meter, plan.obisList())));
+            submitted.add(completionService.submit(() -> readMeterObisValues(
+                    meter, plan.obisList(), emitter, acceptingEvents, success, failed)));
         }
 
         int completedMeters = 0;
-        int success = 0;
-        int failed = 0;
         long deadlineNanos = System.nanoTime() + requestTimeout.toNanos();
 
         try {
@@ -182,56 +186,81 @@ public class RealtimeReadSseService {
                     break;
                 }
 
-                Future<List<Map<String, Object>>> future = completionService.poll(remainingNanos, TimeUnit.NANOSECONDS);
+                Future<RealtimeReadSummary> future = completionService.poll(remainingNanos, TimeUnit.NANOSECONDS);
                 if (future == null) {
                     break;
                 }
 
                 completedMeters++;
                 try {
-                    List<Map<String, Object>> readings = future.get();
-                    for (Map<String, Object> reading : readings) {
-                        if (Integer.valueOf(0).equals(reading.get("statuscode"))) {
-                            success++;
-                        } else {
-                            failed++;
-                        }
-                        send(emitter, "reading", reading);
-                    }
+                    future.get();
                 } catch (ExecutionException ex) {
-                    failed += plan.obisList().size();
+                    failed.addAndGet(plan.obisList().size());
                     send(emitter, "reading", errorPayload(null, null, ex.getMessage()));
                 }
             }
 
             int timedOutMeters = submitted.size() - completedMeters;
             if (timedOutMeters > 0) {
+                acceptingEvents.set(false);
                 cancelPending(submitted);
-                failed += timedOutMeters * plan.obisList().size();
+                int expectedReadings = plan.meters().size() * plan.obisList().size();
+                int pendingReadings = expectedReadings - success.get() - failed.get();
+                if (pendingReadings > 0) {
+                    failed.addAndGet(pendingReadings);
+                }
                 send(emitter, "warning", Map.of(
                         "statusmessage", "Realtime read timed out.",
                         "timedOutMeters", timedOutMeters
                 ));
             }
 
-            return new RealtimeReadSummary(success, failed);
+            return new RealtimeReadSummary(success.get(), failed.get());
         } finally {
+            acceptingEvents.set(false);
             cancelPending(submitted);
         }
     }
 
-    private List<Map<String, Object>> readMeterObisValues(MeterDto meter, List<ObisDto> obisList) {
+    private RealtimeReadSummary readMeterObisValues(MeterDto meter,
+                                                    List<ObisDto> obisList,
+                                                    SseEmitter emitter,
+                                                    AtomicBoolean acceptingEvents,
+                                                    AtomicInteger totalSuccess,
+                                                    AtomicInteger totalFailed) throws IOException {
+        long meterStarted = System.nanoTime();
         log.info("⚙️ Realtime read meter={}, obisCount={}", meter.getMeterSerial(), obisList.size());
 
-        List<Map<String, Object>> readings = new ArrayList<>(obisList.size());
+        int success = 0;
+        int failed = 0;
         for (ObisDto obis : obisList) {
-            readings.add(readSingleObis(meter, obis));
+            if (Thread.currentThread().isInterrupted() || !acceptingEvents.get()) {
+                break;
+            }
+
+            Map<String, Object> reading = readSingleObis(meter, obis);
+            if (Integer.valueOf(0).equals(reading.get("statuscode"))) {
+                success++;
+                totalSuccess.incrementAndGet();
+            } else {
+                failed++;
+                totalFailed.incrementAndGet();
+            }
+
+            if (acceptingEvents.get()) {
+                send(emitter, "reading", reading);
+            }
         }
-        return readings;
+
+        long elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - meterStarted);
+        log.info("✅ Realtime read meter={} finished success={} failed={} elapsedMs={}",
+                meter.getMeterSerial(), success, failed, elapsedMs);
+        return new RealtimeReadSummary(success, failed);
     }
 
     private Map<String, Object> readSingleObis(MeterDto meter, ObisDto obis) {
         Map<String, Object> responseData = basePayload(meter, obis.getObisString());
+        long started = System.nanoTime();
 
         try {
             Object value;
@@ -254,6 +283,8 @@ public class RealtimeReadSseService {
             responseData.put("statuscode", -1);
             responseData.put("value", null);
             responseData.put("statusmessage", e.getMessage());
+        } finally {
+            responseData.put("elapsedMs", TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started));
         }
 
         return responseData;
@@ -320,7 +351,6 @@ public class RealtimeReadSseService {
     private String mapObisCode(String obisCode) {
 
         if (obisCode == null) return null;
-        System.out.println(">>>>:"+obisCode);
 
         switch (obisCode) {
 
