@@ -93,7 +93,18 @@ public class RealtimeReadSseService {
                 emitter.complete();
             } catch (Exception e) {
                 log.error("❌ Unexpected realtime read error: {}", e.getMessage());
-                emitter.completeWithError(e);
+                // Best-effort terminal event so the FE never waits indefinitely.
+                try {
+                    emitter.send(SseEmitter.event().name("completed").data(Map.of(
+                            "statusmessage", "Realtime read failed: " + e.getMessage(),
+                            "success", 0,
+                            "failed", 0,
+                            "error", true
+                    )));
+                    emitter.complete();
+                } catch (Exception ignored) {
+                    emitter.completeWithError(e);
+                }
             }
         });
 
