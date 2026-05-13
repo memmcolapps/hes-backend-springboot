@@ -26,9 +26,12 @@ import java.text.DecimalFormat;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.AbstractMap;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 @Service
@@ -608,6 +611,231 @@ public class MeterReadingService {
         }
     }
 
+    public List<Map<String, Object>> readObisValuesBatch(String meterModel,
+                                                         String meterSerial,
+                                                         List<String> obisList,
+                                                         boolean mdMeter) throws Exception {
+        if (obisList == null || obisList.isEmpty()) {
+            return List.of();
+        }
+
+        GXDLMSClient client = sessionManagerMultiVendor.getOrCreateClient(meterSerial);
+        if (client == null) {
+            throw new IllegalStateException("No active session for meter: " + meterSerial);
+        }
+
+        List<ParsedObis> parsedObis = new ArrayList<>(obisList.size());
+        for (String obis : obisList) {
+            parsedObis.add(parseObis(obis));
+        }
+
+        readScalerUnitsBatch(client, meterSerial, parsedObis);
+
+        List<Map.Entry<GXDLMSObject, Integer>> valueReads = parsedObis.stream()
+                .<Map.Entry<GXDLMSObject, Integer>>map(parsed -> new AbstractMap.SimpleEntry<>(parsed.object(), parsed.attributeIndex()))
+                .toList();
+
+        List<Object> values = readListValues(client, meterSerial, valueReads);
+        if (values.size() != parsedObis.size()) {
+            throw new IllegalStateException("Batched OBIS read returned " + values.size()
+                    + " value(s) for " + parsedObis.size() + " requested OBIS code(s).");
+        }
+
+        MeterRatios meterRatios = mdMeter ? ratioService.readMeterRatios(meterModel, meterSerial) : null;
+        DecimalFormat formatter = new DecimalFormat("#,##0.00");
+        List<Map<String, Object>> response = new ArrayList<>(parsedObis.size());
+
+        for (int i = 0; i < parsedObis.size(); i++) {
+            ParsedObis parsed = parsedObis.get(i);
+            Object rawValue = values.get(i);
+            Object formattedValue = formatBatchValue(parsed, rawValue, mdMeter, meterRatios, formatter);
+
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("Meter No", meterSerial);
+            item.put("obisCode", parsed.obisCode());
+            item.put("attributeIndex", parsed.attributeIndex());
+            item.put("dataIndex", parsed.dataIndex());
+            item.put(mdMeter ? "Raw Value" : "value", rawValue);
+            item.put("Actual Value", formattedValue);
+            if (parsed.object() instanceof GXDLMSRegister register) {
+                item.put("scaler", register.getScaler() == 0 ? 1.0 : register.getScaler());
+                item.put("unit", getUnitSymbol(register.getUnit()));
+            } else if (parsed.object() instanceof GXDLMSExtendedRegister register) {
+                item.put("scaler", register.getScaler() == 0 ? 1.0 : register.getScaler());
+                item.put("unit", getUnitSymbol(register.getUnit()));
+            } else if (parsed.object() instanceof GXDLMSDemandRegister register) {
+                item.put("scaler", register.getScaler() == 0 ? 1.0 : register.getScaler());
+                item.put("unit", getUnitSymbol(register.getUnit()));
+            }
+            response.add(item);
+        }
+
+        return response;
+    }
+
+    private void readScalerUnitsBatch(GXDLMSClient client, String meterSerial, List<ParsedObis> parsedObis) throws Exception {
+        List<ParsedObis> scalerReads = parsedObis.stream()
+                .filter(parsed -> supportsScalerUnit(parsed.objectType()))
+                .toList();
+        if (scalerReads.isEmpty()) {
+            return;
+        }
+
+        List<Map.Entry<GXDLMSObject, Integer>> reads = scalerReads.stream()
+                .<Map.Entry<GXDLMSObject, Integer>>map(parsed -> new AbstractMap.SimpleEntry<>(parsed.object(), 3))
+                .toList();
+        List<Object> scalerValues = readListValues(client, meterSerial, reads);
+        if (scalerValues.size() != scalerReads.size()) {
+            throw new IllegalStateException("Batched scaler/unit read returned " + scalerValues.size()
+                    + " value(s) for " + scalerReads.size() + " requested OBIS code(s).");
+        }
+
+        for (int i = 0; i < scalerReads.size(); i++) {
+            client.updateValue(scalerReads.get(i).object(), 3, scalerValues.get(i));
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Object> readListValues(GXDLMSClient client,
+                                        String meterSerial,
+                                        List<Map.Entry<GXDLMSObject, Integer>> reads) throws Exception {
+        byte[][] requests = client.readList(reads);
+        GXReplyData reply = new GXReplyData();
+
+        byte[] response = txRxService.sendReceiveWithContext(meterSerial, requests[0], 20000);
+        if (sessionManagerMultiVendor.isAssociationLost(response)) {
+            sessionManagerMultiVendor.removeSession(meterSerial);
+            throw new AssociationLostException("Association lost during batched OBIS read");
+        }
+
+        client.getData(response, reply, null);
+        Object value = reply.getValue();
+        if (value instanceof List<?> list) {
+            return (List<Object>) list;
+        }
+        if (reads.size() == 1) {
+            return List.of(value);
+        }
+        throw new IllegalStateException("Batched OBIS read response was not a value list.");
+    }
+
+    private ParsedObis parseObis(String obis) {
+        String[] parts = obis.split(";");
+        if (parts.length != 4) {
+            throw new IllegalArgumentException("OBIS format must be: classId;obisCode;attributeIndex;dataIndex");
+        }
+
+        int classId = Integer.parseInt(parts[0]);
+        String obisCode = parts[1].trim();
+        int attributeIndex = Integer.parseInt(parts[2]);
+        int dataIndex = Integer.parseInt(parts[3]);
+        ObjectType objectType = ObjectType.forValue(classId);
+        GXDLMSObject object = createObject(objectType, obisCode);
+        return new ParsedObis(obis, obisCode, classId, attributeIndex, dataIndex, objectType, object);
+    }
+
+    private GXDLMSObject createObject(ObjectType objectType, String obisCode) {
+        GXDLMSObject object = switch (objectType) {
+            case REGISTER -> new GXDLMSRegister();
+            case EXTENDED_REGISTER -> new GXDLMSExtendedRegister();
+            case DEMAND_REGISTER -> new GXDLMSDemandRegister();
+            case CLOCK -> new GXDLMSClock();
+            case DATA -> new GXDLMSData();
+            default -> GXDLMSClient.createObject(objectType);
+        };
+        object.setLogicalName(obisCode);
+        return object;
+    }
+
+    private Object formatBatchValue(ParsedObis parsed,
+                                    Object rawValue,
+                                    boolean mdMeter,
+                                    MeterRatios meterRatios,
+                                    DecimalFormat formatter) {
+        if (rawValue == null) {
+            return null;
+        }
+
+        ObjectType type = parsed.objectType();
+        if (type == ObjectType.CLOCK) {
+            return formatClock(rawValue);
+        }
+        if (rawValue instanceof byte[] bytes) {
+            return DlmsDataDecoder.decodeOctetString(bytes);
+        }
+        if (!(rawValue instanceof Number)) {
+            return rawValue.toString();
+        }
+
+        BigDecimal finalValue = new BigDecimal(rawValue.toString());
+        if (supportsScalerUnit(type)) {
+            String unitSymbol = getRegisterUnit(parsed.object());
+            if (mdMeter && meterRatios != null) {
+                finalValue = applyMdRatio(finalValue, unitSymbol, meterRatios);
+            } else if (isPowerOrEnergy(unitSymbol)) {
+                finalValue = finalValue.divide(new BigDecimal(1000), 2, RoundingMode.HALF_UP);
+            } else {
+                finalValue = finalValue.setScale(2, RoundingMode.HALF_UP);
+            }
+            return formatter.format(finalValue);
+        }
+
+        return finalValue.toString();
+    }
+
+    private String formatClock(Object rawValue) {
+        GXDateTime clockDateTime;
+        if (rawValue instanceof GXDateTime dt) {
+            clockDateTime = dt;
+        } else if (rawValue instanceof byte[] array) {
+            clockDateTime = GXCommon.getDateTime(array);
+        } else {
+            return rawValue.toString();
+        }
+        LocalDateTime localDateTime = clockDateTime.getMeterCalendar().toInstant()
+                .atZone(ZoneId.systemDefault())
+                .toLocalDateTime();
+        return localDateTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+    }
+
+    private BigDecimal applyMdRatio(BigDecimal value, String unitSymbol, MeterRatios meterRatios) {
+        return switch (unitSymbol) {
+            case "A" -> value.multiply(BigDecimal.valueOf(meterRatios.getCtRatio()))
+                    .setScale(2, RoundingMode.HALF_UP);
+            case "V" -> value.multiply(BigDecimal.valueOf(meterRatios.getPtRatio()))
+                    .setScale(2, RoundingMode.HALF_UP);
+            case "KW", "KVA", "KVar", "KWh", "KVAh", "KVarh" -> value.multiply(BigDecimal.valueOf(meterRatios.getCtRatio()))
+                    .divide(new BigDecimal(1000), 2, RoundingMode.HALF_UP);
+            default -> value.setScale(2, RoundingMode.HALF_UP);
+        };
+    }
+
+    private String getRegisterUnit(GXDLMSObject object) {
+        if (object instanceof GXDLMSRegister register) {
+            return getUnitSymbol(register.getUnit());
+        }
+        if (object instanceof GXDLMSExtendedRegister register) {
+            return getUnitSymbol(register.getUnit());
+        }
+        if (object instanceof GXDLMSDemandRegister register) {
+            return getUnitSymbol(register.getUnit());
+        }
+        return "";
+    }
+
+    private boolean supportsScalerUnit(ObjectType type) {
+        return type == ObjectType.REGISTER
+                || type == ObjectType.EXTENDED_REGISTER
+                || type == ObjectType.DEMAND_REGISTER;
+    }
+
+    private boolean isPowerOrEnergy(String unitSymbol) {
+        return switch (unitSymbol) {
+            case "KW", "KVA", "KVar", "KWh", "KVAh", "KVarh" -> true;
+            default -> false;
+        };
+    }
+
     static public String getUnitSymbol(Unit unit) {
         return switch (unit) {
             case VOLTAGE -> "V";
@@ -622,6 +850,15 @@ public class MeterReadingService {
             // Add more cases as needed
             default -> unit.name(); // fallback to enum name
         };
+    }
+
+    private record ParsedObis(String obis,
+                              String obisCode,
+                              int classId,
+                              int attributeIndex,
+                              int dataIndex,
+                              ObjectType objectType,
+                              GXDLMSObject object) {
     }
 
 }

@@ -233,6 +233,33 @@ public class RealtimeReadSseService {
 
         int success = 0;
         int failed = 0;
+        try {
+            List<Map<String, Object>> batchReadings = readMeterObisValuesBatch(meter, obisList, meterStarted);
+            for (Map<String, Object> reading : batchReadings) {
+                if (Thread.currentThread().isInterrupted() || !acceptingEvents.get()) {
+                    break;
+                }
+
+                if (Integer.valueOf(0).equals(reading.get("statuscode"))) {
+                    success++;
+                    totalSuccess.incrementAndGet();
+                } else {
+                    failed++;
+                    totalFailed.incrementAndGet();
+                }
+
+                send(emitter, "reading", reading);
+            }
+
+            long elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - meterStarted);
+            log.info("✅ Batched realtime read meter={} finished success={} failed={} elapsedMs={}",
+                    meter.getMeterSerial(), success, failed, elapsedMs);
+            return new RealtimeReadSummary(success, failed);
+        } catch (Exception batchException) {
+            log.warn("⚠️ Batched realtime read failed for meter={}, falling back to single OBIS reads: {}",
+                    meter.getMeterSerial(), batchException.getMessage());
+        }
+
         for (ObisDto obis : obisList) {
             if (Thread.currentThread().isInterrupted() || !acceptingEvents.get()) {
                 break;
@@ -256,6 +283,32 @@ public class RealtimeReadSseService {
         log.info("✅ Realtime read meter={} finished success={} failed={} elapsedMs={}",
                 meter.getMeterSerial(), success, failed, elapsedMs);
         return new RealtimeReadSummary(success, failed);
+    }
+
+    private List<Map<String, Object>> readMeterObisValuesBatch(MeterDto meter,
+                                                               List<ObisDto> obisList,
+                                                               long meterStarted) throws Exception {
+        List<String> obisStrings = obisList.stream()
+                .map(ObisDto::getObisString)
+                .toList();
+        List<Map<String, Object>> batchResponses = trainingService.readObisValuesBatch(
+                meter.getMeterModel(), meter.getMeterSerial(), obisStrings, meter.isMD());
+        long elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - meterStarted);
+        List<Map<String, Object>> readings = new ArrayList<>(batchResponses.size());
+
+        for (int i = 0; i < obisList.size(); i++) {
+            ObisDto obis = obisList.get(i);
+            Map<String, Object> response = batchResponses.get(i);
+            Map<String, Object> responseData = basePayload(meter, obis.getObisString());
+            responseData.put("desc", mapObisCode(obis.getObisString()));
+            responseData.put("value", extractValue(response));
+            responseData.put("statusmessage", "SUCCESS");
+            responseData.put("elapsedMs", elapsedMs);
+            responseData.put("batch", true);
+            readings.add(responseData);
+        }
+
+        return readings;
     }
 
     private Map<String, Object> readSingleObis(MeterDto meter, ObisDto obis) {
