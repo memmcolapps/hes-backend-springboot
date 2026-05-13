@@ -2,6 +2,7 @@ package com.memmcol.hes.domain.network;
 
 import com.memmcol.hes.application.port.out.MeterLockPort;
 import com.memmcol.hes.infrastructure.dlms.DlmsReaderUtils;
+import com.memmcol.hes.model.DlmsResponse;
 import com.memmcol.hes.nettyUtils.SessionManagerMultiVendor;
 import gurux.dlms.GXDLMSClient;
 import gurux.dlms.enums.DataType;
@@ -41,15 +42,21 @@ public class NetworkWriteService {
             log.info("Writing APN '{}' to meter {}", apn, meterSerial);
 
             // Class 45 (GPRS Setup), Attribute 2 (APN) is Octet String (DataType.OCTET_STRING)
-            dlmsReaderUtils.writeAttribute(client, meterSerial, "0.0.25.4.0.255", 45, 2,
+            DlmsResponse response = dlmsReaderUtils.writeAttribute(client, meterSerial, "0.0.25.4.0.255", 45, 2,
                     apn.getBytes(StandardCharsets.UTF_8), DataType.OCTET_STRING);
 
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("meterSerial", meterSerial);
-            result.put("status", "success");
+            result.put("status", response.isSuccess() ? "success" : "failed");
+            result.put("dlmsStatus", response.getStatus());
+            result.put("message", response.getMessage());
             result.put("apn", apn);
 
-            log.info("✅ APN written successfully to meter {}", meterSerial);
+            if (response.isSuccess()) {
+                log.info("✅ APN written successfully to meter {}", meterSerial);
+            } else {
+                log.error("❌ Failed to write APN to meter {}: {} ({})", meterSerial, response.getMessage(), response.getStatus());
+            }
             return result;
         });
     }
@@ -74,15 +81,21 @@ public class NetworkWriteService {
                     .map(s -> s.getBytes(StandardCharsets.UTF_8))
                     .toList();
 
-            dlmsReaderUtils.writeAttribute(client, meterSerial, "0.0.2.1.0.255", 29, 6,
+            DlmsResponse response = dlmsReaderUtils.writeAttribute(client, meterSerial, "0.0.2.1.0.255", 29, 6,
                     octetStrings, DataType.ARRAY);
 
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("meterSerial", meterSerial);
-            result.put("status", "success");
+            result.put("status", response.isSuccess() ? "success" : "failed");
+            result.put("dlmsStatus", response.getStatus());
+            result.put("message", response.getMessage());
             result.put("ipPorts", ipPorts);
 
-            log.info("✅ Destination List written successfully to meter {}", meterSerial);
+            if (response.isSuccess()) {
+                log.info("✅ Destination List written successfully to meter {}", meterSerial);
+            } else {
+                log.error("❌ Failed to write Destination List to meter {}: {} ({})", meterSerial, response.getMessage(), response.getStatus());
+            }
             return result;
         });
     }
