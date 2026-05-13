@@ -34,6 +34,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 @Slf4j
@@ -43,6 +44,14 @@ public class MeterReadingService {
     private final SessionManagerMultiVendor sessionManagerMultiVendor;
     private final DlmsReaderUtils dlmsReaderUtils;
     private final MeterRatioService ratioService;
+
+    // Fail-fast on a per-DLMS-call basis during user-facing realtime reads.
+    // Cold/legacy calls in this class still use 20s.
+    private static final int REALTIME_DLMS_TIMEOUT_MS = 8000;
+
+    // Scaler+unit (attribute 3) is static per (meterModel, classId, obisCode).
+    // Caching eliminates one DLMS round-trip per realtime call.
+    private final Map<String, Object> scalerUnitCache = new ConcurrentHashMap<>();
 
     /*TODO:
      *  1. Create instantaneous read
@@ -620,6 +629,20 @@ public class MeterReadingService {
             return List.of();
         }
 
+        try {
+            return readObisValuesBatchOnce(meterModel, meterSerial, obisList, mdMeter);
+        } catch (Exception firstAttempt) {
+            log.warn("Batched OBIS read attempt 1 failed for meter={}: {} — invalidating session and retrying",
+                    meterSerial, firstAttempt.getMessage());
+            sessionManagerMultiVendor.removeSession(meterSerial);
+            return readObisValuesBatchOnce(meterModel, meterSerial, obisList, mdMeter);
+        }
+    }
+
+    private List<Map<String, Object>> readObisValuesBatchOnce(String meterModel,
+                                                              String meterSerial,
+                                                              List<String> obisList,
+                                                              boolean mdMeter) throws Exception {
         GXDLMSClient client = sessionManagerMultiVendor.getOrCreateClient(meterSerial);
         if (client == null) {
             throw new IllegalStateException("No active session for meter: " + meterSerial);
@@ -630,7 +653,7 @@ public class MeterReadingService {
             parsedObis.add(parseObis(obis));
         }
 
-        readScalerUnitsBatch(client, meterSerial, parsedObis);
+        readScalerUnitsBatch(client, meterModel, meterSerial, parsedObis);
 
         List<Map.Entry<GXDLMSObject, Integer>> valueReads = parsedObis.stream()
                 .<Map.Entry<GXDLMSObject, Integer>>map(parsed -> new AbstractMap.SimpleEntry<>(parsed.object(), parsed.attributeIndex()))
@@ -692,7 +715,10 @@ public class MeterReadingService {
         return response;
     }
 
-    private void readScalerUnitsBatch(GXDLMSClient client, String meterSerial, List<ParsedObis> parsedObis) throws Exception {
+    private void readScalerUnitsBatch(GXDLMSClient client,
+                                      String meterModel,
+                                      String meterSerial,
+                                      List<ParsedObis> parsedObis) throws Exception {
         List<ParsedObis> scalerReads = parsedObis.stream()
                 .filter(parsed -> supportsScalerUnit(parsed.objectType()))
                 .toList();
@@ -700,30 +726,57 @@ public class MeterReadingService {
             return;
         }
 
-        List<Map.Entry<GXDLMSObject, Integer>> reads = scalerReads.stream()
+        // Split into cached vs uncached; apply cached values directly, only batch-read the rest.
+        List<ParsedObis> uncached = new ArrayList<>(scalerReads.size());
+        for (ParsedObis parsed : scalerReads) {
+            Object cached = scalerUnitCache.get(scalerUnitKey(meterModel, parsed));
+            if (cached == null) {
+                uncached.add(parsed);
+                continue;
+            }
+            try {
+                client.updateValue(parsed.object(), 3, cached);
+            } catch (Exception ex) {
+                log.warn("Failed to apply cached scaler/unit for meter={} obis={}: {}",
+                        meterSerial, parsed.obisCode(), ex.getMessage());
+                uncached.add(parsed);
+            }
+        }
+        if (uncached.isEmpty()) {
+            log.debug("Scaler/unit fully served from cache for meter={} count={}", meterSerial, scalerReads.size());
+            return;
+        }
+
+        List<Map.Entry<GXDLMSObject, Integer>> reads = uncached.stream()
                 .<Map.Entry<GXDLMSObject, Integer>>map(parsed -> new AbstractMap.SimpleEntry<>(parsed.object(), 3))
                 .toList();
         List<Object> scalerValues = readListValues(client, meterSerial, reads);
 
-        for (int i = 0; i < scalerReads.size(); i++) {
+        for (int i = 0; i < uncached.size(); i++) {
+            ParsedObis parsed = uncached.get(i);
             if (i >= scalerValues.size()) {
                 log.warn("Batched scaler/unit read returned no value for meter={} obis={}",
-                        meterSerial, scalerReads.get(i).obisCode());
+                        meterSerial, parsed.obisCode());
                 continue;
             }
             Object scalerValue = unwrapBatchValue(scalerValues.get(i));
             if (isDlmsFailure(scalerValue)) {
                 log.warn("Batched scaler/unit read failed for meter={} obis={}: {}",
-                        meterSerial, scalerReads.get(i).obisCode(), dlmsFailureMessage(scalerValue));
+                        meterSerial, parsed.obisCode(), dlmsFailureMessage(scalerValue));
                 continue;
             }
             try {
-                client.updateValue(scalerReads.get(i).object(), 3, scalerValue);
+                client.updateValue(parsed.object(), 3, scalerValue);
+                scalerUnitCache.put(scalerUnitKey(meterModel, parsed), scalerValue);
             } catch (Exception ex) {
                 log.warn("Failed to apply batched scaler/unit for meter={} obis={}: {}",
-                        meterSerial, scalerReads.get(i).obisCode(), ex.getMessage());
+                        meterSerial, parsed.obisCode(), ex.getMessage());
             }
         }
+    }
+
+    private String scalerUnitKey(String meterModel, ParsedObis parsed) {
+        return (meterModel == null ? "?" : meterModel) + "|" + parsed.classId() + "|" + parsed.obisCode();
     }
 
     @SuppressWarnings("unchecked")
@@ -731,23 +784,41 @@ public class MeterReadingService {
                                         String meterSerial,
                                         List<Map.Entry<GXDLMSObject, Integer>> reads) throws Exception {
         byte[][] requests = client.readList(reads);
-        GXReplyData reply = new GXReplyData();
-
-        byte[] response = txRxService.sendReceiveWithContext(meterSerial, requests[0], 20000);
-        if (sessionManagerMultiVendor.isAssociationLost(response)) {
-            sessionManagerMultiVendor.removeSession(meterSerial);
-            throw new AssociationLostException("Association lost during batched OBIS read");
+        if (requests == null || requests.length == 0) {
+            return List.of();
         }
 
-        client.getData(response, reply, null);
-        Object value = reply.getValue();
-        if (value instanceof List<?> list) {
-            return (List<Object>) list;
+        List<Object> accumulated = new ArrayList<>(reads.size());
+
+        for (byte[] request : requests) {
+            GXReplyData reply = new GXReplyData();
+            byte[] response = txRxService.sendReceiveWithContext(meterSerial, request, REALTIME_DLMS_TIMEOUT_MS);
+            if (sessionManagerMultiVendor.isAssociationLost(response)) {
+                sessionManagerMultiVendor.removeSession(meterSerial);
+                throw new AssociationLostException("Association lost during batched OBIS read");
+            }
+            client.getData(response, reply, null);
+
+            // Drain continuation frames when the APDU spans multiple HDLC frames.
+            while (reply.isMoreData()) {
+                byte[] cont = client.receiverReady(reply);
+                byte[] contResp = txRxService.sendReceiveWithContext(meterSerial, cont, REALTIME_DLMS_TIMEOUT_MS);
+                if (sessionManagerMultiVendor.isAssociationLost(contResp)) {
+                    sessionManagerMultiVendor.removeSession(meterSerial);
+                    throw new AssociationLostException("Association lost during batched OBIS read");
+                }
+                client.getData(contResp, reply, null);
+            }
+
+            Object value = reply.getValue();
+            if (value instanceof List<?> list) {
+                accumulated.addAll((List<Object>) list);
+            } else if (value != null) {
+                accumulated.add(value);
+            }
         }
-        if (reads.size() == 1) {
-            return List.of(value);
-        }
-        throw new IllegalStateException("Batched OBIS read response was not a value list.");
+
+        return accumulated;
     }
 
     private Object unwrapBatchValue(Object value) {
