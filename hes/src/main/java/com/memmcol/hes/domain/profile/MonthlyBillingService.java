@@ -132,7 +132,6 @@ public class MonthlyBillingService {
                 // Persist new cursor — null-safe
                 ProfileTimestamp resume = ProfileTimestamp.ofNullable(syncResult.getAdvanceTo());
                 cursor = (resume != null) ? resume.plus(cp) : cursor.plus(cp);
-                statePort.upsertState(meterSerial, profileObis, resume, cp);
 
                 if (cp.seconds() <= 0) {
                     log.warn("cp.seconds() <= 0 : {}", cp);
@@ -148,7 +147,7 @@ public class MonthlyBillingService {
         }
     }
 
-    public void readProfileAndSaveV1(String model, String meterSerial, String profileObis, boolean isMD) {
+    private void deleted_readProfileAndSaveV1(String model, String meterSerial, String profileObis, boolean isMD) {
         try {
             //Step 1: Get last timestamp read from the meter or default to yesterday
             ProfileTimestamp cursor = new ProfileTimestamp(

@@ -125,7 +125,6 @@ public class EventLogService {
                 // Persist new cursor — null-safe
                 ProfileTimestamp resume = ProfileTimestamp.ofNullable(syncResult.getAdvanceTo());
                 cursor = (resume != null) ? resume.plus(cp) : cursor.plus(cp);
-                statePort.upsertState(meterSerial, profileObis, resume, cp); // ✅ persisted on success
 
                 if (cp.seconds() <= 0) {
                     log.warn("cp.seconds() <= 0 : {}", cp);
@@ -141,85 +140,6 @@ public class EventLogService {
         }
     }
 
-    /*TODO:
-    *  1. Remove @Transactional from all other profiles readProfileAndSave method*/
-    public void readProfileAndSaveV1(String model, String meterSerial, String profileObis, boolean isMD) {
-
-        try {
-            //Step 1: Get last timestamp read from the meter or default to yesterday
-            ProfileTimestamp cursor = new ProfileTimestamp(
-                    timestampPort.resolveLastTimestamp(meterSerial, profileObis)
-            );
-
-            /*TODO:
-            *  1. Remove batch size and iteration from this method.
-            *  2. Remove test mode
-            *  3. Add plus(cp(1)) before the next timestamp start
-            * */
-            LocalDateTime now = LocalDateTime.now();
-            while (cursor.value().isBefore(now)) {
-                LocalDateTime from = cursor.value();
-                LocalDateTime to = from.plusDays(1);
-
-                if (to.isAfter(now)) to = now;
-
-                long t0 = System.currentTimeMillis();
-                boolean exceptionOccurred = false;
-
-                ProfileMetadataResult captureObjects = metadataProvider.resolve(meterSerial, profileObis, model);
-                List<ProfileRowGeneric> rawRows;
-
-                try {
-                    rawRows = dlmsReaderUtils.readRange(model, meterSerial, profileObis, captureObjects, from, to, isMD);
-
-//                    if (testMode) {
-//                        rawRows = dlmsReaderUtils.mockReadRange(model, meterSerial, profileObis, captureObjects, from, to, true);
-//                    } else {
-//                        rawRows = dlmsReaderUtils.readRange(model, meterSerial, profileObis, captureObjects, from, to, isMD);
-//                    }
-                } catch (Exception e) {
-                    log.warn("Range read failed; attempting recovery meter={} profile={} cause={}",
-                            meterSerial, profileObis, e.getMessage());
-                    exceptionOccurred = true;
-                    rawRows = attemptRecovery(model, meterSerial, profileObis, captureObjects);
-                }
-
-                // --- Cursor & Salvage Logic ---
-                if ((rawRows == null || rawRows.isEmpty()) && exceptionOccurred) {
-                    // BREAK and exit silently
-                    log.warn("Breaking (no rows + exception) meter={} profile={} from={} to={}",
-                            meterSerial, profileObis, from, to);
-                    return;
-                }
-
-                if (rawRows == null || rawRows.isEmpty()) {
-                    log.info("No rows, no exception — advancing cursor, meter={} profile={}", meterSerial, profileObis);
-                    cursor = new ProfileTimestamp(to);
-                    statePort.upsertState(meterSerial, profileObis, new ProfileTimestamp(to), new CapturePeriod(10));
-                    continue;
-                }
-
-//                savePartialToJson(rawRows);
-
-                List<EventLogDTO> eventDtos = eventLogMapper.toDTOs(rawRows, meterSerial, model);
-
-                ProfileSyncResult syncResult = eventLogPersistenceAdapter.saveBatch(meterSerial, profileObis, eventDtos);
-
-                long t1 = System.currentTimeMillis() - t0;
-                metricsPort.recordBatch(meterSerial, profileObis, syncResult.getInsertedCount(), t1);
-
-                // Persist new cursor (Next iteration)
-                cursor = ProfileTimestamp.ofNullable(syncResult.getAdvanceTo().plusSeconds(10));
-
-            }
-
-        } catch (Exception ex) {
-            // Final safety: log and exit WITHOUT re-throwing.
-            log.error("Fatal exception while reading profile, meter={}, profile={}: {}",
-                    meterSerial, profileObis, ex.getMessage(), ex);
-            metricsPort.recordFailure(meterSerial, profileObis, "unhandled_exception");
-        }
-    }
 
 
     public List<ProfileRowGeneric> attemptRecovery(String model, String serial, String profileObis, ProfileMetadataResult captureObjects) {

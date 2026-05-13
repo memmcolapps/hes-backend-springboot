@@ -117,7 +117,7 @@ public class DailyBillingPersistenceAdapter {
         boolean advanced = previousLast == null || advanceTo.isAfter(previousLast);
 
         if (advanceTo != null) {
-            statePort.upsertState(meterSerial, profileOBIS, new ProfileTimestamp(advanceTo.plusDays(1)), capturePeriodSeconds);
+            statePort.upsertState(meterSerial, profileOBIS, new ProfileTimestamp(advanceTo), capturePeriodSeconds);
         }
 
         log.info("Batch persisted meter={} total={} inserted={} dup={} start={} end={} advanceTo={}",
@@ -166,7 +166,7 @@ public class DailyBillingPersistenceAdapter {
         }
         TypedQuery<LocalDateTime> query = entityManager.createQuery(
                 "SELECT r.entryTimestamp " +
-                        "FROM MonthlyBillingEntity r " +
+                        "FROM DailyBillingProfileEntity r " +
                         "WHERE r.meterSerial = :serial " +
                         "AND r.entryTimestamp IN :timestamps",
                 LocalDateTime.class
