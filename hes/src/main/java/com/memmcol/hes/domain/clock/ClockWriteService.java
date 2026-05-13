@@ -1,6 +1,7 @@
 package com.memmcol.hes.domain.clock;
 
 import com.memmcol.hes.infrastructure.dlms.DlmsReaderUtils;
+import com.memmcol.hes.model.DlmsResponse;
 import com.memmcol.hes.nettyUtils.SessionManagerMultiVendor;
 import gurux.dlms.GXDLMSClient;
 import gurux.dlms.GXDateTime;
@@ -41,12 +42,18 @@ public class ClockWriteService {
                 dateTime.atZone(ZoneId.systemDefault()).toInstant()
         ));
 
-        dlmsReaderUtils.writeAttribute(client, serial, clock, 2, gxDateTime);
+        DlmsResponse response = dlmsReaderUtils.writeAttribute(client, serial, clock, 2, gxDateTime);
 
         String formatted = dateTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
-        String message = "🕒 Meter Clock for " + serial + " set to: " + formatted;
-        log.info(message);
-        return message;
+        if (response.isSuccess()) {
+            String message = "🕒 Meter Clock for " + serial + " set to: " + formatted;
+            log.info(message);
+            return message;
+        } else {
+            String message = "❌ Failed to set Meter Clock for " + serial + ": " + response.getMessage() + " (" + response.getStatus() + ")";
+            log.error(message);
+            return message;
+        }
     }
 
     public String setClockV1(String serial, LocalDateTime dateTime) throws Exception {
@@ -63,7 +70,13 @@ public class ClockWriteService {
 
         log.info("🕒 Initiating clock write → meter={}, targetTime={}", serial, dateTime);
 
-        dlmsReaderUtils.writeAttribute(client, serial, clock, 2, gxDateTime);
+        DlmsResponse response = dlmsReaderUtils.writeAttribute(client, serial, clock, 2, gxDateTime);
+
+        if (!response.isSuccess()) {
+            String message = "❌ Failed to set Meter Clock (V1) for " + serial + ": " + response.getMessage() + " (" + response.getStatus() + ")";
+            log.error(message);
+            return message;
+        }
 
         // 🔁 VERIFY (non-negotiable in DLMS writes)
         GXDateTime actual = readClock(client, serial);
@@ -114,4 +127,3 @@ public class ClockWriteService {
                 .toLocalDateTime();
     }
 }
-

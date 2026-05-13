@@ -13,6 +13,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import io.swagger.v3.oas.annotations.tags.Tags;
+import jakarta.validation.constraints.NotNull;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
@@ -98,10 +99,7 @@ public class DlmsController {
         Map<String, Object> response = new HashMap<>();
         try {
             Map<String, Object> data = dlmsService.setCtPt(serial, ctNumerator, ctDenominator, ptNumerator, ptDenominator);
-            response.put("status", "success");
-            response.put("data", data);
-            response.put("timestamp", LocalDateTime.now());
-            return ResponseEntity.ok(response);
+            return getMapResponseEntity(response, data);
         } catch (Exception e) {
             response.put("status", "error");
             response.put("message", "Failed to set CT/PT values");
@@ -110,6 +108,20 @@ public class DlmsController {
             response.put("timestamp", LocalDateTime.now());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
+    }
+
+    @NotNull
+    private ResponseEntity<Map<String, Object>> getMapResponseEntity(Map<String, Object> response, Map<String, Object> data) {
+        if(data.get("status").equals("success")) {
+            response.put("status", "success");
+            response.put("data", data);
+            response.put("timestamp", LocalDateTime.now());
+        }else{
+            response.put("status", "failed");
+            response.put("data", data);
+            response.put("timestamp", LocalDateTime.now());
+        }
+        return ResponseEntity.ok(response);
     }
 
     @PostMapping("/setApn")
@@ -121,10 +133,7 @@ public class DlmsController {
         Map<String, Object> response = new HashMap<>();
         try {
             Map<String, Object> data = dlmsService.setApn(serial, apn);
-            response.put("status", "success");
-            response.put("data", data);
-            response.put("timestamp", LocalDateTime.now());
-            return ResponseEntity.ok(response);
+            return getMapResponseEntity(response, data);
         } catch (Exception e) {
             response.put("status", "error");
             response.put("message", "Failed to set APN");
@@ -144,10 +153,7 @@ public class DlmsController {
         Map<String, Object> response = new HashMap<>();
         try {
             Map<String, Object> data = dlmsService.setIpPort(serial, ipPorts);
-            response.put("status", "success");
-            response.put("data", data);
-            response.put("timestamp", LocalDateTime.now());
-            return ResponseEntity.ok(response);
+            return getMapResponseEntity(response, data);
         } catch (Exception e) {
             response.put("status", "error");
             response.put("message", "Failed to set IP/Port");
