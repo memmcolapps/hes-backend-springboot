@@ -125,7 +125,6 @@ public class ProfileChannelOneServiceExtension {
                 // Persist new cursor
                 ProfileTimestamp resume = ProfileTimestamp.ofNullable(syncResult.getAdvanceTo());
                 cursor = (resume != null ? resume.plus(cp) : cursor.plus(cp));
-                statePort.upsertState(meterSerial, profileObis, resume, cp);
 
                 // Safety guard to avoid infinite loop if capture period = 0 (should not happen)
                 if (cp.seconds() <= 0) {

@@ -78,7 +78,7 @@ public class EventLogPersistenceAdapter {
         boolean advanced = previousLast == null || advanceTo.isAfter(previousLast);
 
         if (advanceTo != null) {
-            statePort.upsertState(meterSerial, profileOBIS, new ProfileTimestamp(advanceTo.plusSeconds(10)), new CapturePeriod(10));
+            statePort.upsertState(meterSerial, profileOBIS, new ProfileTimestamp(advanceTo), new CapturePeriod(1));
         }
 
         log.info("Batch persisted meter={} total={} inserted={} dup={} start={} end={} advanceTo={}",

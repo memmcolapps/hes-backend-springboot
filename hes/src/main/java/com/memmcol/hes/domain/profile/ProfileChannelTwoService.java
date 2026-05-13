@@ -154,8 +154,6 @@ public class ProfileChannelTwoService {
                         ? resume.plus(cp)
                         : cursor.plus(cp);
 
-                statePort.upsertState(meterSerial, profileObis, resume, cp);
-
                 // Safety guard
                 if (cp.seconds() <= 0) {
                     log.warn("cp.seconds() <= 0 : {}", cp);
@@ -176,75 +174,6 @@ public class ProfileChannelTwoService {
         }
     }
 
-    public void readProfileAndSaveV1 (String model, String serial, String profileObis, boolean isMD) throws Exception {
-        ProfileTimestamp cursor = new ProfileTimestamp(timestampPort.resolveLastTimestamp(serial, profileObis)); // fallback seed
-        CapturePeriod cp = new CapturePeriod(capturePeriodPort.resolveCapturePeriodSeconds(serial, profileObis));
-        if (cp.seconds() < 900){
-            cp = new CapturePeriod(900);
-        }
-        LocalDateTime now = LocalDateTime.now();
-        while (cursor.value().isBefore(now)) {
-            LocalDateTime from = cursor.value();
-            LocalDateTime to = from.plusDays(1);
-            if (to.isAfter(now)) to = now;
-
-            long t0 = System.currentTimeMillis();
-                        boolean exceptionOccurred = false;
-
-            //get columns objects and scaler
-            ProfileMetadataResult metadataResult = metadataProvider.resolve(serial, profileObis, model);
-            List<ProfileRowGeneric> rows = null;
-
-            try {
-                rows = dlmsReaderUtils.readRange(model, serial, profileObis, metadataResult, from, to, true);
-            } catch (ProfileReadException ex) {
-                log.warn("Range read failed; attempting recovery meter={} profile={} cause={}",
-                        serial, profileObis, ex.getMessage());
-                exceptionOccurred = true;
-                rows = attemptRecovery(model, serial, profileObis, metadataResult);
-            } catch (Exception ex2) {
-                log.warn("Range read failed2; attempting recovery meter={} profile={} cause={}",
-                        serial, profileObis, ex2.getMessage());
-                exceptionOccurred = true;
-                rows = attemptRecovery(model, serial, profileObis, metadataResult);
-            }
-
-            // --- Cursor & Salvage Logic ---
-            if ((rows == null || rows.isEmpty()) && exceptionOccurred) {
-                // 1. Exception + No Rows = BREAK
-                log.warn("Breaking: no rows and exception occurred meter={} profileObis={} from={} to={}",
-                        serial, profileObis, from, to);
-                break;
-            }
-
-            if (rows == null || rows.isEmpty()) {
-                // 2. No Exception + No Rows = ADVANCE
-                log.info("No rows but no exception — advancing cursor meter={} profileObis={} from={} to={}",
-                        serial, profileObis, from, to);
-                cursor = new ProfileTimestamp(to).plus(cp);
-                statePort.upsertState(serial, profileObis, new ProfileTimestamp(to), cp);
-                continue;
-            }
-
-            // Map, createPartitionsIfMissing & save
-            List<ProfileChannelTwoDTO> dtos = profileChannelTwoMapper.toDTO(rows, serial, model, isMD, metadataResult);
-            persistenceAdapter.createPartitionsIfMissing(dtos);
-            ProfileSyncResult syncResult = persistenceAdapter.saveBatchAndAdvanceCursor(serial, model, profileObis, dtos, cp, metadataResult);
-            long dt2 = System.currentTimeMillis() - t0;
-
-            int saved = syncResult.getInsertedCount();
-            metricsPort.recordBatch(serial, profileObis, saved, dt2);
-
-            ProfileTimestamp resumeFrom = ProfileTimestamp.ofNullable(syncResult.getAdvanceTo());
-            cursor = (resumeFrom != null ? resumeFrom.plus(cp) : cursor.plus(cp));
-
-            // Persist new cursor
-            statePort.upsertState(serial, profileObis, resumeFrom, cp);
-
-            // Safety guard to avoid infinite loop if capture period = 0 (should not happen)
-            if (cp.seconds() <= 0) break;
-        }
-    }
 
     private List<ProfileRowGeneric> attemptRecovery(String model, String serial, String profileObis, ProfileMetadataResult metadataResult) {
         try {
