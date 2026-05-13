@@ -44,6 +44,7 @@ public class RealtimeReadSseService {
     private final Duration requestTimeout;
     private final String fallbackMdModel;
     private final String fallbackNonMdModel;
+    private final boolean fallbackToSingleObis;
 
     public RealtimeReadSseService(MeterReadingService trainingService,
                                   MeterRepository meterRepository,
@@ -53,7 +54,8 @@ public class RealtimeReadSseService {
                                   @Value("${hes.realtime-read.max-obis:20}") int maxObisPerRequest,
                                   @Value("${hes.realtime-read.timeout-seconds:120}") long requestTimeoutSeconds,
                                   @Value("${hes.realtime-read.fallback-md-model:MDModelX}") String fallbackMdModel,
-                                  @Value("${hes.realtime-read.fallback-non-md-model:NonMDModelX}") String fallbackNonMdModel) {
+                                  @Value("${hes.realtime-read.fallback-non-md-model:NonMDModelX}") String fallbackNonMdModel,
+                                  @Value("${hes.realtime-read.fallback-to-single-obis:false}") boolean fallbackToSingleObis) {
         this.trainingService = trainingService;
         this.meterRepository = meterRepository;
         this.streamExecutor = streamExecutor;
@@ -63,6 +65,7 @@ public class RealtimeReadSseService {
         this.requestTimeout = Duration.ofSeconds(Math.max(1, requestTimeoutSeconds));
         this.fallbackMdModel = fallbackMdModel;
         this.fallbackNonMdModel = fallbackNonMdModel;
+        this.fallbackToSingleObis = fallbackToSingleObis;
     }
 
     public SseEmitter streamRealtimeRead(RealtimeReadRequest request) {
@@ -256,8 +259,34 @@ public class RealtimeReadSseService {
                     meter.getMeterSerial(), success, failed, elapsedMs);
             return new RealtimeReadSummary(success, failed);
         } catch (Exception batchException) {
-            log.warn("⚠️ Batched realtime read failed for meter={}, falling back to single OBIS reads: {}",
+            log.warn("⚠️ Batched realtime read failed for meter={}: {}",
                     meter.getMeterSerial(), batchException.getMessage());
+            if (!fallbackToSingleObis) {
+                String message = "Batched realtime read failed: " + batchException.getMessage();
+                for (ObisDto obis : obisList) {
+                    if (Thread.currentThread().isInterrupted() || !acceptingEvents.get()) {
+                        break;
+                    }
+
+                    Map<String, Object> reading = basePayload(meter, obis.getObisString());
+                    reading.put("desc", mapObisCode(obis.getObisString()));
+                    reading.put("statuscode", -1);
+                    reading.put("value", null);
+                    reading.put("statusmessage", message);
+                    reading.put("elapsedMs", TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - meterStarted));
+                    reading.put("batch", true);
+                    failed++;
+                    totalFailed.incrementAndGet();
+                    send(emitter, "reading", reading);
+                }
+
+                log.info("✅ Batched realtime read meter={} failed fast failed={} elapsedMs={}",
+                        meter.getMeterSerial(), failed,
+                        TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - meterStarted));
+                return new RealtimeReadSummary(success, failed);
+            }
+
+            log.warn("⚠️ Falling back to single OBIS reads for meter={}", meter.getMeterSerial());
         }
 
         for (ObisDto obis : obisList) {
@@ -301,8 +330,14 @@ public class RealtimeReadSseService {
             Map<String, Object> response = batchResponses.get(i);
             Map<String, Object> responseData = basePayload(meter, obis.getObisString());
             responseData.put("desc", mapObisCode(obis.getObisString()));
-            responseData.put("value", extractValue(response));
-            responseData.put("statusmessage", "SUCCESS");
+            if (Integer.valueOf(-1).equals(response.get("statuscode")) || response.containsKey("error")) {
+                responseData.put("statuscode", -1);
+                responseData.put("value", null);
+                responseData.put("statusmessage", String.valueOf(response.getOrDefault("error", "Batched OBIS read failed")));
+            } else {
+                responseData.put("value", extractValue(response));
+                responseData.put("statusmessage", "SUCCESS");
+            }
             responseData.put("elapsedMs", elapsedMs);
             responseData.put("batch", true);
             readings.add(responseData);
