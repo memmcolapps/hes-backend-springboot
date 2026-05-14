@@ -7,8 +7,12 @@ import com.memmcol.hes.domain.clock.ClockWriteService;
 import com.memmcol.hes.domain.limiters.LimiterHelper;
 import com.memmcol.hes.domain.network.NetworkWriteService;
 import com.memmcol.hes.domain.profile.WriteCTPT;
+import com.memmcol.hes.domain.relay.ControlModeService;
+import com.memmcol.hes.domain.relay.ControlRelayService;
+import com.memmcol.hes.domain.token.TokenService;
 import com.memmcol.hes.exception.AssociationLostException;
 import com.memmcol.hes.infrastructure.dlms.DlmsReaderUtils;
+import com.memmcol.hes.dto.DlmsReadResponse;
 import com.memmcol.hes.model.*;
 import com.memmcol.hes.nettyUtils.RequestResponseService;
 import com.memmcol.hes.nettyUtils.SessionManager;
@@ -70,6 +74,9 @@ public class DlmsService {
     private final ClockWriteService clockWriteService;
     private final WriteCTPT writeCTPT;
     private final NetworkWriteService networkWriteService;
+    private final TokenService tokenService;
+    private final ControlRelayService controlRelayService;
+    private final ControlModeService controlModeService;
 
     public DlmsService(SessionManagerMultiVendor sessionManager,
                        DlmsObisObjectRepository repository,
@@ -86,7 +93,10 @@ public class DlmsService {
                        RequestResponseService requestResponseService, LimiterHelper limiterHelper, DlmsReaderUtils dlmsReaderUtils,
                        ClockWriteService clockWriteService,
                        WriteCTPT writeCTPT,
-                       NetworkWriteService networkWriteService) {
+                       NetworkWriteService networkWriteService,
+                       TokenService tokenService,
+                       ControlRelayService controlRelayService,
+                       ControlModeService controlModeService) {
         this.sessionManager = sessionManager;
         this.repository = repository;
         this.metadataCache = metadataCache;
@@ -105,6 +115,9 @@ public class DlmsService {
         this.clockWriteService = clockWriteService;
         this.writeCTPT = writeCTPT;
         this.networkWriteService = networkWriteService;
+        this.tokenService = tokenService;
+        this.controlRelayService = controlRelayService;
+        this.controlModeService = controlModeService;
     }
 
     public static final DateTimeFormatter GLOBAL_TS_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
@@ -233,6 +246,18 @@ public class DlmsService {
 
     public Map<String, Object> setIpPort(String serial, List<String> ipPorts) throws Exception {
         return networkWriteService.writeIpPort(serial, ipPorts);
+    }
+
+public Map<String, Object> setToken(String serial, String token) throws Exception {
+        return tokenService.writeToken(serial, token);
+    }
+
+    public Map<String, Object> controlRelay(String serial, boolean state) throws Exception {
+        return controlRelayService.controlRelay(serial, state);
+    }
+
+    public Map<String, Object> controlMode(String serial, int mode) throws Exception {
+        return controlModeService.setControlMode(serial, mode);
     }
 
     public String greet(String name) {
@@ -375,28 +400,49 @@ public class DlmsService {
             double scaler = 1.0;
             Unit unit;
             Object result;
+//            DlmsReadResponse scalerUnitResponse = null;
+            DlmsReadResponse valueResponse = null;
 
             switch (type) {
                 case REGISTER -> {
                     GXDLMSRegister reg = new GXDLMSRegister();
                     reg.setLogicalName(obisCode);
 
-                    // Read Scaler+Unit first
-                    readAdapter.readScalerUnit(client, meterSerial, reg, 3);
-//                    readScaler(GXDLMSClient client, String serial, GXDLMSObject obj, int index)
+//                    scalerUnitResponse =
+                            readAdapter.readScalerUnit(client, meterSerial, reg, 3);
+//                    if (!scalerUnitResponse.isSuccess()) {
+//                        Map<String, Object> error = new LinkedHashMap<>();
+//                        error.put("Meter No", meterSerial);
+//                        error.put("obisCode", obisCode);
+//                        error.put("error", "Scaler/Unit read failed");
+//                        error.put("scalerUnitResponse", scalerUnitResponse);
+//                        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
+//                    }
+
                     scaler = reg.getScaler();
                     if (scaler == 0) {
                         scaler = 1.0;
                     }
                     unit = reg.getUnit();
-//                    unit = reg.getUnit() != null ? reg.getUnit().toString() : "";
 
-                    // Read value
-                    result = readAdapter.readAttribute(client, meterSerial, reg, attributeIndex);
-                    if (result instanceof Number) {
-                        result = BigDecimal.valueOf(((Number) result).doubleValue())
+                    valueResponse = readAdapter.readAttributeWithResponse(client, meterSerial, reg, attributeIndex);
+                    if (!valueResponse.isSuccess()) {
+                        Map<String, Object> error = new LinkedHashMap<>();
+                        error.put("Meter No", meterSerial);
+                        error.put("obisCode", obisCode);
+                        error.put("error", "Value read failed");
+//                        error.put("scalerUnitResponse", scalerUnitResponse);
+                        error.put("valueResponse", valueResponse);
+                        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
+                    }
+
+                    Object value = valueResponse.getValue();
+                    if (value instanceof Number) {
+                        result = BigDecimal.valueOf(((Number) value).doubleValue())
                                 .setScale(2, RoundingMode.HALF_UP)
                                 .doubleValue();
+                    } else {
+                        result = value;
                     }
                     object = reg;
                 }
@@ -405,20 +451,41 @@ public class DlmsService {
                     GXDLMSDemandRegister dr = new GXDLMSDemandRegister();
                     dr.setLogicalName(obisCode);
 
-                    // Read Scaler+Unit
-                    readAdapter.readScalerUnit(client, meterSerial, dr, 4);
+//                    scalerUnitResponse =
+                            readAdapter.readScalerUnit(client, meterSerial, dr, 4);
+//                    if (!scalerUnitResponse.isSuccess()) {
+//                        Map<String, Object> error = new LinkedHashMap<>();
+//                        error.put("Meter No", meterSerial);
+//                        error.put("obisCode", obisCode);
+//                        error.put("error", "Scaler/Unit read failed");
+//                        error.put("scalerUnitResponse", scalerUnitResponse);
+//                        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
+//                    }
+
                     scaler = dr.getScaler();
                     if (scaler == 0) {
                         scaler = 1.0;
                     }
                     unit = dr.getUnit();
 
-                    // Read value
-                    result = readAdapter.readAttribute(client, meterSerial, dr, attributeIndex);
-                    if (result instanceof Number) {
-                        result = BigDecimal.valueOf(((Number) result).doubleValue())
+                    valueResponse = readAdapter.readAttributeWithResponse(client, meterSerial, dr, attributeIndex);
+                    if (!valueResponse.isSuccess()) {
+                        Map<String, Object> error = new LinkedHashMap<>();
+                        error.put("Meter No", meterSerial);
+                        error.put("obisCode", obisCode);
+                        error.put("error", "Value read failed");
+//                        error.put("scalerUnitResponse", scalerUnitResponse);
+                        error.put("valueResponse", valueResponse);
+                        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
+                    }
+
+                    Object value = valueResponse.getValue();
+                    if (value instanceof Number) {
+                        result = BigDecimal.valueOf(((Number) value).doubleValue())
                                 .setScale(2, RoundingMode.HALF_UP)
                                 .doubleValue();
+                    } else {
+                        result = value;
                     }
                     object = dr;
                 }
@@ -426,22 +493,31 @@ public class DlmsService {
                 case CLOCK -> {
                     GXDLMSClock clk = new GXDLMSClock();
                     clk.setLogicalName(obisCode);
+
+                    valueResponse = readAdapter.readAttributeWithResponse(client, meterSerial, clk, attributeIndex);
+                    if (!valueResponse.isSuccess()) {
+                        Map<String, Object> error = new LinkedHashMap<>();
+                        error.put("Meter No", meterSerial);
+                        error.put("obisCode", obisCode);
+                        error.put("error", "Clock read failed");
+                        error.put("valueResponse", valueResponse);
+                        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
+                    }
+
                     GXDateTime clockDateTime;
-                    Object raw = readAdapter.readAttribute(client, meterSerial, clk, attributeIndex);
+                    Object raw = valueResponse.getValue();
                     if (raw instanceof GXDateTime dt) {
                         clockDateTime = dt;
                     } else if (raw instanceof byte[] array) {
                         clockDateTime = GXCommon.getDateTime(array);
                     } else {
-                        throw new IllegalArgumentException("❌ Unexpected clock result type: " + raw.getClass());
+                        throw new IllegalArgumentException("Unexpected clock result type: " + raw.getClass());
                     }
 
-                    // Convert to LocalDateTime
                     LocalDateTime localDateTime = clockDateTime.getMeterCalendar().toInstant()
                             .atZone(ZoneId.systemDefault())
                             .toLocalDateTime();
 
-                    // Format to "YYYY-MM-DD HH:MM:SS"
                     result = localDateTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
 
                     object = clk;
@@ -461,7 +537,18 @@ public class DlmsService {
                 case DATA -> {
                     GXDLMSData data = new GXDLMSData();
                     data.setLogicalName(obisCode);
-                    result = readAdapter.readAttribute(client, meterSerial, data, attributeIndex);
+
+                    valueResponse = readAdapter.readAttributeWithResponse(client, meterSerial, data, attributeIndex);
+                    if (!valueResponse.isSuccess()) {
+                        Map<String, Object> error = new LinkedHashMap<>();
+                        error.put("Meter No", meterSerial);
+                        error.put("obisCode", obisCode);
+                        error.put("error", "Data read failed");
+                        error.put("valueResponse", valueResponse);
+                        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
+                    }
+
+                    result = valueResponse.getValue();
                     object = data;
                     unit = null;
                 }
@@ -469,10 +556,20 @@ public class DlmsService {
                 default -> {
                     object = GXDLMSClient.createObject(type);
                     object.setLogicalName(obisCode);
-                    result = readAdapter.readAttribute(client, meterSerial, object, attributeIndex);
+
+                    valueResponse = readAdapter.readAttributeWithResponse(client, meterSerial, object, attributeIndex);
+                    if (!valueResponse.isSuccess()) {
+                        Map<String, Object> error = new LinkedHashMap<>();
+                        error.put("Meter No", meterSerial);
+                        error.put("obisCode", obisCode);
+                        error.put("error", "Read failed");
+                        error.put("valueResponse", valueResponse);
+                        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
+                    }
+
+                    result = valueResponse.getValue();
                     unit = null;
                 }
-//                default -> throw new IllegalArgumentException("Unsupported object type: " + type);
             }
 
             Map<String, Object> response = new LinkedHashMap<>();
@@ -483,8 +580,15 @@ public class DlmsService {
             response.put("value", result);
             response.put("scaler", scaler);
             if (unit != null) {
-                response.put("unit", getUnitSymbol(unit)); // your mapping function
+                response.put("unit", getUnitSymbol(unit));
             }
+//            if (scalerUnitResponse != null) {
+//                response.put("scalerUnitResponse", scalerUnitResponse);
+//            }
+            if (valueResponse != null) {
+                response.put("valueResponse", valueResponse);
+            }
+            response.put("status", "success");
             return ResponseEntity.ok(response);
         } catch (AssociationLostException ex) {
             sessionManager.removeSession(meterSerial);
