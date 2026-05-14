@@ -6,6 +6,7 @@ import com.memmcol.hes.infrastructure.dlms.DlmsDataDecoder;
 import com.memmcol.hes.infrastructure.dlms.DlmsReaderUtils;
 import com.memmcol.hes.nettyUtils.SessionManagerMultiVendor;
 import com.memmcol.hes.exception.AssociationLostException;
+import com.memmcol.hes.exception.InvalidObisFormatException;
 import com.memmcol.hes.service.MeterRatioService;
 import gurux.dlms.*;
 import gurux.dlms.enums.Authentication;
@@ -648,71 +649,91 @@ public class MeterReadingService {
             throw new IllegalStateException("No active session for meter: " + meterSerial);
         }
 
-        List<ParsedObis> parsedObis = new ArrayList<>(obisList.size());
-        for (String obis : obisList) {
-            parsedObis.add(parseObis(obis));
-        }
+        // Tolerant parse: bad OBIS strings are isolated from the batch instead of
+        // poisoning the whole call. Each request slot keeps its position so the
+        // returned list aligns 1:1 with obisList.
+        Map<String, Object>[] response = new Map[obisList.size()];
+        List<ParsedObis> goodParsed = new ArrayList<>(obisList.size());
+        List<Integer> goodIndexes = new ArrayList<>(obisList.size());
 
-        readScalerUnitsBatch(client, meterModel, meterSerial, parsedObis);
-
-        List<Map.Entry<GXDLMSObject, Integer>> valueReads = parsedObis.stream()
-                .<Map.Entry<GXDLMSObject, Integer>>map(parsed -> new AbstractMap.SimpleEntry<>(parsed.object(), parsed.attributeIndex()))
-                .toList();
-
-        List<Object> values = readListValues(client, meterSerial, valueReads);
-        MeterRatios meterRatios = mdMeter ? ratioService.readMeterRatios(meterModel, meterSerial) : null;
-        DecimalFormat formatter = new DecimalFormat("#,##0.00");
-        List<Map<String, Object>> response = new ArrayList<>(parsedObis.size());
-
-        for (int i = 0; i < parsedObis.size(); i++) {
-            ParsedObis parsed = parsedObis.get(i);
-            Map<String, Object> item = new LinkedHashMap<>();
-            item.put("Meter No", meterSerial);
-            item.put("obisCode", parsed.obisCode());
-            item.put("attributeIndex", parsed.attributeIndex());
-            item.put("dataIndex", parsed.dataIndex());
-            if (parsed.object() instanceof GXDLMSRegister register) {
-                item.put("scaler", register.getScaler() == 0 ? 1.0 : register.getScaler());
-                item.put("unit", getUnitSymbol(register.getUnit()));
-            } else if (parsed.object() instanceof GXDLMSExtendedRegister register) {
-                item.put("scaler", register.getScaler() == 0 ? 1.0 : register.getScaler());
-                item.put("unit", getUnitSymbol(register.getUnit()));
-            } else if (parsed.object() instanceof GXDLMSDemandRegister register) {
-                item.put("scaler", register.getScaler() == 0 ? 1.0 : register.getScaler());
-                item.put("unit", getUnitSymbol(register.getUnit()));
-            }
-
-            if (i >= values.size()) {
-                item.put("statuscode", -1);
-                item.put("error", "No DLMS value returned for this OBIS in batched response");
-                item.put("Actual Value", null);
-                response.add(item);
-                continue;
-            }
-
-            Object rawValue = unwrapBatchValue(values.get(i));
-            if (isDlmsFailure(rawValue)) {
-                item.put("statuscode", -1);
-                item.put("error", dlmsFailureMessage(rawValue));
-                item.put("Actual Value", null);
-                response.add(item);
-                continue;
-            }
-
+        for (int i = 0; i < obisList.size(); i++) {
+            String raw = obisList.get(i);
             try {
-                Object formattedValue = formatBatchValue(parsed, rawValue, mdMeter, meterRatios, formatter);
-                item.put("statuscode", 0);
-                item.put(mdMeter ? "Raw Value" : "value", rawValue);
-                item.put("Actual Value", formattedValue);
-            } catch (Exception ex) {
+                goodParsed.add(parseObis(raw));
+                goodIndexes.add(i);
+            } catch (InvalidObisFormatException ex) {
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("Meter No", meterSerial);
+                item.put("obisCode", ex.getRawObis());
                 item.put("statuscode", -1);
-                item.put("error", "Failed to format batched OBIS value: " + ex.getMessage());
+                item.put("error", "Invalid OBIS format: " + ex.getMessage());
                 item.put("Actual Value", null);
+                response[i] = item;
             }
-            response.add(item);
         }
 
-        return response;
+        if (!goodParsed.isEmpty()) {
+            readScalerUnitsBatch(client, meterModel, meterSerial, goodParsed);
+
+            List<Map.Entry<GXDLMSObject, Integer>> valueReads = goodParsed.stream()
+                    .<Map.Entry<GXDLMSObject, Integer>>map(parsed -> new AbstractMap.SimpleEntry<>(parsed.object(), parsed.attributeIndex()))
+                    .toList();
+
+            List<Object> values = readListValues(client, meterSerial, valueReads);
+            MeterRatios meterRatios = mdMeter ? ratioService.readMeterRatios(meterModel, meterSerial) : null;
+            DecimalFormat formatter = new DecimalFormat("#,##0.00");
+
+            for (int g = 0; g < goodParsed.size(); g++) {
+                ParsedObis parsed = goodParsed.get(g);
+                int requestIdx = goodIndexes.get(g);
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("Meter No", meterSerial);
+                item.put("obisCode", parsed.obisCode());
+                item.put("attributeIndex", parsed.attributeIndex());
+                item.put("dataIndex", parsed.dataIndex());
+                if (parsed.object() instanceof GXDLMSRegister register) {
+                    item.put("scaler", register.getScaler() == 0 ? 1.0 : register.getScaler());
+                    item.put("unit", getUnitSymbol(register.getUnit()));
+                } else if (parsed.object() instanceof GXDLMSExtendedRegister register) {
+                    item.put("scaler", register.getScaler() == 0 ? 1.0 : register.getScaler());
+                    item.put("unit", getUnitSymbol(register.getUnit()));
+                } else if (parsed.object() instanceof GXDLMSDemandRegister register) {
+                    item.put("scaler", register.getScaler() == 0 ? 1.0 : register.getScaler());
+                    item.put("unit", getUnitSymbol(register.getUnit()));
+                }
+
+                if (g >= values.size()) {
+                    item.put("statuscode", -1);
+                    item.put("error", "No DLMS value returned for this OBIS in batched response");
+                    item.put("Actual Value", null);
+                    response[requestIdx] = item;
+                    continue;
+                }
+
+                Object rawValue = unwrapBatchValue(values.get(g));
+                if (isDlmsFailure(rawValue)) {
+                    item.put("statuscode", -1);
+                    item.put("error", dlmsFailureMessage(rawValue));
+                    item.put("Actual Value", null);
+                    response[requestIdx] = item;
+                    continue;
+                }
+
+                try {
+                    Object formattedValue = formatBatchValue(parsed, rawValue, mdMeter, meterRatios, formatter);
+                    item.put("statuscode", 0);
+                    item.put(mdMeter ? "Raw Value" : "value", rawValue);
+                    item.put("Actual Value", formattedValue);
+                } catch (Exception ex) {
+                    item.put("statuscode", -1);
+                    item.put("error", "Failed to format batched OBIS value: " + ex.getMessage());
+                    item.put("Actual Value", null);
+                }
+                response[requestIdx] = item;
+            }
+        }
+
+        return Arrays.asList(response);
     }
 
     private void readScalerUnitsBatch(GXDLMSClient client,
@@ -865,16 +886,36 @@ public class MeterReadingService {
         return "DLMS access error";
     }
 
+    // OBIS code per COSEM spec: exactly six dot-separated unsigned bytes (a.b.c.d.e.f, each 0-255).
+    private static final java.util.regex.Pattern OBIS_CODE_PATTERN =
+            java.util.regex.Pattern.compile("^\\d+(\\.\\d+){5}$");
+
     private ParsedObis parseObis(String obis) {
+        if (obis == null) {
+            throw new InvalidObisFormatException("", "OBIS request is null");
+        }
         String[] parts = obis.split(";");
         if (parts.length != 4) {
-            throw new IllegalArgumentException("OBIS format must be: classId;obisCode;attributeIndex;dataIndex");
+            throw new InvalidObisFormatException(obis,
+                    "OBIS format must be: classId;obisCode;attributeIndex;dataIndex");
         }
 
-        int classId = Integer.parseInt(parts[0]);
+        int classId;
+        int attributeIndex;
+        int dataIndex;
+        try {
+            classId = Integer.parseInt(parts[0].trim());
+            attributeIndex = Integer.parseInt(parts[2].trim());
+            dataIndex = Integer.parseInt(parts[3].trim());
+        } catch (NumberFormatException ex) {
+            throw new InvalidObisFormatException(obis,
+                    "OBIS classId/attributeIndex/dataIndex must be integers");
+        }
         String obisCode = parts[1].trim();
-        int attributeIndex = Integer.parseInt(parts[2]);
-        int dataIndex = Integer.parseInt(parts[3]);
+        if (!OBIS_CODE_PATTERN.matcher(obisCode).matches()) {
+            throw new InvalidObisFormatException(obis,
+                    "OBIS code must be six dot-separated bytes (a.b.c.d.e.f), got: " + obisCode);
+        }
         ObjectType objectType = ObjectType.forValue(classId);
         GXDLMSObject object = createObject(objectType, obisCode);
         return new ParsedObis(obis, obisCode, classId, attributeIndex, dataIndex, objectType, object);

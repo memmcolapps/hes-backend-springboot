@@ -6,6 +6,7 @@ import com.memmcol.hes.gridflex.dtos.ObisDto;
 import com.memmcol.hes.gridflex.dtos.RealtimeReadRequest;
 import com.memmcol.hes.repository.MeterRepository;
 import com.memmcol.hesTraining.services.MeterReadingService;
+import gurux.dlms.GXDLMSExceptionResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
@@ -272,7 +273,12 @@ public class RealtimeReadSseService {
         } catch (Exception batchException) {
             log.warn("⚠️ Batched realtime read failed for meter={}: {}",
                     meter.getMeterSerial(), batchException.getMessage());
-            if (!fallbackToSingleObis) {
+            // Only fall back to per-OBIS reads when the meter rejected the entire
+            // GET-with-list at the DLMS layer. Other failures (network, association,
+            // formatting) won't be cured by N more reads on the same meter, so emit
+            // -1 immediately and let the user retry.
+            boolean wholeListRejection = isWholeListRejection(batchException);
+            if (!fallbackToSingleObis || !wholeListRejection) {
                 String message = "Batched realtime read failed: " + batchException.getMessage();
                 for (ObisDto obis : obisList) {
                     if (Thread.currentThread().isInterrupted() || !acceptingEvents.get()) {
@@ -323,6 +329,18 @@ public class RealtimeReadSseService {
         log.info("✅ Realtime read meter={} finished success={} failed={} elapsedMs={}",
                 meter.getMeterSerial(), success, failed, elapsedMs);
         return new RealtimeReadSummary(success, failed);
+    }
+
+    private boolean isWholeListRejection(Throwable ex) {
+        for (Throwable t = ex; t != null; t = t.getCause()) {
+            if (t instanceof GXDLMSExceptionResponse) {
+                return true;
+            }
+            if (t == t.getCause()) {
+                break;
+            }
+        }
+        return false;
     }
 
     private List<Map<String, Object>> readMeterObisValuesBatch(MeterDto meter,
