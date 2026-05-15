@@ -384,11 +384,13 @@ public class ProfileExecutionService {
                 resolved.householdObis() == null || resolved.householdObis().isBlank() ? "_none" : resolved.householdObis(),
                 householdMeterModels.size());
 
-        BiConsumer<MeterDTO, String> reader = (dto, obis) -> metersLockService.readEventsWithLock(
+        BiConsumer<MeterDTO, String> mdCtReader = (dto, obis) -> metersLockService.readEventsWithLock(
                 dto.getMeterModel(),
                 dto.getMeterNumber(),
                 obis,
                 dto.isMD());
+
+        BiConsumer<MeterDTO, String> householdReader = householdTokenEventReader(profile);
 
         Set<String> excludedForMdPass = householdMeterModels.isEmpty() ? null : householdMeterModels;
 
@@ -399,7 +401,7 @@ public class ProfileExecutionService {
         } else {
             executeForAllMeters(
                     "Events." + profile.configKey() + ".mdCt",
-                    reader,
+                    mdCtReader,
                     resolved.mdCtObis(),
                     null,
                     excludedForMdPass);
@@ -419,10 +421,22 @@ public class ProfileExecutionService {
         }
         executeForAllMeters(
                 "Events." + profile.configKey() + ".household",
-                reader,
+                householdReader,
                 resolved.householdObis(),
                 householdMeterModels,
                 null);
+    }
+
+    /**
+     * Household token events use dedicated tables; other household-tier event reads still use {@code event_log}.
+     */
+    private BiConsumer<MeterDTO, String> householdTokenEventReader(EventScheduleProfile profile) {
+        return switch (profile) {
+            case RECHARGE_TOKEN -> (dto, obis) -> metersLockService.readHouseholdRechargeTokenEventsWithLock(
+                    dto.getMeterModel(), dto.getMeterNumber(), obis, dto.isMD());
+            case MANAGEMENT_TOKEN -> (dto, obis) -> metersLockService.readHouseholdManagementTokenEventsWithLock(
+                    dto.getMeterModel(), dto.getMeterNumber(), obis, dto.isMD());
+        };
     }
 
     // === Daily Billing ===
