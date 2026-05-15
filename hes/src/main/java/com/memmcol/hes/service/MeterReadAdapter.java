@@ -1,5 +1,6 @@
 package com.memmcol.hes.service;
 
+import com.memmcol.hes.dto.DlmsReadResponse;
 import com.memmcol.hes.exception.AssociationLostException;
 import com.memmcol.hes.model.ModelProfileMetadata;
 import com.memmcol.hes.model.ProfileMetadataDTO;
@@ -198,6 +199,40 @@ public class MeterReadAdapter {
         return client.updateValue(obj, index, reply.getValue());
     }
 
+    public DlmsReadResponse readAttributeWithResponse(GXDLMSClient client, String serial, GXDLMSObject obj, int index) throws Exception {
+        log.debug("Reading attribute {} from object {}", index, obj.getLogicalName());
+
+        byte[][] request = client.read(obj, index);
+        byte[] response = requestResponseService.sendReceiveWithContext(serial, request[0], 20000);
+        String rawHex = GXCommon.toHex(response);
+
+        if (isAssociationLost(response)) {
+            sessionManager.removeSession(serial);
+            throw new AssociationLostException("Association lost during attribute read for meter: " + serial);
+        }
+
+        GXReplyData reply = new GXReplyData();
+        client.getData(response, reply, null);
+
+        if (reply.getError() != 0) {
+            log.warn("DLMS attribute read error for meter {}: code={}, message={}",
+                    serial, reply.getError(), reply.getErrorMessage());
+            return DlmsReadResponse.error(reply.getError(), reply.getErrorMessage(), rawHex);
+        }
+
+        if (reply.getValue() instanceof gurux.dlms.GXDLMSExceptionResponse ex) {
+            Object errorObj = ex.getExceptionServiceError();
+            int errorCode = errorObj != null ? errorObj.hashCode() : -1;
+            String errorMsg = errorObj != null ? errorObj.toString() : "Unknown DLMS Exception";
+            log.warn("DLMS attribute read exception for meter {}: code={}, message={}", serial, errorCode, errorMsg);
+            return DlmsReadResponse.error(errorCode, errorMsg, rawHex);
+        }
+
+        Object value = client.updateValue(obj, index, reply.getValue());
+        log.debug("DLMS attribute read success for meter {}: value={}", serial, value);
+        return DlmsReadResponse.success(rawHex, value);
+    }
+
     private Object readAttributeWithBlock(GXDLMSClient client, String serial, GXDLMSObject obj, int index) throws Exception {
         byte[][] request = client.read(obj, index);
         GXReplyData reply = readDataBlock(client, serial, request[0]);
@@ -244,6 +279,40 @@ public class MeterReadAdapter {
         GXReplyData reply = new GXReplyData();
         client.getData(response, reply, null);
         client.updateValue(obj, index, reply.getValue());
+    }
+
+    public DlmsReadResponse readScalerUnitWithResponse(GXDLMSClient client, String serial, GXDLMSObject obj, int index) throws Exception {
+        log.debug("Reading scaler/unit from object {}", obj.getLogicalName());
+
+        byte[][] scalerUnitRequest = client.read(obj, index);
+        byte[] response = requestResponseService.sendReceiveWithContext(serial, scalerUnitRequest[0], 20000);
+        String rawHex = GXCommon.toHex(response);
+
+        if (isAssociationLost(response)) {
+            sessionManager.removeSession(serial);
+            throw new AssociationLostException("Association lost during scaler/unit read for meter: " + serial);
+        }
+
+        GXReplyData reply = new GXReplyData();
+        client.getData(response, reply, null);
+
+        if (reply.getError() != 0) {
+            log.warn("DLMS scaler/unit read error for meter {}: code={}, message={}",
+                    serial, reply.getError(), reply.getErrorMessage());
+            return DlmsReadResponse.error(reply.getError(), reply.getErrorMessage(), rawHex);
+        }
+
+        if (reply.getValue() instanceof gurux.dlms.GXDLMSExceptionResponse ex) {
+            Object errorObj = ex.getExceptionServiceError();
+            int errorCode = errorObj != null ? errorObj.hashCode() : -1;
+            String errorMsg = errorObj != null ? errorObj.toString() : "Unknown DLMS Exception";
+            log.warn("DLMS scaler/unit read exception for meter {}: code={}, message={}", serial, errorCode, errorMsg);
+            return DlmsReadResponse.error(errorCode, errorMsg, rawHex);
+        }
+
+        client.updateValue(obj, index, reply.getValue());
+        log.debug("DLMS scaler/unit read success for meter {}", serial);
+        return DlmsReadResponse.success(rawHex, reply.getValue());
     }
 
     public LocalDateTime bootstrapFromMeter(String serial, String profileObis, String model) throws Exception {

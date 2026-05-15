@@ -33,7 +33,6 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
-import java.util.function.Supplier;
 
 import static com.memmcol.hes.nettyUtils.RequestResponseService.logTx;
 
@@ -217,7 +216,7 @@ public class DlmsReaderUtils {
             GXReplyData reply = new GXReplyData();
 
             long start = System.currentTimeMillis();
-
+            byte[] lastResponse = null;
             for (int i = 0; i < requests.length; i++) {
 
                 byte[] requestFrame = requests[i];
@@ -226,7 +225,7 @@ public class DlmsReaderUtils {
                         i + 1, requests.length, serial, toHex(requestFrame));
 
                 byte[] response = txRxService.sendReceiveWithContext(serial, requestFrame, 20000);
-
+                lastResponse = response;
                 if (sessionManager.isAssociationLost(response)) {
                     sessionManager.removeSession(serial);
                     throw new AssociationLostException("Association lost during write → meter=" + serial);
@@ -247,6 +246,8 @@ public class DlmsReaderUtils {
                     .status(status)
                     .message(reply.getErrorMessage())
                     .meterSerial(serial)
+                    .resultData(Map.of("replyValue", reply.getValue(), "replyError", reply.getError()))
+                    .rawResponse( lastResponse != null  ? toHex(lastResponse) : null)
                     .build();
         } catch (java.net.SocketTimeoutException | java.util.concurrent.TimeoutException te) {
             return DlmsResponse.builder()
@@ -310,7 +311,73 @@ public class DlmsReaderUtils {
                 .status(status)
                 .message(reply.getErrorMessage())
                 .meterSerial(serial)
+                .resultData(Map.of("replyValue", reply.getValue(), "replyError", reply.getError()))
+                .rawResponse(toHex(response))
                 .build();
+    }
+
+    public DlmsResponse executeMethod( GXDLMSClient client, String serial, byte[][] requests) throws Exception {
+
+        try {
+            GXReplyData reply = new GXReplyData();
+            long start = System.currentTimeMillis();
+
+            byte[] lastResponse = null;
+            for (int i = 0; i < requests.length; i++) {
+
+                byte[] requestFrame = requests[i];
+
+                log.debug( "📤 DLMS METHOD TX [{} / {}] → meter={}, bytes={}", i + 1,requests.length,serial,toHex(requestFrame));
+
+                byte[] response = txRxService.sendReceiveWithContext(serial,requestFrame,20000);
+
+                lastResponse = response;
+                if (sessionManager.isAssociationLost(response)) {
+
+                    sessionManager.removeSession(serial);
+
+                    throw new AssociationLostException("Association lost during method execution → meter=" + serial);
+                }
+
+                processReply(client, serial, response, reply);
+            }
+
+            if (!reply.isComplete()) {
+
+                throw new IllegalStateException("Incomplete DLMS method reply → meter=" + serial);
+            }
+
+            long duration = System.currentTimeMillis() - start;
+
+            log.info("✅ DLMS method completed → meter={}, duration={}ms",serial,duration);
+
+            DlmsResponseStatus status = responseDecoder.decodeStatus(reply);
+
+            return DlmsResponse.builder()
+                    .status(status)
+                    .message(reply.getErrorMessage())
+                    .meterSerial(serial)
+                    .resultData(Map.of("replyValue", reply.getValue(),"replyError", reply.getError()))
+                    .rawResponse(lastResponse != null ? toHex(lastResponse) : null)
+                    .build();
+
+        } catch (java.net.SocketTimeoutException |
+                 java.util.concurrent.TimeoutException te) {
+
+            return DlmsResponse.builder()
+                    .status(DlmsResponseStatus.TIMEOUT)
+                    .message("Connection timeout: " + te.getMessage())
+                    .meterSerial(serial)
+                    .build();
+
+        } catch (Exception e) {
+
+            return DlmsResponse.builder()
+                    .status(DlmsResponseStatus.COMMUNICATION_ERROR)
+                    .message("Communication error: " + e.getMessage())
+                    .meterSerial(serial)
+                    .build();
+        }
     }
 
     public Object readAttribute(GXDLMSClient client, String serial, GXDLMSObject obj, int index) throws Exception {

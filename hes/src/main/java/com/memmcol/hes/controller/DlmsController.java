@@ -3,6 +3,7 @@ package com.memmcol.hes.controller;
 import com.memmcol.hes.domain.profile.ProfileProcessRequest;
 import com.memmcol.hes.domain.profile.ProfileProcessor;
 import com.memmcol.hes.domain.profile.ProfileTimestampPortImpl;
+import com.memmcol.hes.dto.ApiResponse;
 import com.memmcol.hes.infrastructure.dlms.CapturePeriodAdapter;
 import com.memmcol.hes.model.ProfileRowDTO;
 import com.memmcol.hes.model.TimestampRequest;
@@ -124,6 +125,26 @@ public class DlmsController {
         return ResponseEntity.ok(response);
     }
 
+    @NotNull
+    private ResponseEntity<ApiResponse<Map<String, Object>>> getMapResponseEntity(Map<String, Object> data) {
+
+        ApiResponse<Map<String, Object>> response = new ApiResponse<>();
+        boolean success = "success".equalsIgnoreCase(
+                String.valueOf(data.get("status"))
+        );
+
+        response.setStatus(success ? "success" : "failed");
+
+        response.setMessage(
+                String.valueOf(data.getOrDefault("message",success ? "Operation successful" : "Operation failed"))
+        );
+
+        response.setData(data);
+        response.setTimestamp(LocalDateTime.now());
+
+        return ResponseEntity.ok(response);
+    }
+
     @PostMapping("/setApn")
     @Tag(name = "Network", description = "Set GPRS APN on the meter remotely.")
     public ResponseEntity<Map<String, Object>> setApn(
@@ -161,6 +182,75 @@ public class DlmsController {
             response.put("serial", serial);
             response.put("timestamp", LocalDateTime.now());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
+    }
+
+@PostMapping("/setToken")
+    @Tag(name = "Token", description = "Set Token on the meter remotely.")
+    public ResponseEntity<Map<String, Object>> setToken(
+            @RequestParam String serial,
+            @RequestParam String token
+    ) {
+        Map<String, Object> response = new HashMap<>();
+        try {
+            Map<String, Object> data = dlmsService.setToken(serial, token);
+            return getMapResponseEntity(response, data);
+        } catch (Exception e) {
+            response.put("status", "error");
+            response.put("message", "Failed to set Token");
+            response.put("details", e.getMessage());
+            response.put("serial", serial);
+            response.put("timestamp", LocalDateTime.now());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
+    }
+
+    @PostMapping("/setRelayMode")
+    @Tag(name = "Control Mode", description = "Set meter control mode")
+    public ResponseEntity<Map<String, Object>> setControlMode(
+            @RequestParam String serial,
+            @RequestParam int mode
+    ) {
+        Map<String, Object> response = new HashMap<>();
+
+        try {
+            Map<String, Object> data = dlmsService.controlMode(serial, mode);
+            return getMapResponseEntity(response, data);
+        } catch (Exception e) {
+
+            response.put("status", "error");
+            response.put("message", "Failed to set control mode");
+            response.put("details", e.getMessage());
+            response.put("timestamp", LocalDateTime.now());
+
+            return ResponseEntity.status(500).body(response);
+        }
+    }
+
+
+    @PostMapping("/controlRelay")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> controlRelay(
+            @RequestParam String serial,
+            @RequestParam boolean state
+    ) {
+        try {
+
+            Map<String, Object> data =
+                    dlmsService.controlRelay(serial, state);
+
+            return getMapResponseEntity(data);
+
+        } catch (Exception e) {
+
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(
+                            ApiResponse.<Map<String, Object>>builder()
+                                    .status("error")
+                                    .message("Failed to control relay")
+                                    .data(null)
+                                    .timestamp(LocalDateTime.now())
+                                    .build()
+                    );
         }
     }
 
