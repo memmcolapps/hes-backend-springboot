@@ -260,6 +260,29 @@ public class RealtimeReadSseService {
             int to = Math.min(from + obisChunkSize, obisList.size());
             List<ObisDto> chunk = obisList.subList(from, to);
 
+            if (chunk.size() == 1) {
+                ObisDto obis = chunk.getFirst();
+                Map<String, Object> reading = readSingleObis(meter, obis);
+                reading.put("chunkSize", chunk.size());
+
+                if (Integer.valueOf(0).equals(reading.get("statuscode"))) {
+                    success++;
+                    totalSuccess.incrementAndGet();
+                } else {
+                    failed++;
+                    totalFailed.incrementAndGet();
+                }
+
+                if (acceptingEvents.get()) {
+                    send(emitter, "reading", reading);
+                }
+
+                log.info("✅ Realtime read meter={} single-obis={}/{} elapsedMs={}",
+                        meter.getMeterSerial(), to, obisList.size(),
+                        TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - meterStarted));
+                continue;
+            }
+
             try {
                 List<Map<String, Object>> batchReadings = readMeterObisValuesBatch(meter, chunk, meterStarted);
                 for (Map<String, Object> reading : batchReadings) {
@@ -343,6 +366,11 @@ public class RealtimeReadSseService {
     private boolean isWholeListRejection(Throwable ex) {
         for (Throwable t = ex; t != null; t = t.getCause()) {
             if (t instanceof GXDLMSExceptionResponse) {
+                return true;
+            }
+            String message = t.getMessage();
+            if (message != null &&
+                    message.toLowerCase().contains("support multiple objects reading")) {
                 return true;
             }
             if (t == t.getCause()) {
