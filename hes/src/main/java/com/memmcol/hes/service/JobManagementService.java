@@ -3,6 +3,7 @@ package com.memmcol.hes.service;
 import com.memmcol.hes.model.SchedulerJobInfo;
 import com.memmcol.hes.repository.SchedulerRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.quartz.*;
 import org.springframework.scheduling.quartz.SchedulerFactoryBean;
 import org.springframework.stereotype.Service;
@@ -10,7 +11,9 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Deprecated
@@ -158,13 +161,25 @@ public class JobManagementService {
                 scheduler.triggerJob(jobKey);
 
                 // ✅ Log execution in your audit table, not Quartz triggers
-                schedulerRepository.findByJobNameAndJobGroup(jobName, jobGroup).ifPresent(jobInfo -> {
+                Optional<SchedulerJobInfo> row = schedulerRepository.findByJobNameAndJobGroup(jobName, jobGroup);
+                if (row.isPresent()) {
+                    SchedulerJobInfo jobInfo = row.get();
                     jobInfo.setJobStatus("RUN_NOW");
                     jobInfo.setLastRunTime(LocalDateTime.now());
                     schedulerRepository.save(jobInfo);
-                });
+                    log.info(
+                            "Successfully saved {} record(s) to database (table=scheduler_job_info, operation=UPDATE, purpose=manual trigger-now metadata). job={} jobGroup={} hes.quartz.catalog phase=SCHEDULE_META_UPDATE",
+                            1, jobName, jobGroup);
+                } else {
+                    log.warn(
+                            "No records saved to database (table=scheduler_job_info, operation=UPDATE, purpose=manual trigger-now metadata). recordsSaved=0. reason=no_matching_catalog_row. job={} jobGroup={} hes.quartz.catalog phase=SCHEDULE_META_UPDATE_SKIPPED",
+                            jobName, jobGroup);
+                }
 
             } catch (Exception e) {
+                log.error(
+                        "Error saving record(s) to database or triggering Quartz job (runJobNow). table=scheduler_job_info (if reached). recordsSaved=0. job={} jobGroup={}. cause={}",
+                        jobName, jobGroup, e.getMessage(), e);
                 throw new SchedulerException("Failed to run job immediately: " + e.getMessage(), e);
             }
         }

@@ -1,9 +1,11 @@
 package com.memmcol.hes.jobs;
 
 import com.memmcol.hes.jobs.services.ProfileExecutionService;
+import com.memmcol.hes.schedulers.QuartzExecutionLogging;
 import lombok.extern.slf4j.Slf4j;
 import org.quartz.DisallowConcurrentExecution;
 import org.quartz.JobExecutionContext;
+import org.quartz.JobExecutionException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.quartz.QuartzJobBean;
 import org.springframework.stereotype.Component;
@@ -22,9 +24,17 @@ public class Channel3JobHouseHold extends QuartzJobBean {
     public Channel3JobHouseHold() {}
 
     @Override
-    protected void executeInternal(JobExecutionContext context) {
+    protected void executeInternal(JobExecutionContext context) throws JobExecutionException {
+        log.info("START: Channel3Job-HH");
         String obisCode = context.getMergedJobDataMap().getString("obisCodes");
-        log.info("Executing Channel3JobHouseHold at {}, obis={}", context.getFireTime(), obisCode);
-        profileExecutionService.readChannelThreeHouseholdForAll(obisCode);
+        QuartzExecutionLogging.logJobExecuteStart(log, context, obisCode);
+        try {
+            profileExecutionService.readChannelThreeHouseholdForAll(obisCode);
+            log.info("COMPLETED: Channel3Job-HH");
+        } catch (Exception e) {
+            log.error("ERROR: Channel3Job-HH");
+            QuartzExecutionLogging.logJobExecuteFailure(log, context, e);
+            throw new JobExecutionException(e);
+        }
     }
 }

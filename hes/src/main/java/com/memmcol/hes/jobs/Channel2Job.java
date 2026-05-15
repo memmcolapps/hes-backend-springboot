@@ -1,17 +1,14 @@
 package com.memmcol.hes.jobs;
 
 import com.memmcol.hes.jobs.services.ProfileExecutionService;
+import com.memmcol.hes.schedulers.QuartzExecutionLogging;
 import lombok.extern.slf4j.Slf4j;
 import org.quartz.DisallowConcurrentExecution;
-import org.quartz.Job;
 import org.quartz.JobExecutionContext;
 import org.quartz.JobExecutionException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.quartz.QuartzJobBean;
 import org.springframework.stereotype.Component;
-
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 @Slf4j
 @DisallowConcurrentExecution
@@ -24,13 +21,20 @@ public class Channel2Job extends QuartzJobBean {
         this.profileExecutionService = profileExecutionService;
     }
 
-    //Required by Quartz
     public Channel2Job() {}
 
     @Override
     protected void executeInternal(JobExecutionContext context) throws JobExecutionException {
+        log.info("START: Channel2Job");
         String obisCode = context.getMergedJobDataMap().getString("obisCodes");
-        log.info("✅ Channel2Job executed at {}, obis={}", context.getFireTime(), obisCode);
-        profileExecutionService.readChannelTwoForAll(obisCode); // batchSize can be externalized
+        QuartzExecutionLogging.logJobExecuteStart(log, context, obisCode);
+        try {
+            profileExecutionService.readChannelTwoForAll(obisCode);
+            log.info("COMPLETED: Channel2Job");
+        } catch (Exception e) {
+            log.error("ERROR: Channel2Job");
+            QuartzExecutionLogging.logJobExecuteFailure(log, context, e);
+            throw new JobExecutionException(e);
+        }
     }
 }
