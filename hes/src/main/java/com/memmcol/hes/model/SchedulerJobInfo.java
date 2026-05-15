@@ -1,5 +1,6 @@
 package com.memmcol.hes.model;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -69,5 +70,13 @@ public class SchedulerJobInfo {
 
     @Column(name = "obis_codes")
     private String obisCodes;     // store as comma-separated string e.g. "1.0.99.1.0.255,1.0.99.2.0.255"
+
+    /**
+     * Optional household-tier OBIS for jobs that use category-specific event reads (e.g. token events).
+     * Propagated to Quartz JobDataMap as {@code obisCodesHousehold}.
+     */
+    @JsonAlias("obis_codes_household")
+    @Column(name = "obis_codes_household")
+    private String obisCodesHousehold;
 
 }

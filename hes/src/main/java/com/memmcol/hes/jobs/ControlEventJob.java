@@ -1,6 +1,7 @@
 package com.memmcol.hes.jobs;
 
 import com.memmcol.hes.jobs.services.ProfileExecutionService;
+import com.memmcol.hes.schedulers.QuartzExecutionLogging;
 import lombok.extern.slf4j.Slf4j;
 import org.quartz.DisallowConcurrentExecution;
 import org.quartz.JobExecutionContext;
@@ -21,13 +22,20 @@ public class ControlEventJob extends QuartzJobBean {
         this.profileExecutionService = profileExecutionService;
     }
 
-    //Required by Quartz
     public ControlEventJob() {}
 
     @Override
     protected void executeInternal(JobExecutionContext context) throws JobExecutionException {
+        log.info("START: ControlEventJob");
         String obisCode = context.getMergedJobDataMap().getString("obisCodes");
-        log.info("✅ Executing ControlEventJob at {}, obis={}", context.getFireTime(), obisCode);
-        profileExecutionService.readEventsForAll(obisCode); // <-- dynamic OBIS now
+        QuartzExecutionLogging.logJobExecuteStart(log, context, obisCode);
+        try {
+            profileExecutionService.readEventsForAll(obisCode);
+            log.info("COMPLETED: ControlEventJob");
+        } catch (Exception e) {
+            log.error("ERROR: ControlEventJob-HH");
+            QuartzExecutionLogging.logJobExecuteFailure(log, context, e);
+            throw new JobExecutionException(e);
+        }
     }
 }

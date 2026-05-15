@@ -199,6 +199,7 @@ public class MetersLockService {
 
     public void readDailyBillingDataHouseholdWithLock(String model, String meterSerial, String profileObis, boolean isMD) {
         try {
+
             assert lockPort != null;
             lockPort.withExclusive(meterSerial, () -> {
                 dailyBillingDataHouseholdService.readProfileAndSave(model, meterSerial, profileObis, isMD);

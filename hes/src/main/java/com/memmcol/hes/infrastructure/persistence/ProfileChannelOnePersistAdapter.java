@@ -7,6 +7,7 @@ import com.memmcol.hes.dto.ProfileChannelOneDTOV1;
 import com.memmcol.hes.entities.ProfileChannelOne;
 import com.memmcol.hes.entities.ProfileChannelOneId;
 import com.memmcol.hes.entities.ProfileChannelOneToEntity;
+import com.memmcol.hes.infrastructure.observability.FactTablePersistenceLogging;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 //import jakarta.transaction.Transactional;
@@ -63,45 +64,52 @@ public class ProfileChannelOnePersistAdapter {
                                                        String profileOBIS,
                                                        List<ProfileChannelOneDTO> readings,
                                                        CapturePeriod capturePeriodSeconds) {
-        ProfileState st = statePort.loadState(meterSerial, profileOBIS); // or null if you dropped obis
-        LocalDateTime previousLast = (st != null && st.lastTimestamp() != null)
-                ? st.lastTimestamp().value()
-                : null;
+        final String table = "profile_channel_one";
+        final String domain = "profile";
+        try {
+            ProfileState st = statePort.loadState(meterSerial, profileOBIS);
+            LocalDateTime previousLast = (st != null && st.lastTimestamp() != null)
+                    ? st.lastTimestamp().value()
+                    : null;
 
-        if (readings == null || readings.isEmpty()) {
-            log.info("saveBatchAndAdvanceCursor: no rows for meter={}", meterSerial);
-            return new ProfileSyncResult(
-                    0, 0, 0, previousLast, previousLast, previousLast, false
-            );
+            if (readings == null || readings.isEmpty()) {
+                FactTablePersistenceLogging.logPersistZeroRows(log, domain, table, meterSerial, "_unknown", profileOBIS,
+                        "NO_INCOMING_ROWS", "readings null or empty before persist", 0);
+                return new ProfileSyncResult(0, 0, 0, previousLast, previousLast, previousLast, false);
+            }
+
+            String meterModel = FactTablePersistenceLogging.firstModel(readings, ProfileChannelOneDTO::getModelNumber);
+            int total = readings.size();
+            List<ProfileChannelOneDTO> filteredRows = deduplicate(meterSerial, readings);
+            int inserted = persistReadingsByMonth(filteredRows);
+            int duplicate = total - inserted;
+
+            LocalDateTime incomingMax = readings.stream()
+                    .map(ProfileChannelOneDTO::getEntryTimestamp)
+                    .filter(Objects::nonNull)
+                    .max(LocalDateTime::compareTo)
+                    .orElse(previousLast);
+
+            LocalDateTime advanceTo = previousLast == null
+                    ? incomingMax
+                    : (previousLast.isAfter(incomingMax) ? previousLast : incomingMax);
+
+            boolean advanced = previousLast == null || advanceTo.isAfter(previousLast);
+
+            if (advanceTo != null) {
+                statePort.upsertState(meterSerial, profileOBIS, new ProfileTimestamp(advanceTo), capturePeriodSeconds);
+            }
+
+            FactTablePersistenceLogging.logBatchOutcome(log, domain, table, meterSerial, meterModel, profileOBIS, inserted, total, duplicate);
+
+            return new ProfileSyncResult(total, inserted, duplicate, previousLast, incomingMax, advanceTo, advanced);
+        } catch (Exception e) {
+            String meterModel = (readings != null && !readings.isEmpty())
+                    ? FactTablePersistenceLogging.firstModel(readings, ProfileChannelOneDTO::getModelNumber)
+                    : "_unknown";
+            FactTablePersistenceLogging.logPersistFailure(log, domain, table, meterSerial, meterModel, profileOBIS, e);
+            throw e;
         }
-
-        int total = readings.size();
-        //Deduplication by timestamp only
-        List<ProfileChannelOneDTO> filteredRows = deduplicate(meterSerial, readings);
-        //Insert filtered rows
-        int inserted = persistReadingsByMonth(filteredRows);
-        int duplicate = total - inserted;
-
-        LocalDateTime incomingMax = readings.stream()
-                .map(ProfileChannelOneDTO::getEntryTimestamp)
-                .filter(Objects::nonNull)
-                .max(LocalDateTime::compareTo)
-                .orElse(previousLast);
-
-        LocalDateTime advanceTo = previousLast == null
-                ? incomingMax
-                : (previousLast.isAfter(incomingMax) ? previousLast : incomingMax);
-
-        boolean advanced = previousLast == null || advanceTo.isAfter(previousLast);
-
-        if (advanceTo != null) {
-            statePort.upsertState(meterSerial, profileOBIS, new ProfileTimestamp(advanceTo), capturePeriodSeconds);
-        }
-
-        log.info("Batch persisted meter={} total={} inserted={} dup={} start={} end={} advanceTo={}",
-                meterSerial, total, inserted, duplicate, previousLast, incomingMax, advanceTo);
-
-        return new ProfileSyncResult(total, inserted, duplicate, previousLast, incomingMax, advanceTo, advanced);
     }
 
     /**
@@ -145,7 +153,7 @@ public class ProfileChannelOnePersistAdapter {
     public int persistReadingsByMonth(List<ProfileChannelOneDTO> filteredRows) {
         Session session = entityManager.unwrap(Session.class);
 
-        log.info("💾 Persisting readings to DB....");
+        log.debug("💾 Persisting readings to DB....");
         final AtomicInteger saved = new AtomicInteger();
         filteredRows.forEach(dto -> {
             ProfileChannelOne entity = ProfileChannelOneToEntity.toEntity(dto);
@@ -173,7 +181,7 @@ public class ProfileChannelOnePersistAdapter {
         session.flush();
         session.clear();
 
-        log.info("💾 Saved {} readings to DB.", saved.get());
+        log.debug("💾 Saved {} readings to DB.", saved.get());
         return saved.get();
     }
 

@@ -5,6 +5,7 @@ import com.memmcol.hes.domain.profile.CapturePeriod;
 import com.memmcol.hes.domain.profile.ProfileState;
 import com.memmcol.hes.domain.profile.ProfileSyncResult;
 import com.memmcol.hes.domain.profile.ProfileTimestamp;
+import com.memmcol.hes.infrastructure.observability.FactTablePersistenceLogging;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.TypedQuery;
 import lombok.extern.slf4j.Slf4j;
@@ -135,56 +136,75 @@ public abstract class AbstractBillingHouseholdPersistenceAdapter<TDto, TEntity, 
                                                        List<TDto> readings,
                                                        CapturePeriod capturePeriodSeconds,
                                                        String jpqlEntityName) {
+        final String table = baseTableName();
+        final String domain = "billing_household";
         try {
-            Session session0 = em().unwrap(Session.class);
-            session0.doWork(conn -> {
-                try {
-                    String url = conn.getMetaData() != null ? conn.getMetaData().getURL() : "unknown";
-                    String schema = "unknown";
+            try {
+                Session session0 = em().unwrap(Session.class);
+                session0.doWork(conn -> {
                     try {
-                        schema = conn.getSchema();
+                        String url = conn.getMetaData() != null ? conn.getMetaData().getURL() : "unknown";
+                        String schema = "unknown";
+                        try {
+                            schema = conn.getSchema();
+                        } catch (Exception ignored) {
+                        }
+                        log.debug("Billing persist begin. table={} meter={} obis={} url={} schema={} incomingRows={}",
+                                baseTableName(), meterSerial, profileObis, url, schema, (readings == null ? 0 : readings.size()));
                     } catch (Exception ignored) {
                     }
-                    log.info("Billing persist begin. table={} meter={} obis={} url={} schema={} incomingRows={}",
-                            baseTableName(), meterSerial, profileObis, url, schema, (readings == null ? 0 : readings.size()));
+                });
+            } catch (Exception ignored) {
+            }
+
+            ProfileState st = statePort().loadState(meterSerial, profileObis);
+            LocalDateTime previousLast = (st != null && st.lastTimestamp() != null) ? st.lastTimestamp().value() : null;
+
+            if (readings == null || readings.isEmpty()) {
+                FactTablePersistenceLogging.logPersistZeroRows(log, domain, table, meterSerial, "_unknown", profileObis,
+                        "NO_INCOMING_ROWS", "No billing household readings in batch.", 0);
+                return new ProfileSyncResult(0, 0, 0, previousLast, previousLast, previousLast, false);
+            }
+
+            String meterModel = FactTablePersistenceLogging.nz(meterModelFromFirstDto(readings.get(0)));
+
+            int total = readings.size();
+            List<TDto> filtered = deduplicate(meterSerial, readings, jpqlEntityName);
+            int inserted = persistReadings(filtered);
+            int duplicate = total - inserted;
+
+            LocalDateTime incomingMax = readings.stream()
+                    .map(this::entryTimestamp)
+                    .filter(Objects::nonNull)
+                    .max(LocalDateTime::compareTo)
+                    .orElse(previousLast);
+
+            LocalDateTime advanceTo = previousLast == null
+                    ? incomingMax
+                    : (previousLast.isAfter(incomingMax) ? previousLast : incomingMax);
+
+            boolean advanced = previousLast == null || (advanceTo != null && advanceTo.isAfter(previousLast));
+            if (advanceTo != null) {
+                LocalDateTime next = stateAdvanceTo(advanceTo);
+                statePort().upsertState(meterSerial, profileObis, new ProfileTimestamp(next), capturePeriodSeconds);
+            }
+
+            FactTablePersistenceLogging.logBatchOutcome(log, domain, table, meterSerial, meterModel, profileObis, inserted, total, duplicate);
+
+            return new ProfileSyncResult(total, inserted, duplicate, previousLast, incomingMax, advanceTo, advanced);
+        } catch (Exception e) {
+            String mm = "_unknown";
+            if (readings != null && !readings.isEmpty()) {
+                try {
+                    mm = FactTablePersistenceLogging.nz(meterModelFromFirstDto(readings.get(0)));
                 } catch (Exception ignored) {
                 }
-            });
-        } catch (Exception ignored) {
+            }
+            FactTablePersistenceLogging.logPersistFailure(log, domain, table, meterSerial, mm, profileObis, e);
+            throw e;
         }
-
-        ProfileState st = statePort().loadState(meterSerial, profileObis);
-        LocalDateTime previousLast = (st != null && st.lastTimestamp() != null) ? st.lastTimestamp().value() : null;
-
-        if (readings == null || readings.isEmpty()) {
-            return new ProfileSyncResult(0, 0, 0, previousLast, previousLast, previousLast, false);
-        }
-
-        int total = readings.size();
-        List<TDto> filtered = deduplicate(meterSerial, readings, jpqlEntityName);
-        int inserted = persistReadings(filtered);
-        int duplicate = total - inserted;
-
-        log.info("Billing persist result. table={} meter={} obis={} total={} filtered={} inserted={} duplicate={}",
-                baseTableName(), meterSerial, profileObis, total, filtered.size(), inserted, duplicate);
-
-        LocalDateTime incomingMax = readings.stream()
-                .map(this::entryTimestamp)
-                .filter(Objects::nonNull)
-                .max(LocalDateTime::compareTo)
-                .orElse(previousLast);
-
-        LocalDateTime advanceTo = previousLast == null
-                ? incomingMax
-                : (previousLast.isAfter(incomingMax) ? previousLast : incomingMax);
-
-        boolean advanced = previousLast == null || (advanceTo != null && advanceTo.isAfter(previousLast));
-        if (advanceTo != null) {
-            LocalDateTime next = stateAdvanceTo(advanceTo);
-            statePort().upsertState(meterSerial, profileObis, new ProfileTimestamp(next), capturePeriodSeconds);
-        }
-
-        return new ProfileSyncResult(total, inserted, duplicate, previousLast, incomingMax, advanceTo, advanced);
     }
-}
 
+    /** Meter model string from the first DTO in a batch (for fact-table observability). */
+    protected abstract String meterModelFromFirstDto(TDto dto);
+}

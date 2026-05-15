@@ -180,6 +180,9 @@ public class QuartzJobService {
             if (jobInfo.getObisCodes() != null && !jobInfo.getObisCodes().isEmpty()) {
                 jobDataMap.put("obisCodes", jobInfo.getObisCodes());
             }
+            if (jobInfo.getObisCodesHousehold() != null && !jobInfo.getObisCodesHousehold().isEmpty()) {
+                jobDataMap.put("obisCodesHousehold", jobInfo.getObisCodesHousehold());
+            }
 
             JobDetail jobDetail = JobBuilder.newJob(jobClazz)
                     .withIdentity(jobInfo.getJobName(), jobInfo.getJobGroup())
@@ -241,6 +244,9 @@ public class QuartzJobService {
             jobDataMap.put("interfaceName", jobInfo.getInterfaceName());
             if (jobInfo.getObisCodes() != null && !jobInfo.getObisCodes().isEmpty()) {
                 jobDataMap.put("obisCodes", jobInfo.getObisCodes());
+            }
+            if (jobInfo.getObisCodesHousehold() != null && !jobInfo.getObisCodesHousehold().isEmpty()) {
+                jobDataMap.put("obisCodesHousehold", jobInfo.getObisCodesHousehold());
             }
 
             JobDetail newJobDetail = JobBuilder.newJob(jobClazz)
@@ -340,6 +346,7 @@ public class QuartzJobService {
         if (incoming.getJobClass() != null) existingJob.setJobClass(incoming.getJobClass());
         if (incoming.getCronExpression() != null) existingJob.setCronExpression(incoming.getCronExpression());
         if (incoming.getObisCodes() != null) existingJob.setObisCodes(incoming.getObisCodes());
+        if (incoming.getObisCodesHousehold() != null) existingJob.setObisCodesHousehold(incoming.getObisCodesHousehold());
 
         if (incoming.getRepeatTime() != null) existingJob.setRepeatTime(incoming.getRepeatTime());
         if (incoming.getRepeatSeconds() != null) existingJob.setRepeatSeconds(incoming.getRepeatSeconds());
@@ -434,24 +441,33 @@ public class QuartzJobService {
             }
 
             // persist changes to scheduler_job_info AFTER scheduler operation succeeds
-            schedulerRepository.findByJobNameAndJobGroup(jobName, jobGroup)
-                    .ifPresent(info -> {
-                        info.setRepeatTime(intervalMs);
-                        // optional: store fields breakdown
-                        info.setRepeatSeconds((int) (intervalMs / 1000L));
-                        info.setRepeatMinutes((int) (intervalMs / 1000L / 60L));
-                        info.setRepeatHours((int) (intervalMs / 1000L / 3600L));
-                        info.setCronJob(false);
-                        info.setCronExpression("");
-                        info.setJobStatus("UPDATED");
-                        info.setLastRunTime(LocalDateTime.now());
-                        schedulerRepository.save(info);
-                    });
+            Optional<SchedulerJobInfo> catalogRow = schedulerRepository.findByJobNameAndJobGroup(jobName, jobGroup);
+            if (catalogRow.isPresent()) {
+                SchedulerJobInfo info = catalogRow.get();
+                info.setRepeatTime(intervalMs);
+                info.setRepeatSeconds((int) (intervalMs / 1000L));
+                info.setRepeatMinutes((int) (intervalMs / 1000L / 60L));
+                info.setRepeatHours((int) (intervalMs / 1000L / 3600L));
+                info.setCronJob(false);
+                info.setCronExpression("");
+                info.setJobStatus("UPDATED");
+                info.setLastRunTime(LocalDateTime.now());
+                schedulerRepository.save(info);
+                log.info(
+                        "Successfully saved {} record(s) to database (table=scheduler_job_info, operation=UPDATE, purpose=schedule metadata after interval change). job={} jobGroup={} hes.quartz.catalog phase=SCHEDULE_META_UPDATE",
+                        1, jobName, jobGroup);
+            } else {
+                log.warn(
+                        "No records saved to database (table=scheduler_job_info, operation=UPDATE, purpose=schedule metadata after interval change). recordsSaved=0. reason=no_matching_catalog_row. job={} jobGroup={} hes.quartz.catalog phase=SCHEDULE_META_UPDATE_SKIPPED",
+                        jobName, jobGroup);
+            }
 
             log.info("Updated interval for job {}/{} -> {} ms", jobGroup, jobName, intervalMs);
             return true;
         } catch (Exception e) {
-            log.error("Failed to update interval for job {}/{}", jobGroup, jobName, e);
+            log.error(
+                    "Error saving record(s) to database or completing Quartz schedule change (updateJobInterval). table=scheduler_job_info (if reached). recordsSaved=0. job={} jobGroup={}. cause={}",
+                    jobName, jobGroup, e.getMessage(), e);
             return false;
         }
     }
@@ -485,23 +501,33 @@ public class QuartzJobService {
             }
 
             // persist update AFTER successful reschedule
-            schedulerRepository.findByJobNameAndJobGroup(jobName, jobGroup)
-                    .ifPresent(info -> {
-                        info.setCronExpression(cronExpression);
-                        info.setCronJob(true);
-                        info.setRepeatTime(0L);
-                        info.setRepeatMinutes(0);
-                        info.setRepeatHours(0);
-                        info.setRepeatSeconds(0);
-                        info.setJobStatus("UPDATED");
-                        info.setLastRunTime(LocalDateTime.now());
-                        schedulerRepository.save(info);
-                    });
+            Optional<SchedulerJobInfo> catalogCron = schedulerRepository.findByJobNameAndJobGroup(jobName, jobGroup);
+            if (catalogCron.isPresent()) {
+                SchedulerJobInfo info = catalogCron.get();
+                info.setCronExpression(cronExpression);
+                info.setCronJob(true);
+                info.setRepeatTime(0L);
+                info.setRepeatMinutes(0);
+                info.setRepeatHours(0);
+                info.setRepeatSeconds(0);
+                info.setJobStatus("UPDATED");
+                info.setLastRunTime(LocalDateTime.now());
+                schedulerRepository.save(info);
+                log.info(
+                        "Successfully saved {} record(s) to database (table=scheduler_job_info, operation=UPDATE, purpose=schedule metadata after cron change). job={} jobGroup={} hes.quartz.catalog phase=SCHEDULE_META_UPDATE",
+                        1, jobName, jobGroup);
+            } else {
+                log.warn(
+                        "No records saved to database (table=scheduler_job_info, operation=UPDATE, purpose=schedule metadata after cron change). recordsSaved=0. reason=no_matching_catalog_row. job={} jobGroup={} hes.quartz.catalog phase=SCHEDULE_META_UPDATE_SKIPPED",
+                        jobName, jobGroup);
+            }
 
             log.info("Updated CRON for job {}/{} -> {}", jobGroup, jobName, cronExpression);
             return true;
         } catch (Exception e) {
-            log.error("Failed to update CRON for job {}/{}", jobGroup, jobName, e);
+            log.error(
+                    "Error saving record(s) to database or completing Quartz schedule change (updateJobCron). table=scheduler_job_info (if reached). recordsSaved=0. job={} jobGroup={}. cause={}",
+                    jobName, jobGroup, e.getMessage(), e);
             return false;
         }
     }
@@ -573,19 +599,29 @@ public class QuartzJobService {
             }
 
             // ✅ Persist OBIS update to DB only after successful scheduler update
-            schedulerRepository.findByJobNameAndJobGroup(jobName, jobGroup)
-                    .ifPresent(info -> {
-                        info.setObisCodes(obisCodes);
-                        info.setJobStatus("UPDATED_OBIS");
-                        info.setLastRunTime(LocalDateTime.now());
-                        schedulerRepository.save(info);
-                    });
+            Optional<SchedulerJobInfo> catalogObis = schedulerRepository.findByJobNameAndJobGroup(jobName, jobGroup);
+            if (catalogObis.isPresent()) {
+                SchedulerJobInfo info = catalogObis.get();
+                info.setObisCodes(obisCodes);
+                info.setJobStatus("UPDATED_OBIS");
+                info.setLastRunTime(LocalDateTime.now());
+                schedulerRepository.save(info);
+                log.info(
+                        "Successfully saved {} record(s) to database (table=scheduler_job_info, operation=UPDATE, purpose=schedule metadata after OBIS change). job={} jobGroup={} hes.quartz.catalog phase=SCHEDULE_META_UPDATE",
+                        1, jobName, jobGroup);
+            } else {
+                log.warn(
+                        "No records saved to database (table=scheduler_job_info, operation=UPDATE, purpose=schedule metadata after OBIS change). recordsSaved=0. reason=no_matching_catalog_row. job={} jobGroup={} hes.quartz.catalog phase=SCHEDULE_META_UPDATE_SKIPPED",
+                        jobName, jobGroup);
+            }
 
             log.info("✅ Successfully updated OBIS codes for job {}/{} -> {}", jobGroup, jobName, obisCodes);
             return true;
 
         } catch (Exception e) {
-            log.error("❌ Failed to update OBIS codes for job {}/{}", jobGroup, jobName, e);
+            log.error(
+                    "Error saving record(s) to database or completing Quartz job data change (updateJobObisCodes). table=scheduler_job_info (if reached). recordsSaved=0. job={} jobGroup={}. cause={}",
+                    jobName, jobGroup, e.getMessage(), e);
             return false;
         }
     }

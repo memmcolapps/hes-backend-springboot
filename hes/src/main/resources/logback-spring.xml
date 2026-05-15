@@ -55,7 +55,7 @@
             <cleanHistoryOnStart>true</cleanHistoryOnStart>
         </rollingPolicy>
         <encoder>
-            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS, ${SERVER_TIMEZONE}} %-5level [%thread] %logger - %msg%n</pattern>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS, ${SERVER_TIMEZONE}} %-5level [%thread] [%X{hes.quartz.fireInstanceId:-}] %logger - %msg%n</pattern>
         </encoder>
     </appender>
 
@@ -69,7 +69,7 @@
     <!-- ==== Console (optional, for dev) ==== -->
     <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
         <encoder>
-            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS, ${SERVER_TIMEZONE}} %-5level [%thread] %logger - %msg%n</pattern>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS, ${SERVER_TIMEZONE}} %-5level [%thread] [%X{hes.quartz.fireInstanceId:-}] %logger - %msg%n</pattern>
         </encoder>
     </appender>
 

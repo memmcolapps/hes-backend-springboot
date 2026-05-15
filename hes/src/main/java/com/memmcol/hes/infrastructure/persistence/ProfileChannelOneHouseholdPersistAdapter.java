@@ -9,6 +9,7 @@ import com.memmcol.hes.dto.ProfileChannelOneHouseholdDTO;
 import com.memmcol.hes.entities.ProfileChannelOneHousehold;
 import com.memmcol.hes.entities.ProfileChannelOneHouseholdToEntity;
 import com.memmcol.hes.entities.ProfileChannelOneId;
+import com.memmcol.hes.infrastructure.observability.FactTablePersistenceLogging;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.TypedQuery;
@@ -61,41 +62,52 @@ public class ProfileChannelOneHouseholdPersistAdapter {
                                                        String profileOBIS,
                                                        List<ProfileChannelOneHouseholdDTO> readings,
                                                        CapturePeriod capturePeriodSeconds) {
-        ProfileState st = statePort.loadState(meterSerial, profileOBIS);
-        LocalDateTime previousLast = (st != null && st.lastTimestamp() != null)
-                ? st.lastTimestamp().value()
-                : null;
+        final String table = "profile_channel_one_hh";
+        final String domain = "profile";
+        try {
+            ProfileState st = statePort.loadState(meterSerial, profileOBIS);
+            LocalDateTime previousLast = (st != null && st.lastTimestamp() != null)
+                    ? st.lastTimestamp().value()
+                    : null;
 
-        if (readings == null || readings.isEmpty()) {
-            log.info("saveBatchAndAdvanceCursor(hh ch1): no rows for meter={}", meterSerial);
-            return new ProfileSyncResult(0, 0, 0, previousLast, previousLast, previousLast, false);
+            if (readings == null || readings.isEmpty()) {
+                FactTablePersistenceLogging.logPersistZeroRows(log, domain, table, meterSerial, "_unknown", profileOBIS,
+                        "NO_INCOMING_ROWS", "readings null or empty before persist", 0);
+                return new ProfileSyncResult(0, 0, 0, previousLast, previousLast, previousLast, false);
+            }
+
+            String meterModel = FactTablePersistenceLogging.firstModel(readings, ProfileChannelOneHouseholdDTO::getModelNumber);
+            int total = readings.size();
+            List<ProfileChannelOneHouseholdDTO> filteredRows = deduplicate(meterSerial, readings);
+            int inserted = persistReadingsByMonth(filteredRows);
+            int duplicate = total - inserted;
+
+            LocalDateTime incomingMax = readings.stream()
+                    .map(ProfileChannelOneHouseholdDTO::getEntryTimestamp)
+                    .filter(Objects::nonNull)
+                    .max(LocalDateTime::compareTo)
+                    .orElse(previousLast);
+
+            LocalDateTime advanceTo = previousLast == null
+                    ? incomingMax
+                    : (previousLast.isAfter(incomingMax) ? previousLast : incomingMax);
+
+            boolean advanced = previousLast == null || (advanceTo != null && advanceTo.isAfter(previousLast));
+
+            if (advanceTo != null) {
+                statePort.upsertState(meterSerial, profileOBIS, new ProfileTimestamp(advanceTo), capturePeriodSeconds);
+            }
+
+            FactTablePersistenceLogging.logBatchOutcome(log, domain, table, meterSerial, meterModel, profileOBIS, inserted, total, duplicate);
+
+            return new ProfileSyncResult(total, inserted, duplicate, previousLast, incomingMax, advanceTo, advanced);
+        } catch (Exception e) {
+            String meterModel = (readings != null && !readings.isEmpty())
+                    ? FactTablePersistenceLogging.firstModel(readings, ProfileChannelOneHouseholdDTO::getModelNumber)
+                    : "_unknown";
+            FactTablePersistenceLogging.logPersistFailure(log, domain, table, meterSerial, meterModel, profileOBIS, e);
+            throw e;
         }
-
-        int total = readings.size();
-        List<ProfileChannelOneHouseholdDTO> filteredRows = deduplicate(meterSerial, readings);
-        int inserted = persistReadingsByMonth(filteredRows);
-        int duplicate = total - inserted;
-
-        LocalDateTime incomingMax = readings.stream()
-                .map(ProfileChannelOneHouseholdDTO::getEntryTimestamp)
-                .filter(Objects::nonNull)
-                .max(LocalDateTime::compareTo)
-                .orElse(previousLast);
-
-        LocalDateTime advanceTo = previousLast == null
-                ? incomingMax
-                : (previousLast.isAfter(incomingMax) ? previousLast : incomingMax);
-
-        boolean advanced = previousLast == null || (advanceTo != null && advanceTo.isAfter(previousLast));
-
-        if (advanceTo != null) {
-            statePort.upsertState(meterSerial, profileOBIS, new ProfileTimestamp(advanceTo), capturePeriodSeconds);
-        }
-
-        log.info("Batch persisted(hh ch1) meter={} total={} inserted={} dup={} start={} end={} advanceTo={}",
-                meterSerial, total, inserted, duplicate, previousLast, incomingMax, advanceTo);
-
-        return new ProfileSyncResult(total, inserted, duplicate, previousLast, incomingMax, advanceTo, advanced);
     }
 
     private List<ProfileChannelOneHouseholdDTO> deduplicate(String meterSerial, List<ProfileChannelOneHouseholdDTO> readings) {
