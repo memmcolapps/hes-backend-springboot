@@ -5,19 +5,18 @@ import com.memmcol.hes.application.port.out.TxRxService;
 import com.memmcol.hes.exception.AssociationLostException;
 import com.memmcol.hes.infrastructure.dlms.DlmsReaderUtils;
 import com.memmcol.hes.model.DlmsResponse;
+import com.memmcol.hes.model.TokenWriteResult;
 import com.memmcol.hes.nettyUtils.SessionManagerMultiVendor;
 import gurux.dlms.GXDLMSClient;
 import gurux.dlms.GXDLMSExceptionResponse;
 import gurux.dlms.GXReplyData;
 import gurux.dlms.objects.GXDLMSData;
 import gurux.dlms.objects.GXDLMSRegister;
-import gurux.dlms.enums.DataType;
 import gurux.dlms.internal.GXCommon;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -65,20 +64,29 @@ public class TokenService {
 
             DlmsResponse response = dlmsReaderUtils.executeMethod(client,meterSerial,writeRequest);
 
+            byte[] rawBytes = GXCommon.hexToBytes(response.getRawResponse().replace(" ", ""));
 
-Map<String, Object> result = new LinkedHashMap<>();
+            TokenWriteResult tokenResult = dlmsReaderUtils.parseTokenResponse(rawBytes);
+
+            Map<String, Object> result = new LinkedHashMap<>();
             result.put("meterSerial", meterSerial);
             result.put("creditToken", creditToken);
-            result.put("status", response.isSuccess() ? "success" : "failed");
+            result.put("status", tokenResult.isSuccess() ? "success" : "failed");
             result.put("dlmsStatus", response.getStatus());
             result.put("message", response.getMessage());
-            result.put("rawResponse", response.getRawResponse());
-            result.put("resultData", response.getResultData());
+            result.put("tokenStatus", tokenResult.getTokenStatus());
+            result.put("tokenResultCode", tokenResult.getTokenStatus().getCode());
+            result.put("meterCreditBalance", tokenResult.getMeterCredit());
+            result.put("logoutToken", tokenResult.getLogoutToken());
+//            result.put("rawResponse", tokenResult.getRawHex());
 
-            if (response.isSuccess()) {
-                log.info("✅ Token written successfully to meter {}", meterSerial);
+            if (tokenResult.isSuccess()) {
+                log.info("✅ Token written successfully to meter {}. Status={}, Credit={}", 
+                        meterSerial, tokenResult.getTokenStatusLabel(), tokenResult.getMeterCredit());
             } else {
-                log.error("❌ Failed to write Token to meter {}: {} ({})", meterSerial, response.getMessage(), response.getStatus());
+                log.error("❌ Token write failed for meter {}: status={} (code={}), detail={}", 
+                        meterSerial, tokenResult.getTokenStatusLabel(), 
+                        tokenResult.getTokenStatus().getCode(), tokenResult.getErrorDetail());
             }
 
             return result;

@@ -7,15 +7,12 @@ import lombok.NoArgsConstructor;
 
 import java.util.Map;
 
-/**
- * Data Transfer Object representing the response from a DLMS communication operation.
- */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class DlmsResponse {
-private DlmsResponseStatus status;
+    private DlmsResponseStatus status;
     private String message;
     private String meterSerial;
     private Map<String, Object> resultData;

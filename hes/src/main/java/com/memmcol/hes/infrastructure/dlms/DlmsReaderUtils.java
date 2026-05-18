@@ -8,9 +8,7 @@ import com.memmcol.hes.domain.profile.ProfileRowGeneric;
 import com.memmcol.hes.dto.MeterDTO;
 import com.memmcol.hes.mocks.MockRequestResponseService;
 import com.memmcol.hes.mocks.MockRxDecoderWithReply;
-import com.memmcol.hes.model.DlmsResponse;
-import com.memmcol.hes.model.DlmsResponseStatus;
-import com.memmcol.hes.model.ModelProfileMetadata;
+import com.memmcol.hes.model.*;
 import com.memmcol.hes.repository.MeterRepository;
 import com.memmcol.hes.nettyUtils.SessionManagerMultiVendor;
 import com.memmcol.hes.exception.AssociationLostException;
@@ -27,6 +25,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.io.ByteArrayOutputStream;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -246,8 +246,6 @@ public class DlmsReaderUtils {
                     .status(status)
                     .message(reply.getErrorMessage())
                     .meterSerial(serial)
-                    .resultData(Map.of("replyValue", reply.getValue(), "replyError", reply.getError()))
-                    .rawResponse( lastResponse != null  ? toHex(lastResponse) : null)
                     .build();
         } catch (java.net.SocketTimeoutException | java.util.concurrent.TimeoutException te) {
             return DlmsResponse.builder()
@@ -311,8 +309,6 @@ public class DlmsReaderUtils {
                 .status(status)
                 .message(reply.getErrorMessage())
                 .meterSerial(serial)
-                .resultData(Map.of("replyValue", reply.getValue(), "replyError", reply.getError()))
-                .rawResponse(toHex(response))
                 .build();
     }
 
@@ -322,7 +318,6 @@ public class DlmsReaderUtils {
             GXReplyData reply = new GXReplyData();
             long start = System.currentTimeMillis();
 
-            byte[] lastResponse = null;
             for (int i = 0; i < requests.length; i++) {
 
                 byte[] requestFrame = requests[i];
@@ -331,7 +326,6 @@ public class DlmsReaderUtils {
 
                 byte[] response = txRxService.sendReceiveWithContext(serial,requestFrame,20000);
 
-                lastResponse = response;
                 if (sessionManager.isAssociationLost(response)) {
 
                     sessionManager.removeSession(serial);
@@ -357,8 +351,7 @@ public class DlmsReaderUtils {
                     .status(status)
                     .message(reply.getErrorMessage())
                     .meterSerial(serial)
-                    .resultData(Map.of("replyValue", reply.getValue(),"replyError", reply.getError()))
-                    .rawResponse(lastResponse != null ? toHex(lastResponse) : null)
+                    .rawResponse(GXCommon.toHex(reply.getData().getData()))
                     .build();
 
         } catch (java.net.SocketTimeoutException |
@@ -377,6 +370,146 @@ public class DlmsReaderUtils {
                     .message("Communication error: " + e.getMessage())
                     .meterSerial(serial)
                     .build();
+        }
+    }
+
+    public TokenWriteResult parseTokenResponse(byte[] rawBytes) {
+
+        TokenWriteResult result = new TokenWriteResult();
+
+        result.setRawHex(GXCommon.toHex(rawBytes));
+
+        try {
+
+            if (rawBytes == null || rawBytes.length == 0) {
+
+                result.setTokenStatus(TokenStatus.UNKNOWN);
+                result.setErrorDetail("Empty meter response");
+
+                return result;
+            }
+
+            /*
+             * Expected pattern from meter:
+             *
+             * 11 02
+             * 05 57 77 00 00
+             * 09 0A FF FF FF FF FF FF FF FF FF FF
+             *
+             * Where:
+             * 11 = ENUM/UINT8 tag
+             * 02 = token result
+             *
+             * 05 = UINT32 tag
+             * next 4 bytes = meter credit
+             *
+             * 09 = OCTET STRING
+             * 0A = length (10 bytes)
+             * next 10 bytes = logout token
+             */
+
+            for (int i = 0; i < rawBytes.length; i++) {
+
+                int tag = rawBytes[i] & 0xFF;
+
+                // =========================================================
+                // TOKEN RESULT
+                // =========================================================
+                if (tag == 0x11 && (i + 1) < rawBytes.length) {
+
+                    int tokenCode = rawBytes[i + 1] & 0xFF;
+
+                    // Accept only realistic token result values
+                    if (tokenCode >= 0 && tokenCode <= 20) {
+
+                        TokenStatus status = TokenStatus.fromCode(tokenCode);
+
+                        result.setTokenStatus(status);
+                        result.setTokenResultCode(tokenCode);
+
+                        log.info("Parsed token result → code={}, status={}",tokenCode,status);
+                    }
+                }
+
+                // =========================================================
+                // METER CREDIT
+                // =========================================================
+                else if (tag == 0x05 && (i + 4) < rawBytes.length) {
+
+                    long rawCredit =
+                            ((rawBytes[i + 4] & 0xFFL) << 24) |
+                                    ((rawBytes[i + 3] & 0xFFL) << 16) |
+                                    ((rawBytes[i + 2] & 0xFFL) << 8)  |
+                                    (rawBytes[i + 1] & 0xFFL);
+
+                    BigDecimal credit =
+                            BigDecimal.valueOf(rawCredit)
+                                    .divide(BigDecimal.valueOf(100));
+
+                    result.setMeterCredit(credit);
+                    log.info("Parsed meter credit → {}", credit);
+                }
+
+                // =========================================================
+                // LOGOUT TOKEN
+                // =========================================================
+                else if (tag == 0x09 && (i + 1) < rawBytes.length) {
+
+                    int length = rawBytes[i + 1] & 0xFF;
+
+                    if ((i + 2 + length) <= rawBytes.length) {
+
+                        byte[] tokenBytes =
+                                Arrays.copyOfRange(
+                                        rawBytes,
+                                        i + 2,
+                                        i + 2 + length
+                                );
+
+                        String logoutToken =
+                                GXCommon.toHex(tokenBytes)
+                                        .replace(" ", "");
+
+                        result.setLogoutToken(logoutToken);
+
+                        log.info(
+                                "Parsed logout token → {}",
+                                logoutToken
+                        );
+                    }
+                }
+            }
+
+            // =============================================================
+            // SUCCESS CHECK
+            // =============================================================
+            result.setSuccess(
+                    result.getTokenStatus() == TokenStatus.SUCCESS
+            );
+
+            // =============================================================
+            // DEFAULT UNKNOWN
+            // =============================================================
+            if (result.getTokenStatus() == null) {
+
+                result.setTokenStatus(TokenStatus.UNKNOWN);
+                result.setTokenResultCode(-1);
+                result.setErrorDetail(
+                        "Unable to determine token result"
+                );
+            }
+
+            return result;
+
+        } catch (Exception e) {
+
+            log.error("Token response parsing failed", e);
+
+            result.setTokenStatus(TokenStatus.UNKNOWN);
+            result.setTokenResultCode(-1);
+            result.setErrorDetail(e.getMessage());
+
+            return result;
         }
     }
 
