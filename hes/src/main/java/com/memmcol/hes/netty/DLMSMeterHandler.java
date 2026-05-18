@@ -42,11 +42,17 @@ public class DLMSMeterHandler extends SimpleChannelInboundHandler<byte[]> {
 
     @Override
     public void channelInactive(ChannelHandlerContext ctx) {
-//        meterStatusService.broadcastMeterOffline(MeterConnections.getSerial(ctx.channel()));
-//        heartbeatManager.handleStatus(MeterConnections.getSerial(ctx.channel()), "OFFLINE");
         String serial = MeterConnections.getSerial(ctx.channel());
         if (serial != null) {
-            heartbeatService.processFrame(serial, "OFFLINE");
+            // Only report OFFLINE if this channel is still the meter's active
+            // connection. A stale channel disconnecting after the meter has
+            // reconnected on a new socket must not flip a live meter to OFFLINE.
+            if (MeterConnections.isCurrentChannel(serial, ctx.channel())) {
+                heartbeatService.processFrame(serial, "OFFLINE");
+            } else {
+                log.info("ℹ️ Stale channel {} for meter {} disconnected; meter is live on a newer connection — skipping OFFLINE",
+                        ctx.channel().remoteAddress(), serial);
+            }
         } else {
             log.info("❌ Disconnected unknown channel (no meter serial bound) {}", ctx.channel().remoteAddress());
         }

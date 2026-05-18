@@ -24,17 +24,14 @@ public class MeterHeartbeatService {
 
         log.debug("Push message from meter {}, status: {}", meterNo, status);
 
-        MeterStatusEvent event = new MeterStatusEvent(
-                meterNo,
-                ZonedDateTime.now(ZoneId.systemDefault()).toLocalDateTime(),
-                status
-        );
+        LocalDateTime eventTime = ZonedDateTime.now(ZoneId.systemDefault()).toLocalDateTime();
+        MeterStatusEvent event = new MeterStatusEvent(meterNo, eventTime, status);
 
         // 1️⃣ Publish to SSE clients
         publisher.publish(event);
 
         // 2️⃣ Push into DB buffer (asynchronously flushed)
-        heartbeatManager.handleStatus(meterNo, status);
+        heartbeatManager.handleStatus(meterNo, status, eventTime);
 
         log.debug("Processed login/heartbeat frame for meter {}, status: {}", meterNo, status);
     }
