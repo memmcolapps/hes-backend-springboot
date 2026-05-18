@@ -1,6 +1,7 @@
 package com.memmcol.hes.jobs;
 
 import com.memmcol.hes.jobs.services.ProfileExecutionService;
+import com.memmcol.hes.schedulers.QuartzExecutionLogging;
 import lombok.extern.slf4j.Slf4j;
 import org.quartz.DisallowConcurrentExecution;
 import org.quartz.JobExecutionContext;
@@ -8,9 +9,6 @@ import org.quartz.JobExecutionException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.quartz.QuartzJobBean;
 import org.springframework.stereotype.Component;
-
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 @Slf4j
 @DisallowConcurrentExecution
@@ -23,13 +21,20 @@ public class MonthlyBillingJob extends QuartzJobBean {
         this.profileExecutionService = profileExecutionService;
     }
 
-    //Required by Quartz
     public MonthlyBillingJob() {}
 
     @Override
     protected void executeInternal(JobExecutionContext context) throws JobExecutionException {
+        log.info("START: MonthlyBillingJob");
         String obisCode = context.getMergedJobDataMap().getString("obisCodes");
-        log.info("✅ Executing MonthlyBillingJob at {}, obis={}", context.getFireTime(), obisCode);
-        profileExecutionService.readMonthlyBillingForAll(obisCode); // <-- dynamic OBIS now
+        QuartzExecutionLogging.logJobExecuteStart(log, context, obisCode);
+        try {
+            profileExecutionService.readMonthlyBillingForAll(obisCode);
+            log.info("COMPLETED: MonthlyBillingJob");
+        } catch (Exception e) {
+            log.error("ERROR: MonthlyBillingJob");
+            QuartzExecutionLogging.logJobExecuteFailure(log, context, e);
+            throw new JobExecutionException(e);
+        }
     }
 }

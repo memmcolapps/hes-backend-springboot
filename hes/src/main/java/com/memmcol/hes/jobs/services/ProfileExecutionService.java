@@ -1,5 +1,8 @@
 package com.memmcol.hes.jobs.services;
 
+import com.memmcol.hes.application.port.out.EventObisResolutionPort;
+import com.memmcol.hes.domain.events.EventScheduleProfile;
+import com.memmcol.hes.domain.events.ResolvedTieredEventObis;
 import com.memmcol.hes.domain.profile.MetersLockService;
 import com.memmcol.hes.dto.MeterDTO;
 import com.memmcol.hes.repository.MeterRepository;
@@ -43,10 +46,12 @@ public class ProfileExecutionService {
     private final LocalTime executionWindowEnd;
     private final boolean executionWindowEnabled;
     private final Set<String> householdMeterModels;
+    private final EventObisResolutionPort eventObisResolutionPort;
 
     public ProfileExecutionService(MetersLockService metersLockService,
                                    MeterRepository meterRepository,
                                    @Qualifier("meterReadAdaptiveExecutor") ExecutorService meterReadExecutor,
+                                   EventObisResolutionPort eventObisResolutionPort,
                                    @Value("${hes.profile.execution.batch-size:${hes.meter.executor.size:50}}") int meterBatchSize,
                                    @Value("${hes.profile.execution.window.zone:Africa/Lagos}") String executionWindowZone,
                                    @Value("${hes.profile.execution.window.start:22:00}") String executionWindowStart,
@@ -56,6 +61,7 @@ public class ProfileExecutionService {
         this.metersLockService = metersLockService;
         this.meterRepository = meterRepository;
         this.meterReadExecutor = meterReadExecutor;
+        this.eventObisResolutionPort = eventObisResolutionPort;
         this.meterBatchSize = Math.max(1, meterBatchSize);
         this.executionWindowZone = ZoneId.of(executionWindowZone);
         this.executionWindowStart = LocalTime.parse(executionWindowStart);
@@ -90,6 +96,17 @@ public class ProfileExecutionService {
                                      BiConsumer<MeterDTO, String> reader,
                                      String obisCode,
                                      Set<String> allowedModels) {
+        executeForAllMeters(profileName, reader, obisCode, allowedModels, null);
+    }
+
+    /**
+     * @param excludedModels when non-null and non-empty, meters whose {@link MeterDTO#getMeterModel()} is in this set are skipped
+     */
+    private void executeForAllMeters(String profileName,
+                                     BiConsumer<MeterDTO, String> reader,
+                                     String obisCode,
+                                     Set<String> allowedModels,
+                                     Set<String> excludedModels) {
         if (!isWithinExecutionWindow()) {
             log.info("{} read skipped. Current time is outside configured execution window {}-{} {}.",
                     profileName, executionWindowStart, executionWindowEnd, executionWindowZone);
@@ -142,6 +159,7 @@ public class ProfileExecutionService {
                     .map(meterDetailsBySerial::get)
                     .filter(dto -> dto != null)
                     .filter(dto -> allowedModels == null || allowedModels.isEmpty() || allowedModels.contains(dto.getMeterModel()))
+                    .filter(dto -> excludedModels == null || excludedModels.isEmpty() || !excludedModels.contains(dto.getMeterModel()))
                     .toList();
 
             BatchResult batchResult = executeBatch(profileName, metersToRead, obisCode, reader);
@@ -156,6 +174,9 @@ public class ProfileExecutionService {
 
         log.info("{} read complete. success={}, failed={}, timeout={}, missing={}, total={}",
                 profileName, success, failed, timedOut, missing, activeMeters.size());
+        log.info(
+                "hes.profile.batch summary profileName={} obis={} metersSucceeded={} metersFailed={} metersTimedOut={} metersMissingDb={} totalActiveSerials={} note=Per_meter_fact_table_persistence_is_logged_separately_with_prefix_Fact_DB_persistence_and_hes.factdb_outcome",
+                profileName, obisCode, success, failed, timedOut, missing, activeMeters.size());
     }
 
     private boolean isWithinExecutionWindow() {
@@ -339,6 +360,83 @@ public class ProfileExecutionService {
                         obis,
                         dto.isMD()),
                 obisCode);
+    }
+
+    /**
+     * Event reads with separate OBIS for MD/CT (non-household) meters vs household models.
+     * <ul>
+     *     <li>MD/CT pass: all active meters whose model is <em>not</em> in {@code hes.profile.household.models}</li>
+     *     <li>Household pass: only models listed in {@code hes.profile.household.models}</li>
+     * </ul>
+     * Resolution order: scheduler {@code obisCodes} (MD/CT) and optional {@code obisCodesHousehold}, then
+     * {@code hes.events.profiles.<profile>.md-ct} / {@code .household} from configuration.
+     * Used by token event jobs today; additional {@link EventScheduleProfile} values can be added for other categories.
+     */
+    public void readEventsWithMeterCategoryTiers(EventScheduleProfile profile,
+                                                 String schedulerObisMdCt,
+                                                 String schedulerObisHouseholdOverride) {
+        ResolvedTieredEventObis resolved = eventObisResolutionPort.resolve(
+                profile, schedulerObisMdCt, schedulerObisHouseholdOverride);
+        log.info(
+                "hes.events tiered_schedule profile={} mdCtObis={} householdObis={} householdModelCount={}",
+                profile.configKey(),
+                resolved.mdCtObis() == null || resolved.mdCtObis().isBlank() ? "_none" : resolved.mdCtObis(),
+                resolved.householdObis() == null || resolved.householdObis().isBlank() ? "_none" : resolved.householdObis(),
+                householdMeterModels.size());
+
+        BiConsumer<MeterDTO, String> mdCtReader = (dto, obis) -> metersLockService.readEventsWithLock(
+                dto.getMeterModel(),
+                dto.getMeterNumber(),
+                obis,
+                dto.isMD());
+
+        BiConsumer<MeterDTO, String> householdReader = householdTokenEventReader(profile);
+
+        Set<String> excludedForMdPass = householdMeterModels.isEmpty() ? null : householdMeterModels;
+
+        if (resolved.mdCtObis() == null || resolved.mdCtObis().isBlank()) {
+            log.error(
+                    "hes.events tiered_schedule profile={} phase=MD_CT_SKIPPED reason=no_md_ct_obis (set scheduler obisCodes or hes.events.profiles.{}.md-ct)",
+                    profile.configKey(), profile.configKey());
+        } else {
+            executeForAllMeters(
+                    "Events." + profile.configKey() + ".mdCt",
+                    mdCtReader,
+                    resolved.mdCtObis(),
+                    null,
+                    excludedForMdPass);
+        }
+
+        if (householdMeterModels.isEmpty()) {
+            log.warn(
+                    "hes.events tiered_schedule profile={} phase=HOUSEHOLD_SKIPPED reason=no_household_models (hes.profile.household.models empty)",
+                    profile.configKey());
+            return;
+        }
+        if (resolved.householdObis() == null || resolved.householdObis().isBlank()) {
+            log.warn(
+                    "hes.events tiered_schedule profile={} phase=HOUSEHOLD_SKIPPED reason=no_household_obis (set scheduler obisCodesHousehold or hes.events.profiles.{}.household)",
+                    profile.configKey(), profile.configKey());
+            return;
+        }
+        executeForAllMeters(
+                "Events." + profile.configKey() + ".household",
+                householdReader,
+                resolved.householdObis(),
+                householdMeterModels,
+                null);
+    }
+
+    /**
+     * Household token events use dedicated tables; other household-tier event reads still use {@code event_log}.
+     */
+    private BiConsumer<MeterDTO, String> householdTokenEventReader(EventScheduleProfile profile) {
+        return switch (profile) {
+            case RECHARGE_TOKEN -> (dto, obis) -> metersLockService.readHouseholdRechargeTokenEventsWithLock(
+                    dto.getMeterModel(), dto.getMeterNumber(), obis, dto.isMD());
+            case MANAGEMENT_TOKEN -> (dto, obis) -> metersLockService.readHouseholdManagementTokenEventsWithLock(
+                    dto.getMeterModel(), dto.getMeterNumber(), obis, dto.isMD());
+        };
     }
 
     // === Daily Billing ===

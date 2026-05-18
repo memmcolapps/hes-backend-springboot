@@ -65,6 +65,11 @@ public class DailyBillingEnergyHouseholdPersistenceAdapter extends AbstractBilli
     }
 
     @Override
+    protected String meterModelFromFirstDto(BillingEnergyHouseholdDTO dto) {
+        return dto != null ? dto.getMeterModel() : null;
+    }
+
+    @Override
     protected LocalDateTime stateAdvanceTo(LocalDateTime advanceTo) {
         return advanceTo.plusDays(1);
     }

@@ -272,6 +272,7 @@
     "repeatHours": 0,
     "lastRunTime": "2026-03-11T09:20:00",
     "obisCodes": "0.0.99.98.10.255",
+    "obisCodesHousehold": "0.0.99.98.3.255",
     "name": "Recharge Token Event Logs"
   },
   {
@@ -289,6 +290,7 @@
     "repeatHours": 0,
     "lastRunTime": "2026-03-11T09:25:00",
     "obisCodes": "0.0.99.98.11.255",
+    "obisCodesHousehold": "0.0.99.98.5.255",
     "name": "Management Token Event Logs"
   }
 ]

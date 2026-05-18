@@ -1,0 +1,49 @@
+package com.memmcol.hes.entities;
+
+import jakarta.persistence.*;
+import lombok.*;
+
+import java.time.LocalDateTime;
+
+@Entity
+@Table(
+        name = "household_management_token_event",
+        uniqueConstraints = @UniqueConstraint(
+                name = "uq_hh_management_token_event",
+                columnNames = {"meter_serial", "event_code", "event_time"})
+)
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+public class HouseholdManagementTokenEvent {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(name = "meter_serial", nullable = false, length = 50)
+    private String meterSerial;
+
+    @Column(name = "meter_model", nullable = false, length = 50)
+    private String meterModel;
+
+    @Column(name = "profile_obis", nullable = false, length = 32)
+    private String profileObis;
+
+    @Column(name = "event_code", nullable = false)
+    private Integer eventCode;
+
+    @Column(name = "event_time", nullable = false)
+    private LocalDateTime eventTime;
+
+    @Column(name = "manage_token_type", length = 128)
+    private String manageTokenType;
+
+    @Column(name = "manage_token", length = 512)
+    private String manageToken;
+
+    @Column(name = "created_at", nullable = false)
+    private LocalDateTime createdAt;
+}

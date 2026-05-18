@@ -1,5 +1,6 @@
 package com.memmcol.hes.service;
 
+import com.memmcol.hes.domain.events.HouseholdTokenEventObis;
 import com.memmcol.hes.domain.profile.ObisMappingService;
 import com.memmcol.hes.domain.profile.ObisObjectType;
 import com.memmcol.hes.exception.AssociationLostException;
@@ -64,7 +65,11 @@ public class ProfileMetadataService {
 
         // If meter association fails (or any other reason), fall back for event logs.
         // Event logs are always 2 columns (datetime, event_code) per provided OBIS documentation.
-        if (fresh.isEmpty() && isEventLogProfileObis(profileObis)) {
+        if (fresh.isEmpty() && isHouseholdTokenEventObis(profileObis)) {
+            log.warn("⚠️ Metadata could not be learned from meter. Falling back to default household token-event capture objects for {}", key);
+            fresh = buildDefaultHouseholdTokenEventMetadata(meterModel, profileObis);
+            repo.saveAll(fresh);
+        } else if (fresh.isEmpty() && isEventLogProfileObis(profileObis)) {
             log.warn("⚠️ Metadata could not be learned from meter. Falling back to default event-log capture objects for {}", key);
             fresh = buildDefaultEventLogMetadata(meterModel, profileObis);
             repo.saveAll(fresh);
@@ -79,6 +84,10 @@ public class ProfileMetadataService {
     private static boolean isEventLogProfileObis(String profileObis) {
         if (profileObis == null) return false;
         return profileObis.startsWith(EVENT_LOG_PREFIX) && profileObis.endsWith(".255");
+    }
+
+    private static boolean isHouseholdTokenEventObis(String profileObis) {
+        return HouseholdTokenEventObis.isHouseholdTokenEvent(profileObis);
     }
 
     /**
@@ -120,6 +129,47 @@ public class ProfileMetadataService {
                 .build();
 
         return List.of(ts, code);
+    }
+
+    /**
+     * Four-column fallback for household recharge / management token logs (manufacturer spec).
+     */
+    private static List<ModelProfileMetadata> buildDefaultHouseholdTokenEventMetadata(String meterModel, String profileObis) {
+        boolean recharge = HouseholdTokenEventObis.isRecharge(profileObis);
+        List<ModelProfileMetadata> base = buildDefaultEventLogMetadata(meterModel, profileObis);
+        List<ModelProfileMetadata> extended = new ArrayList<>(base);
+
+        extended.add(ModelProfileMetadata.builder()
+                .meterModel(meterModel)
+                .profileObis(profileObis)
+                .captureObis("0.0.96.14.0.255")
+                .classId(1)
+                .attributeIndex(2)
+                .scaler(1.0)
+                .unit("N/A")
+                .captureIndex(2)
+                .columnName(recharge ? "recharge_amount_kwh" : "manage_token_type")
+                .description(recharge ? "Recharge amount kWh" : "Manage token type")
+                .multiplyBy("CTPT")
+                .type(ObisObjectType.NONE)
+                .build());
+
+        extended.add(ModelProfileMetadata.builder()
+                .meterModel(meterModel)
+                .profileObis(profileObis)
+                .captureObis("0.0.96.15.0.255")
+                .classId(1)
+                .attributeIndex(2)
+                .scaler(1.0)
+                .unit("N/A")
+                .captureIndex(3)
+                .columnName(recharge ? "recharge_token" : "manage_token")
+                .description(recharge ? "Recharge token" : "Manage token")
+                .multiplyBy("CTPT")
+                .type(ObisObjectType.NONE)
+                .build());
+
+        return extended;
     }
 
     /**

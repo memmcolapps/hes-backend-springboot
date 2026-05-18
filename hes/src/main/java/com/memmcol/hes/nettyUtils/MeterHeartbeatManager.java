@@ -7,6 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.*;
 import java.util.concurrent.*;
 
@@ -59,9 +60,12 @@ public class MeterHeartbeatManager {
     }
 
     /**
-     * Called on every heartbeat / login / disconnect
+     * Called on every heartbeat / login / disconnect.
+     *
+     * @param eventTime the time the status event was produced (not the time it
+     *                  is processed) — used to reject out-of-order updates.
      */
-    public void handleStatus(String meterId, String status) {
+    public void handleStatus(String meterId, String status, LocalDateTime eventTime) {
 
         // Netty can call disconnect handlers before a meter has bound its serial.
         // ConcurrentHashMap does not allow null keys/values, so guard aggressively here.
@@ -70,22 +74,35 @@ public class MeterHeartbeatManager {
             return;
         }
         final String safeStatus = (status == null) ? "UNKNOWN" : status;
+        final LocalDateTime safeTime = (eventTime == null) ? LocalDateTime.now() : eventTime;
+        final long eventEpoch = safeTime.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
 
-        long now = System.currentTimeMillis();
-        LocalDateTime time = LocalDateTime.now();
-
-        // 🔥 ALWAYS update buffer (latest wins)
-        writeBuffer.put(meterId, new MeterUpdateDTO(meterId, safeStatus, time));
-
-        // Update in-memory state
+        // Apply the update only if it is at least as recent as the last one we
+        // processed for this meter. A late-arriving (e.g. stale-channel) OFFLINE
+        // must not clobber a newer ONLINE.
+        boolean[] applied = {false};
         stateMap.compute(meterId, (k, state) -> {
             if (state == null) {
-                return new MeterState(safeStatus, now);
+                applied[0] = true;
+                return new MeterState(safeStatus, eventEpoch);
+            }
+            if (eventEpoch < state.lastSeenEpoch) {
+                log.debug("⏮️ Ignoring out-of-order status for meter {} (event={}, last seen newer)",
+                        meterId, safeStatus);
+                return state;
             }
             state.status = safeStatus;
-            state.lastSeenEpoch = now;
+            state.lastSeenEpoch = eventEpoch;
+            applied[0] = true;
             return state;
         });
+
+        if (!applied[0]) {
+            return;
+        }
+
+        // Buffer the DB write (latest applied state wins)
+        writeBuffer.put(meterId, new MeterUpdateDTO(meterId, safeStatus, safeTime));
 
         // Early flush under pressure
         if (writeBuffer.size() >= BUFFER_FLUSH_THRESHOLD) {

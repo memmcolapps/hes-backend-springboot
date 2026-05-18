@@ -10,7 +10,6 @@ import com.memmcol.hes.entities.MonthlyBillingDataHouseholdEntity;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,7 +19,6 @@ import java.util.List;
 
 @Repository
 @RequiredArgsConstructor
-@Slf4j
 public class MonthlyBillingDataHouseholdPersistenceAdapter extends AbstractBillingHouseholdPersistenceAdapter<BillingDataHouseholdDTO, MonthlyBillingDataHouseholdEntity, BillingHouseholdId> {
     @PersistenceContext
     private EntityManager em;
@@ -67,21 +65,18 @@ public class MonthlyBillingDataHouseholdPersistenceAdapter extends AbstractBilli
     }
 
     @Override
+    protected String meterModelFromFirstDto(BillingDataHouseholdDTO dto) {
+        return dto != null ? dto.getMeterModel() : null;
+    }
+
+    @Override
     protected LocalDateTime stateAdvanceTo(LocalDateTime advanceTo) {
         return advanceTo.plusMonths(1);
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public ProfileSyncResult saveBatchAndAdvanceCursor(String meterSerial, String profileObis, List<BillingDataHouseholdDTO> readings, CapturePeriod cp) {
-        ProfileSyncResult result = super.saveBatchAndAdvanceCursor(meterSerial, profileObis, readings, cp, "MonthlyBillingDataHouseholdEntity");
-        log.info("Batch persisted (monthly billing data hh) meter={} inserted={} dup={} start={} end={} advanceTo={}",
-                meterSerial,
-                result.getInsertedCount(),
-                result.getDuplicateCount(),
-                result.getPreviousLast(),
-                result.getIncomingMax(),
-                result.getAdvanceTo());
-        return result;
+        return super.saveBatchAndAdvanceCursor(meterSerial, profileObis, readings, cp, "MonthlyBillingDataHouseholdEntity");
     }
 }
 
