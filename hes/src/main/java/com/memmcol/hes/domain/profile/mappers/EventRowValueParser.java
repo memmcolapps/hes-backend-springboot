@@ -1,5 +1,7 @@
 package com.memmcol.hes.domain.profile.mappers;
 
+import com.memmcol.hes.infrastructure.dlms.DlmsDataDecoder;
+
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -64,7 +66,32 @@ public final class EventRowValueParser {
         if (raw == null) {
             return null;
         }
+        if (raw instanceof String s) {
+            String trimmed = s.trim();
+            return trimmed.isEmpty() ? null : trimmed;
+        }
+        if (raw instanceof byte[] bytes) {
+            return octetStringToText(bytes);
+        }
+        if (raw instanceof Number number) {
+            return number.toString();
+        }
+        if (raw.getClass().isArray() && raw.getClass().getComponentType() == byte.class) {
+            return octetStringToText((byte[]) raw);
+        }
         String s = raw.toString().trim();
         return s.isEmpty() ? null : s;
+    }
+
+    /**
+     * DLMS octet strings (tokens, IDs, types) arrive as {@code byte[]}; {@link Object#toString()} yields {@code [B@...}.
+     */
+    private static String octetStringToText(byte[] bytes) {
+        Object decoded = DlmsDataDecoder.decodeOctetString(bytes);
+        if (decoded == null) {
+            return null;
+        }
+        String text = decoded.toString().trim();
+        return text.isEmpty() ? null : text;
     }
 }

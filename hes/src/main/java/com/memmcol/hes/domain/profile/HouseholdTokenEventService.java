@@ -20,7 +20,7 @@ import java.util.List;
 
 /**
  * Reads household recharge / management token event profiles and persists to dedicated tables
- * (not {@code event_log}, no {@code event_code_lookup}).
+ * (not {@code event_log}; {@code event_type_id} resolved from profile OBIS like {@code event_log}).
  */
 @Service
 @RequiredArgsConstructor

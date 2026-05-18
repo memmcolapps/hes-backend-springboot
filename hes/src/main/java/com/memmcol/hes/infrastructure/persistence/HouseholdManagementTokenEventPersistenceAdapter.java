@@ -1,6 +1,7 @@
 package com.memmcol.hes.infrastructure.persistence;
 
 import com.memmcol.hes.application.port.out.ProfileStatePort;
+import com.memmcol.hes.cache.EventCodeLookupCacheService;
 import com.memmcol.hes.domain.profile.CapturePeriod;
 import com.memmcol.hes.domain.profile.ProfileState;
 import com.memmcol.hes.domain.profile.ProfileSyncResult;
@@ -37,6 +38,7 @@ public class HouseholdManagementTokenEventPersistenceAdapter {
     private final EntityManager entityManager;
     private final ProfileStatePort statePort;
     private final HouseholdManagementTokenEventCustomRepository customRepository;
+    private final EventCodeLookupCacheService lookupCacheService;
 
     private static final int FLUSH_BATCH = 100;
 
@@ -87,12 +89,15 @@ public class HouseholdManagementTokenEventPersistenceAdapter {
         int count = 0;
         LocalDateTime now = LocalDateTime.now();
 
+        Integer eventTypeId = Math.toIntExact(lookupCacheService.getEventTypeIdByObis(profileObis));
+
         for (HouseholdManagementTokenEventDTO dto : dtos) {
             HouseholdManagementTokenEvent entity = HouseholdManagementTokenEvent.builder()
                     .meterSerial(dto.getMeterSerial())
                     .meterModel(dto.getMeterModel())
                     .profileObis(profileObis)
                     .eventCode(dto.getEventCode())
+                    .eventTypeId(eventTypeId)
                     .eventTime(dto.getEventTime().truncatedTo(ChronoUnit.SECONDS))
                     .manageTokenType(dto.getManageTokenType())
                     .manageToken(dto.getManageToken())

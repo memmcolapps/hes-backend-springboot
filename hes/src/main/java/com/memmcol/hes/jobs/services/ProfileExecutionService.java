@@ -4,6 +4,7 @@ import com.memmcol.hes.application.port.out.EventObisResolutionPort;
 import com.memmcol.hes.domain.events.EventScheduleProfile;
 import com.memmcol.hes.domain.events.ResolvedTieredEventObis;
 import com.memmcol.hes.domain.profile.MetersLockService;
+import com.memmcol.hes.domain.profile.ProfileMeterEligibility;
 import com.memmcol.hes.dto.MeterDTO;
 import com.memmcol.hes.repository.MeterRepository;
 import com.memmcol.hes.service.MeterConnections;
@@ -29,6 +30,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BiConsumer;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 @Service
@@ -80,6 +82,14 @@ public class ProfileExecutionService {
                 .collect(Collectors.toUnmodifiableSet());
     }
 
+    private Set<String> excludeHouseholdModels() {
+        return ProfileMeterEligibility.householdModelsToExclude(householdMeterModels);
+    }
+
+    private Predicate<MeterDTO> excludeMdClassForHouseholdJobs() {
+        return ProfileMeterEligibility.excludeMdClassMeters();
+    }
+
     /**
      * Generic helper to execute reads safely with timeout
      */
@@ -96,7 +106,7 @@ public class ProfileExecutionService {
                                      BiConsumer<MeterDTO, String> reader,
                                      String obisCode,
                                      Set<String> allowedModels) {
-        executeForAllMeters(profileName, reader, obisCode, allowedModels, null);
+        executeForAllMeters(profileName, reader, obisCode, allowedModels, null, null);
     }
 
     /**
@@ -107,6 +117,18 @@ public class ProfileExecutionService {
                                      String obisCode,
                                      Set<String> allowedModels,
                                      Set<String> excludedModels) {
+        executeForAllMeters(profileName, reader, obisCode, allowedModels, excludedModels, null);
+    }
+
+    /**
+     * @param meterFilter when non-null, only meters matching this predicate are read (applied after model allow/exclude)
+     */
+    private void executeForAllMeters(String profileName,
+                                     BiConsumer<MeterDTO, String> reader,
+                                     String obisCode,
+                                     Set<String> allowedModels,
+                                     Set<String> excludedModels,
+                                     Predicate<MeterDTO> meterFilter) {
         if (!isWithinExecutionWindow()) {
             log.info("{} read skipped. Current time is outside configured execution window {}-{} {}.",
                     profileName, executionWindowStart, executionWindowEnd, executionWindowZone);
@@ -160,6 +182,7 @@ public class ProfileExecutionService {
                     .filter(dto -> dto != null)
                     .filter(dto -> allowedModels == null || allowedModels.isEmpty() || allowedModels.contains(dto.getMeterModel()))
                     .filter(dto -> excludedModels == null || excludedModels.isEmpty() || !excludedModels.contains(dto.getMeterModel()))
+                    .filter(dto -> meterFilter == null || meterFilter.test(dto))
                     .toList();
 
             BatchResult batchResult = executeBatch(profileName, metersToRead, obisCode, reader);
@@ -292,7 +315,9 @@ public class ProfileExecutionService {
                         dto.getMeterNumber(),
                         obis,
                         dto.isMD()),
-                obisCode);
+                obisCode,
+                null,
+                excludeHouseholdModels());
     }
 
     public void readChannelOneHouseholdForAll(String obisCode) {
@@ -307,7 +332,9 @@ public class ProfileExecutionService {
                         obis,
                         dto.isMD()),
                 obisCode,
-                householdMeterModels);
+                householdMeterModels,
+                null,
+                excludeMdClassForHouseholdJobs());
     }
 
     // === Channel 2 ===
@@ -318,7 +345,9 @@ public class ProfileExecutionService {
                         dto.getMeterNumber(),
                         obis,
                         dto.isMD()),
-                obisCode);
+                obisCode,
+                null,
+                excludeHouseholdModels());
     }
 
     public void readChannelTwoHouseholdForAll(String obisCode) {
@@ -333,7 +362,9 @@ public class ProfileExecutionService {
                         obis,
                         dto.isMD()),
                 obisCode,
-                householdMeterModels);
+                householdMeterModels,
+                null,
+                excludeMdClassForHouseholdJobs());
     }
 
     public void readChannelThreeHouseholdForAll(String obisCode) {
@@ -348,10 +379,17 @@ public class ProfileExecutionService {
                         obis,
                         dto.isMD()),
                 obisCode,
-                householdMeterModels);
+                householdMeterModels,
+                null,
+                excludeMdClassForHouseholdJobs());
     }
 
     // === Events ===
+
+    /**
+     * Shared event profiles (standard, power grid, fraud, control, etc.): same OBIS for MD and household meters,
+     * persisted to {@code event_log}. All active meters are read; no household-model or MD-class filtering.
+     */
     public void readEventsForAll(String obisCode) {
         executeForAllMeters("Events",
                 (dto, obis) -> metersLockService.readEventsWithLock(
@@ -363,14 +401,10 @@ public class ProfileExecutionService {
     }
 
     /**
-     * Event reads with separate OBIS for MD/CT (non-household) meters vs household models.
-     * <ul>
-     *     <li>MD/CT pass: all active meters whose model is <em>not</em> in {@code hes.profile.household.models}</li>
-     *     <li>Household pass: only models listed in {@code hes.profile.household.models}</li>
-     * </ul>
-     * Resolution order: scheduler {@code obisCodes} (MD/CT) and optional {@code obisCodesHousehold}, then
-     * {@code hes.events.profiles.<profile>.md-ct} / {@code .household} from configuration.
-     * Used by token event jobs today; additional {@link EventScheduleProfile} values can be added for other categories.
+     * Household-only token event profiles ({@code household_recharge_token_event},
+     * {@code household_management_token_event}). Optional MD/CT tier ({@code event_log}) runs only when
+     * {@code md-ct} OBIS is configured; household tier uses dedicated tables and
+     * {@code hes.profile.household.models}.
      */
     public void readEventsWithMeterCategoryTiers(EventScheduleProfile profile,
                                                  String schedulerObisMdCt,
@@ -392,19 +426,18 @@ public class ProfileExecutionService {
 
         BiConsumer<MeterDTO, String> householdReader = householdTokenEventReader(profile);
 
-        Set<String> excludedForMdPass = householdMeterModels.isEmpty() ? null : householdMeterModels;
-
         if (resolved.mdCtObis() == null || resolved.mdCtObis().isBlank()) {
-            log.error(
-                    "hes.events tiered_schedule profile={} phase=MD_CT_SKIPPED reason=no_md_ct_obis (set scheduler obisCodes or hes.events.profiles.{}.md-ct)",
-                    profile.configKey(), profile.configKey());
+            log.info(
+                    "hes.events tiered_schedule profile={} phase=MD_CT_SKIPPED reason=no_md_ct_obis",
+                    profile.configKey());
         } else {
+            // MD/CT tier → event_log; exclude household models so they are not double-read when OBIS overlaps
             executeForAllMeters(
                     "Events." + profile.configKey() + ".mdCt",
                     mdCtReader,
                     resolved.mdCtObis(),
                     null,
-                    excludedForMdPass);
+                    excludeHouseholdModels());
         }
 
         if (householdMeterModels.isEmpty()) {
@@ -423,12 +456,11 @@ public class ProfileExecutionService {
                 "Events." + profile.configKey() + ".household",
                 householdReader,
                 resolved.householdObis(),
-                householdMeterModels,
-                null);
+                householdMeterModels);
     }
 
     /**
-     * Household token events use dedicated tables; other household-tier event reads still use {@code event_log}.
+     * Household token events use dedicated tables (not {@code event_log}).
      */
     private BiConsumer<MeterDTO, String> householdTokenEventReader(EventScheduleProfile profile) {
         return switch (profile) {
@@ -447,7 +479,9 @@ public class ProfileExecutionService {
                         dto.getMeterNumber(),
                         obis,
                         dto.isMD()),
-                obisCode);
+                obisCode,
+                null,
+                excludeHouseholdModels());
     }
 
     public void readDailyBillingDataHouseholdForAll(String obisCode) {
@@ -462,7 +496,9 @@ public class ProfileExecutionService {
                         obis,
                         dto.isMD()),
                 obisCode,
-                householdMeterModels);
+                householdMeterModels,
+                null,
+                excludeMdClassForHouseholdJobs());
     }
 
     public void readDailyBillingEnergyHouseholdForAll(String obisCode) {
@@ -477,7 +513,9 @@ public class ProfileExecutionService {
                         obis,
                         dto.isMD()),
                 obisCode,
-                householdMeterModels);
+                householdMeterModels,
+                null,
+                excludeMdClassForHouseholdJobs());
     }
 
     // === Monthly Billing ===
@@ -488,7 +526,9 @@ public class ProfileExecutionService {
                         dto.getMeterNumber(),
                         obis,
                         dto.isMD()),
-                obisCode);
+                obisCode,
+                null,
+                excludeHouseholdModels());
     }
 
     public void readMonthlyBillingDataHouseholdForAll(String obisCode) {
@@ -503,7 +543,9 @@ public class ProfileExecutionService {
                         obis,
                         dto.isMD()),
                 obisCode,
-                householdMeterModels);
+                householdMeterModels,
+                null,
+                excludeMdClassForHouseholdJobs());
     }
 
     public void readMonthlyBillingEnergyHouseholdForAll(String obisCode) {
@@ -518,6 +560,8 @@ public class ProfileExecutionService {
                         obis,
                         dto.isMD()),
                 obisCode,
-                householdMeterModels);
+                householdMeterModels,
+                null,
+                excludeMdClassForHouseholdJobs());
     }
 }
