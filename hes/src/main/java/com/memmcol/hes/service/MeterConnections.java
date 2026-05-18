@@ -19,13 +19,21 @@ public final class MeterConnections {
     private MeterConnections() {}
 
     public static void bind(Channel channel, String serial) {
+        Channel previous = SERIAL_TO_CHANNEL_meterConnectionsPool.put(serial, channel);
         CHANNEL_TO_SERIAL_meterConnectionsPool.put(channel, serial);
-        SERIAL_TO_CHANNEL_meterConnectionsPool.put(serial, channel);
         CHANNEL_INBOUND_QUEUES.put(channel, new ConcurrentLinkedQueue<>());
         log.debug("🔗 Binding channel {} to serial {}", channel.id(), serial);
 
-        log.debug("🔍 Looking for serial '{}'", serial);
-        log.debug("🔍 Current serials: {}", SERIAL_TO_CHANNEL_meterConnectionsPool.keySet());
+        // A meter re-connected on a new socket before the old one was torn down.
+        // Drop the stale channel so its later disconnect cannot emit a phantom
+        // OFFLINE for this meter, which is now live on the new channel.
+        if (previous != null && previous != channel) {
+            CHANNEL_TO_SERIAL_meterConnectionsPool.remove(previous);
+            CHANNEL_INBOUND_QUEUES.remove(previous);
+            previous.close();
+            log.info("🔁 Serial {} rebound to channel {}; closed stale channel {}",
+                    serial, channel.id(), previous.id());
+        }
     }
 
     public static String getSerial(Channel channel) {
@@ -52,10 +60,23 @@ public final class MeterConnections {
 
     public static void remove(Channel channel) {
         String serial = CHANNEL_TO_SERIAL_meterConnectionsPool.remove(channel);
-        if (serial != null) SERIAL_TO_CHANNEL_meterConnectionsPool.remove(serial);
+        if (serial != null) {
+            // Only clear the serial mapping if it still points to THIS channel.
+            // If the meter already reconnected on a newer channel, keep that intact.
+            SERIAL_TO_CHANNEL_meterConnectionsPool.remove(serial, channel);
+        }
         CHANNEL_INBOUND_QUEUES.remove(channel);
         channel.close();
         log.info("❌ Disconnected Meter and connection {}", serial);
+    }
+
+    /**
+     * True only if {@code serial} is currently bound to exactly {@code channel}.
+     * Used to suppress OFFLINE events from stale channels after a reconnect.
+     */
+    public static boolean isCurrentChannel(String serial, Channel channel) {
+        return serial != null && channel != null
+                && SERIAL_TO_CHANNEL_meterConnectionsPool.get(serial) == channel;
     }
 
     public static boolean isActive(String serial) {
