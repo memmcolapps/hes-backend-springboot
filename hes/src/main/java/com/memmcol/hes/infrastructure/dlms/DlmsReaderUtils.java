@@ -246,8 +246,8 @@ public class DlmsReaderUtils {
                     .status(status)
                     .message(reply.getErrorMessage())
                     .meterSerial(serial)
-                    .resultData(Map.of("replyValue", reply.getValue(), "replyError", reply.getError()))
-                    .rawResponse( lastResponse != null  ? toHex(lastResponse) : null)
+//                    .resultData(Map.of("replyValue", reply.getValue(), "replyError", reply.getError()))
+//                    .rawResponse( lastResponse != null  ? toHex(lastResponse) : null)
                     .build();
         } catch (java.net.SocketTimeoutException | java.util.concurrent.TimeoutException te) {
             return DlmsResponse.builder()
@@ -311,8 +311,8 @@ public class DlmsReaderUtils {
                 .status(status)
                 .message(reply.getErrorMessage())
                 .meterSerial(serial)
-                .resultData(Map.of("replyValue", reply.getValue(), "replyError", reply.getError()))
-                .rawResponse(toHex(response))
+//                .resultData(Map.of("replyValue", reply.getValue(), "replyError", reply.getError()))
+//                .rawResponse(toHex(response))
                 .build();
     }
 
@@ -357,8 +357,8 @@ public class DlmsReaderUtils {
                     .status(status)
                     .message(reply.getErrorMessage())
                     .meterSerial(serial)
-                    .resultData(Map.of("replyValue", reply.getValue(),"replyError", reply.getError()))
-                    .rawResponse(lastResponse != null ? toHex(lastResponse) : null)
+//                    .resultData(Map.of("replyValue", reply.getValue(),"replyError", reply.getError()))
+//                    .rawResponse(lastResponse != null ? toHex(lastResponse) : null)
                     .build();
 
         } catch (java.net.SocketTimeoutException |
