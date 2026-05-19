@@ -178,7 +178,7 @@ public class ProfileMetadataService {
      *
      * @param meterSerial  an online meter of this model (used once)
      */
-    public List<ModelProfileMetadata> loadFromMeterAndPersist(
+    public List<ModelProfileMetadata> loadFromMeterAndPersistV1(
             String meterSerial,
             String meterModel,
             String profileObis) {
@@ -264,5 +264,106 @@ public class ProfileMetadataService {
             return Collections.emptyList();
         }
     }
+
+    public List<ModelProfileMetadata> loadFromMeterAndPersist(
+            String meterSerial,
+            String meterModel,
+            String profileObis) {
+
+        try {
+            String msg = String.format(
+                    "Reading capture objects, scaler and units for model=%s meter=%s obis=%s",
+                    meterModel, meterSerial, profileObis);
+            log.info(msg);
+            logTx(meterSerial, msg);
+
+            GXDLMSClient client = sessionManager.getOrCreateClient(meterSerial);
+            if (client == null) throw new IllegalStateException("DLMS session not available");
+
+            GXDLMSProfileGeneric profile = new GXDLMSProfileGeneric();
+            profile.setLogicalName(profileObis);
+
+            // ── 1. Read capture-objects list ──────────────────────────────────────
+            // Attribute 3 of Profile Generic is the capture_objects list
+            byte[][] req = client.read(profile, 3);
+            GXReplyData rep = dlmsReaderUtils.readDataBlock(client, meterSerial, req[0]);
+
+            // LOG: Raw data structure from the meter
+            log.info("Meter {} Raw Capture Objects Data: {}", meterSerial, rep.getValue());
+
+            client.updateValue(profile, 3, rep.getValue());
+
+            List<ModelProfileMetadata> rows = new ArrayList<>();
+            List<Map.Entry<GXDLMSObject, GXDLMSCaptureObject>> captureObjects = profile.getCaptureObjects();
+
+            log.info("Meter {} has {} capture objects defined in profile {}",
+                    meterSerial, captureObjects.size(), profileObis);
+
+            for (int i = 0; i < captureObjects.size(); i++) {
+                var entry = captureObjects.get(i);
+                GXDLMSObject obj = entry.getKey();
+                GXDLMSCaptureObject co = entry.getValue();
+
+                double scaler = 1.0;
+                String unit = "N/A";
+                String obis = obj.getLogicalName();
+
+                // ── 2. Read Scaler/Unit for Register-type objects ───────────────────
+                // Combined checks for all register types
+                if (obj instanceof GXDLMSRegister ||
+                        obj instanceof GXDLMSExtendedRegister ||
+                        obj instanceof GXDLMSDemandRegister ||
+                        obj instanceof GXDLMSLimiter) {
+
+                    dlmsReaderUtils.readScalerUnit(client, meterSerial, obj, 3);
+                    scaler = DlmsScalerUnitHelper.extractScaler(obj);
+                    unit = DlmsScalerUnitHelper.extractUnit(obj);
+
+                    log.debug("Fetched Scaler/Unit for {} -> Scaler: {}, Unit: {}", obis, scaler, unit);
+                }
+
+                // ── 3. Mapping and Metadata Construction ──────────────────────────
+                int captureIndex = i;
+                String multiplyBy = "CTPT";
+                ObisColumnDto dto = obisMappingService.getDescriptionAndColumnName(obis, meterModel);
+
+                log.info("Mapping Index [{}]: OBIS {} -> Column: {}, Unit: {}",
+                        captureIndex, obis, dto.getColumnName(), unit);
+
+                ModelProfileMetadata row = ModelProfileMetadata.builder()
+                        .meterModel(meterModel)
+                        .profileObis(profileObis)
+                        .captureObis(obis)
+                        .classId(obj.getObjectType().getValue())
+                        .attributeIndex(co.getAttributeIndex())
+                        .scaler(scaler)
+                        .unit(unit)
+                        .captureIndex(captureIndex)
+                        .columnName(dto.getColumnName())
+                        .description(dto.getDescription())
+                        .multiplyBy(multiplyBy)
+                        .type(ObisObjectType.NONE)
+                        .build();
+
+                rows.add(row);
+            }
+
+            // ── 4. Persist ────────────────────────────────────────────────────────
+            repo.saveAll(rows);
+            log.info("💾 Successfully persisted {} metadata rows for meter {}/profile {}",
+                    rows.size(), meterSerial, profileObis);
+
+            return rows;
+
+        } catch (AssociationLostException ex) {
+            sessionManager.removeSession(meterSerial);
+            log.error("Association lost with meter number: {}", meterSerial);
+            return Collections.emptyList();
+        } catch (Exception ex) {
+            log.error("❌ Metadata load failed for meter {}: {}", meterSerial, ex.getMessage(), ex);
+            return Collections.emptyList();
+        }
+    }
+
 
 }

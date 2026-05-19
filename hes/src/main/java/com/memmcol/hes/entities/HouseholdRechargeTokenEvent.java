@@ -35,6 +35,9 @@ public class HouseholdRechargeTokenEvent {
     @Column(name = "event_code", nullable = false)
     private Integer eventCode;
 
+    @Column(name = "event_type_id", nullable = false)
+    private Integer eventTypeId;
+
     @Column(name = "event_time", nullable = false)
     private LocalDateTime eventTime;
 
