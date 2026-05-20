@@ -62,6 +62,14 @@ public final class EventRowValueParser {
         }
     }
 
+    /**
+     * Household fraud log energy fields: stored/display unit is raw register value divided by 1000 (kWh).
+     */
+    public static Double parseKwhScaled(Object raw) {
+        Double value = parseDoubleValue(raw);
+        return value == null ? null : value / 1000.0;
+    }
+
     public static String parseStringValue(Object raw) {
         if (raw == null) {
             return null;

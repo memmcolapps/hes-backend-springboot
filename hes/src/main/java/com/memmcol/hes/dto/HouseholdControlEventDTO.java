@@ -9,13 +9,12 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class HouseholdManagementTokenEventDTO {
+public class HouseholdControlEventDTO {
     private String meterSerial;
     private String meterModel;
     private String profileObis;
     private Integer eventCode;
     private LocalDateTime eventTime;
-    /** Raw DLMS value before domain lookup (manage-token-type code). */
-    private Object manageTokenTypeRaw;
-    private String manageToken;
+    /** Raw DLMS value before domain lookup (reason-of-operation code). */
+    private Object reasonOfOperationRaw;
 }

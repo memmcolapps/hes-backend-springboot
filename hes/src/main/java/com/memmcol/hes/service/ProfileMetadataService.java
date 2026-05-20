@@ -1,5 +1,6 @@
 package com.memmcol.hes.service;
 
+import com.memmcol.hes.domain.events.HouseholdExtendedEventObis;
 import com.memmcol.hes.domain.events.HouseholdTokenEventObis;
 import com.memmcol.hes.domain.profile.ObisMappingService;
 import com.memmcol.hes.domain.profile.ObisObjectType;
@@ -69,6 +70,10 @@ public class ProfileMetadataService {
             log.warn("⚠️ Metadata could not be learned from meter. Falling back to default household token-event capture objects for {}", key);
             fresh = buildDefaultHouseholdTokenEventMetadata(meterModel, profileObis);
             repo.saveAll(fresh);
+        } else if (fresh.isEmpty() && isHouseholdExtendedEventObis(profileObis)) {
+            log.warn("⚠️ Metadata could not be learned from meter. Falling back to default household fraud/control capture objects for {}", key);
+            fresh = buildDefaultHouseholdExtendedEventMetadata(meterModel, profileObis);
+            repo.saveAll(fresh);
         } else if (fresh.isEmpty() && isEventLogProfileObis(profileObis)) {
             log.warn("⚠️ Metadata could not be learned from meter. Falling back to default event-log capture objects for {}", key);
             fresh = buildDefaultEventLogMetadata(meterModel, profileObis);
@@ -88,6 +93,10 @@ public class ProfileMetadataService {
 
     private static boolean isHouseholdTokenEventObis(String profileObis) {
         return HouseholdTokenEventObis.isHouseholdTokenEvent(profileObis);
+    }
+
+    private static boolean isHouseholdExtendedEventObis(String profileObis) {
+        return HouseholdExtendedEventObis.isHouseholdExtendedEvent(profileObis);
     }
 
     /**
@@ -165,6 +174,64 @@ public class ProfileMetadataService {
                 .captureIndex(3)
                 .columnName(recharge ? "recharge_token" : "manage_token")
                 .description(recharge ? "Recharge token" : "Manage token")
+                .multiplyBy("CTPT")
+                .type(ObisObjectType.NONE)
+                .build());
+
+        return extended;
+    }
+
+    /**
+     * Fallback capture objects for household fraud (4 columns) and control (3 columns) event logs.
+     */
+    private static List<ModelProfileMetadata> buildDefaultHouseholdExtendedEventMetadata(String meterModel, String profileObis) {
+        List<ModelProfileMetadata> base = buildDefaultEventLogMetadata(meterModel, profileObis);
+        List<ModelProfileMetadata> extended = new ArrayList<>(base);
+
+        if (HouseholdExtendedEventObis.isControl(profileObis)) {
+            extended.add(ModelProfileMetadata.builder()
+                    .meterModel(meterModel)
+                    .profileObis(profileObis)
+                    .captureObis("0.0.96.14.0.255")
+                    .classId(1)
+                    .attributeIndex(2)
+                    .scaler(1.0)
+                    .unit("N/A")
+                    .captureIndex(2)
+                    .columnName("reason_of_operation")
+                    .description("Reason of operation")
+                    .multiplyBy("CTPT")
+                    .type(ObisObjectType.NONE)
+                    .build());
+            return extended;
+        }
+
+        extended.add(ModelProfileMetadata.builder()
+                .meterModel(meterModel)
+                .profileObis(profileObis)
+                .captureObis("1.0.0.8.0.255")
+                .classId(3)
+                .attributeIndex(2)
+                .scaler(1.0)
+                .unit("kWh")
+                .captureIndex(2)
+                .columnName("total_absolute_active_kwh")
+                .description("Total absolute active kWh")
+                .multiplyBy("CTPT")
+                .type(ObisObjectType.NONE)
+                .build());
+
+        extended.add(ModelProfileMetadata.builder()
+                .meterModel(meterModel)
+                .profileObis(profileObis)
+                .captureObis("0.0.96.15.0.255")
+                .classId(1)
+                .attributeIndex(2)
+                .scaler(1.0)
+                .unit("kWh")
+                .captureIndex(3)
+                .columnName("balance_kwh")
+                .description("Balance kWh")
                 .multiplyBy("CTPT")
                 .type(ObisObjectType.NONE)
                 .build());

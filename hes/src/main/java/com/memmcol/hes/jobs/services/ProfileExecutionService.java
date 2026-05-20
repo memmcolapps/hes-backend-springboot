@@ -387,8 +387,8 @@ public class ProfileExecutionService {
     // === Events ===
 
     /**
-     * Shared event profiles (standard, power grid, fraud, control, etc.): same OBIS for MD and household meters,
-     * persisted to {@code event_log}. All active meters are read; no household-model or MD-class filtering.
+     * Shared two-column event profiles (standard, power grid, etc.) persisted to {@code event_log}.
+     * Fraud/control use {@link #readEventsWithMeterCategoryTiers} so household meters get dedicated tables.
      */
     public void readEventsForAll(String obisCode) {
         executeForAllMeters("Events",
@@ -401,9 +401,8 @@ public class ProfileExecutionService {
     }
 
     /**
-     * Household-only token event profiles ({@code household_recharge_token_event},
-     * {@code household_management_token_event}). Optional MD/CT tier ({@code event_log}) runs only when
-     * {@code md-ct} OBIS is configured; household tier uses dedicated tables and
+     * Tiered event reads: MD/CT → {@code event_log}; household → dedicated tables (token, fraud, control).
+     * Optional MD/CT tier runs when {@code md-ct} OBIS is configured; household tier uses
      * {@code hes.profile.household.models}.
      */
     public void readEventsWithMeterCategoryTiers(EventScheduleProfile profile,
@@ -424,7 +423,7 @@ public class ProfileExecutionService {
                 obis,
                 dto.isMD());
 
-        BiConsumer<MeterDTO, String> householdReader = householdTokenEventReader(profile);
+        BiConsumer<MeterDTO, String> householdReader = householdEventReader(profile);
 
         if (resolved.mdCtObis() == null || resolved.mdCtObis().isBlank()) {
             log.info(
@@ -460,13 +459,17 @@ public class ProfileExecutionService {
     }
 
     /**
-     * Household token events use dedicated tables (not {@code event_log}).
+     * Household event profiles use dedicated tables (not {@code event_log}).
      */
-    private BiConsumer<MeterDTO, String> householdTokenEventReader(EventScheduleProfile profile) {
+    private BiConsumer<MeterDTO, String> householdEventReader(EventScheduleProfile profile) {
         return switch (profile) {
             case RECHARGE_TOKEN -> (dto, obis) -> metersLockService.readHouseholdRechargeTokenEventsWithLock(
                     dto.getMeterModel(), dto.getMeterNumber(), obis, dto.isMD());
             case MANAGEMENT_TOKEN -> (dto, obis) -> metersLockService.readHouseholdManagementTokenEventsWithLock(
+                    dto.getMeterModel(), dto.getMeterNumber(), obis, dto.isMD());
+            case FRAUD_EVENT -> (dto, obis) -> metersLockService.readHouseholdFraudEventsWithLock(
+                    dto.getMeterModel(), dto.getMeterNumber(), obis, dto.isMD());
+            case CONTROL_EVENT -> (dto, obis) -> metersLockService.readHouseholdControlEventsWithLock(
                     dto.getMeterModel(), dto.getMeterNumber(), obis, dto.isMD());
         };
     }

@@ -8,10 +8,10 @@ import com.memmcol.hes.domain.profile.CapturePeriod;
 import com.memmcol.hes.domain.profile.ProfileState;
 import com.memmcol.hes.domain.profile.ProfileSyncResult;
 import com.memmcol.hes.domain.profile.ProfileTimestamp;
-import com.memmcol.hes.dto.HouseholdManagementTokenEventDTO;
-import com.memmcol.hes.entities.HouseholdManagementTokenEvent;
+import com.memmcol.hes.dto.HouseholdControlEventDTO;
+import com.memmcol.hes.entities.HouseholdControlEvent;
 import com.memmcol.hes.infrastructure.observability.FactTablePersistenceLogging;
-import com.memmcol.hes.repository.HouseholdManagementTokenEventCustomRepository;
+import com.memmcol.hes.repository.HouseholdControlEventCustomRepository;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import lombok.RequiredArgsConstructor;
@@ -31,22 +31,22 @@ import java.util.stream.Collectors;
 @Repository
 @RequiredArgsConstructor
 @Slf4j
-public class HouseholdManagementTokenEventPersistenceAdapter {
+public class HouseholdControlEventPersistenceAdapter {
 
-    private static final String TABLE = "household_management_token_event";
-    private static final String DOMAIN = "household_management_token_event";
+    private static final String TABLE = "household_control_event";
+    private static final String DOMAIN = "household_control_event";
 
     @PersistenceContext
     private final EntityManager entityManager;
     private final ProfileStatePort statePort;
-    private final HouseholdManagementTokenEventCustomRepository customRepository;
+    private final HouseholdControlEventCustomRepository customRepository;
     private final EventCodeLookupCacheService lookupCacheService;
     private final HouseholdDomainCodeLookupService domainCodeLookupService;
 
     private static final int FLUSH_BATCH = 100;
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public ProfileSyncResult saveBatch(String meterSerial, String profileObis, List<HouseholdManagementTokenEventDTO> dtos) {
+    public ProfileSyncResult saveBatch(String meterSerial, String profileObis, List<HouseholdControlEventDTO> dtos) {
         ProfileState st = statePort.loadState(meterSerial, profileObis);
         LocalDateTime previousLast = (st != null && st.lastTimestamp() != null)
                 ? st.lastTimestamp().value()
@@ -54,19 +54,19 @@ public class HouseholdManagementTokenEventPersistenceAdapter {
 
         if (dtos == null || dtos.isEmpty()) {
             FactTablePersistenceLogging.logPersistZeroRows(log, DOMAIN, TABLE, meterSerial, "_unknown", profileObis,
-                    "NO_INCOMING_ROWS", "No household management token rows in batch.", 0);
+                    "NO_INCOMING_ROWS", "No household control event rows in batch.", 0);
             return new ProfileSyncResult(0, 0, 0, previousLast, previousLast, previousLast, false);
         }
 
         int total = dtos.size();
-        String meterModel = FactTablePersistenceLogging.firstModel(dtos, HouseholdManagementTokenEventDTO::getMeterModel);
-        List<HouseholdManagementTokenEventDTO> filtered = dedupeInMemory(dtos);
-        List<HouseholdManagementTokenEventDTO> newRows = deduplicateAgainstDb(meterSerial, filtered);
+        String meterModel = FactTablePersistenceLogging.firstModel(dtos, HouseholdControlEventDTO::getMeterModel);
+        List<HouseholdControlEventDTO> filtered = dedupeInMemory(dtos);
+        List<HouseholdControlEventDTO> newRows = deduplicateAgainstDb(meterSerial, filtered);
         int inserted = persistReadings(newRows, profileObis);
         int duplicate = total - inserted;
 
         LocalDateTime incomingMax = dtos.stream()
-                .map(HouseholdManagementTokenEventDTO::getEventTime)
+                .map(HouseholdControlEventDTO::getEventTime)
                 .filter(Objects::nonNull)
                 .max(LocalDateTime::compareTo)
                 .orElse(previousLast);
@@ -87,28 +87,35 @@ public class HouseholdManagementTokenEventPersistenceAdapter {
         return new ProfileSyncResult(total, inserted, duplicate, previousLast, incomingMax, advanceTo, advanced);
     }
 
-    private int persistReadings(List<HouseholdManagementTokenEventDTO> dtos, String profileObis) {
+    private int persistReadings(List<HouseholdControlEventDTO> dtos, String profileObis) {
         Session session = entityManager.unwrap(Session.class);
         int count = 0;
         LocalDateTime now = LocalDateTime.now();
 
-        Integer eventTypeId = Math.toIntExact(lookupCacheService.getEventTypeIdByObis(profileObis));
+        Integer eventTypeId = lookupCacheService.findEventTypeIdByProfileObis(profileObis)
+                .map(Math::toIntExact)
+                .orElseGet(() -> {
+                    log.warn("No event_type for profile_obis={}, falling back to undefined type", profileObis);
+                    return Math.toIntExact(lookupCacheService.getEventTypeIdByObis(profileObis));
+                });
 
-        for (HouseholdManagementTokenEventDTO dto : dtos) {
-            ResolvedHouseholdDomainCode tokenType = domainCodeLookupService
-                    .resolveManageTokenType(dto.getManageTokenTypeRaw())
+        for (HouseholdControlEventDTO dto : dtos) {
+            String eventName = lookupCacheService.resolveHouseholdEventName(
+                    profileObis, dto.getEventCode(), dto.getMeterModel());
+            ResolvedHouseholdDomainCode reason = domainCodeLookupService
+                    .resolveReasonOfOperation(dto.getReasonOfOperationRaw())
                     .orElse(null);
 
-            HouseholdManagementTokenEvent entity = HouseholdManagementTokenEvent.builder()
+            HouseholdControlEvent entity = HouseholdControlEvent.builder()
                     .meterSerial(dto.getMeterSerial())
                     .meterModel(dto.getMeterModel())
                     .profileObis(profileObis)
                     .eventCode(dto.getEventCode())
+                    .eventName(eventName)
                     .eventTypeId(eventTypeId)
                     .eventTime(dto.getEventTime().truncatedTo(ChronoUnit.SECONDS))
-                    .manageTokenTypeCode(tokenType != null ? tokenType.code() : null)
-                    .mgtTokenTypeDescription(tokenType != null ? tokenType.description() : null)
-                    .manageToken(dto.getManageToken())
+                    .reasonOfOperationCode(reason != null ? reason.code() : null)
+                    .reasonDescription(reason != null ? reason.description() : null)
                     .createdAt(now)
                     .build();
             session.persist(entity);
@@ -123,7 +130,7 @@ public class HouseholdManagementTokenEventPersistenceAdapter {
         return count;
     }
 
-    private List<HouseholdManagementTokenEventDTO> dedupeInMemory(List<HouseholdManagementTokenEventDTO> dtos) {
+    private List<HouseholdControlEventDTO> dedupeInMemory(List<HouseholdControlEventDTO> dtos) {
         return new ArrayList<>(
                 dtos.stream()
                         .collect(Collectors.toMap(
@@ -134,8 +141,8 @@ public class HouseholdManagementTokenEventPersistenceAdapter {
                         .values());
     }
 
-    private List<HouseholdManagementTokenEventDTO> deduplicateAgainstDb(String meterSerial,
-                                                                       List<HouseholdManagementTokenEventDTO> dtos) {
+    private List<HouseholdControlEventDTO> deduplicateAgainstDb(String meterSerial,
+                                                                List<HouseholdControlEventDTO> dtos) {
         if (dtos.isEmpty()) {
             return List.of();
         }

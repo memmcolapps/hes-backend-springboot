@@ -6,7 +6,9 @@ package com.memmcol.hes.domain.events;
  */
 public enum EventScheduleProfile {
     RECHARGE_TOKEN("recharge-token"),
-    MANAGEMENT_TOKEN("management-token");
+    MANAGEMENT_TOKEN("management-token"),
+    FRAUD_EVENT("fraud-event"),
+    CONTROL_EVENT("control-event");
 
     private final String configKey;
 

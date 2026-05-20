@@ -238,6 +238,7 @@
     "repeatHours": 0,
     "lastRunTime": "2026-03-11T09:10:00",
     "obisCodes": "0.0.99.98.1.255",
+    "obisCodesHousehold": "0.0.99.98.1.255",
     "name": "Fraud Event Logs"
   },
   {
@@ -255,6 +256,7 @@
     "repeatHours": 0,
     "lastRunTime": "2026-03-11T09:15:00",
     "obisCodes": "0.0.99.98.2.255",
+    "obisCodesHousehold": "0.0.99.98.2.255",
     "name": "Control Event Logs"
   },
   {
