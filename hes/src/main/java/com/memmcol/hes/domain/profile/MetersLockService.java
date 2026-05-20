@@ -23,6 +23,7 @@ public class MetersLockService {
     private final DailyBillingEnergyHouseholdService dailyBillingEnergyHouseholdService;
     private final EventLogService eventLogService;
     private final HouseholdTokenEventService householdTokenEventService;
+    private final HouseholdExtendedEventService householdExtendedEventService;
     private final ProfileChannelTwoService profileChannelTwoService;
     private final ProfileChannelTwoHouseholdService channelTwoHouseholdService;
     private final ProfileChannelThreeHouseholdService channelThreeHouseholdService;
@@ -277,6 +278,38 @@ public class MetersLockService {
             lockPort.withExclusive(meterSerial, () -> {
                 householdTokenEventService.readManagementProfileAndSave(model, meterSerial, profileObis, isMD);
                 log.info("Household management token event read completed. meter={} profile={}", meterSerial, profileObis);
+                return null;
+            });
+        } catch (IllegalStateException e2) {
+            log.error("Sync fatal meter={} profile={} reason={}", meterSerial, profileObis, e2.getMessage(), e2);
+            metricsPort.recordFailure(meterSerial, profileObis, "Server restarted");
+        } catch (Exception e) {
+            log.error("Sync fatal meter={} profile={} reason={}", meterSerial, profileObis, e.getMessage(), e);
+            metricsPort.recordFailure(meterSerial, profileObis, "lock_or_sync_error");
+        }
+    }
+
+    public void readHouseholdFraudEventsWithLock(String model, String meterSerial, String profileObis, boolean isMD) {
+        try {
+            lockPort.withExclusive(meterSerial, () -> {
+                householdExtendedEventService.readFraudProfileAndSave(model, meterSerial, profileObis, isMD);
+                log.info("Household fraud event read completed. meter={} profile={}", meterSerial, profileObis);
+                return null;
+            });
+        } catch (IllegalStateException e2) {
+            log.error("Sync fatal meter={} profile={} reason={}", meterSerial, profileObis, e2.getMessage(), e2);
+            metricsPort.recordFailure(meterSerial, profileObis, "Server restarted");
+        } catch (Exception e) {
+            log.error("Sync fatal meter={} profile={} reason={}", meterSerial, profileObis, e.getMessage(), e);
+            metricsPort.recordFailure(meterSerial, profileObis, "lock_or_sync_error");
+        }
+    }
+
+    public void readHouseholdControlEventsWithLock(String model, String meterSerial, String profileObis, boolean isMD) {
+        try {
+            lockPort.withExclusive(meterSerial, () -> {
+                householdExtendedEventService.readControlProfileAndSave(model, meterSerial, profileObis, isMD);
+                log.info("Household control event read completed. meter={} profile={}", meterSerial, profileObis);
                 return null;
             });
         } catch (IllegalStateException e2) {

@@ -35,7 +35,7 @@ public class HouseholdRechargeTokenEventMapper {
             eventTime = eventTime.truncatedTo(ChronoUnit.SECONDS);
         }
         Integer eventCode = values.size() > 1 ? EventRowValueParser.parseEventCode(values.get(1)) : null;
-        Double amount = values.size() > 2 ? EventRowValueParser.parseDoubleValue(values.get(2)) : null;
+        Double amount = values.size() > 2 ? EventRowValueParser.parseKwhScaled(values.get(2)) : null;
         String token = values.size() > 3 ? EventRowValueParser.parseStringValue(values.get(3)) : null;
 
         return HouseholdRechargeTokenEventDTO.builder()

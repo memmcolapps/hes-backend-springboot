@@ -9,8 +9,8 @@ import java.util.function.Predicate;
  * Filters which meters participate in scheduled <em>profile and billing</em> reads by model tier
  * (MD/CT vs household) and meter class ({@link MeterDTO#isMD()}).
  * <p>
- * Shared event log reads ({@code event_log}, same OBIS for MD and household) do not use these filters.
- * Only household recharge/management token events use a separate tier and dedicated tables.
+ * Standard/power-grid event reads use {@code event_log} for all meter models.
+ * Household token, fraud, and control events use a separate tier and dedicated tables.
  */
 public final class ProfileMeterEligibility {
 

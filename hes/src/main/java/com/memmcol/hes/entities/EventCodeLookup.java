@@ -36,4 +36,11 @@ public class EventCodeLookup {
 
     @Column(name = "critical_level", nullable = false)
     private int criticalLevel;
+
+    /**
+     * Optional scope: single model or comma-separated list (e.g. {@code MMX-110-NG, MMX-310-NG}).
+     * Blank means all models for this event type + code.
+     */
+    @Column(name = "meter_model", length = 255)
+    private String meterModel;
 }
