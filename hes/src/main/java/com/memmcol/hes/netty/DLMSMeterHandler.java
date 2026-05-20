@@ -44,15 +44,10 @@ public class DLMSMeterHandler extends SimpleChannelInboundHandler<byte[]> {
     public void channelInactive(ChannelHandlerContext ctx) {
         String serial = MeterConnections.getSerial(ctx.channel());
         if (serial != null) {
-            // Only report OFFLINE if this channel is still the meter's active
-            // connection. A stale channel disconnecting after the meter has
-            // reconnected on a new socket must not flip a live meter to OFFLINE.
-            if (MeterConnections.isCurrentChannel(serial, ctx.channel())) {
-                heartbeatService.processFrame(serial, "OFFLINE");
-            } else {
-                log.info("ℹ️ Stale channel {} for meter {} disconnected; meter is live on a newer connection — skipping OFFLINE",
-                        ctx.channel().remoteAddress(), serial);
-            }
+            // Socket lifecycle is transport-level. Meter OFFLINE is decided by
+            // heartbeat/communication timeout, not by an individual TCP close.
+            log.info("ℹ️ Channel {} for meter {} disconnected; offline status will be decided by communication timeout",
+                    ctx.channel().remoteAddress(), serial);
         } else {
             log.info("❌ Disconnected unknown channel (no meter serial bound) {}", ctx.channel().remoteAddress());
         }
@@ -90,6 +85,7 @@ public class DLMSMeterHandler extends SimpleChannelInboundHandler<byte[]> {
 
         if (apduTag == (byte) 0xC2) {
             log.info("📩 Event Notification received from meter {}: {}", serial, formatHex(msg));
+            markMeterCommunication(serial);
 
             dlmsScheduledExecutor.submit(() -> {
                 try {
@@ -124,6 +120,7 @@ public class DLMSMeterHandler extends SimpleChannelInboundHandler<byte[]> {
 
         // --- Step 4: Light RX logging ---
         if (serial != null) {
+            markMeterCommunication(serial);
             log.info("RX: {} : {}", serial, formatHex(msg));
             logRx(serial, msg);
         } else {
@@ -307,6 +304,12 @@ public class DLMSMeterHandler extends SimpleChannelInboundHandler<byte[]> {
             handler.process(serial, data);  // call your new class
         } catch (Exception e) {
             log.error("❌ Error handling EventNotification for {}: {}", serial, e.getMessage(), e);
+        }
+    }
+
+    private void markMeterCommunication(String serial) {
+        if (serial != null && !serial.isBlank()) {
+            heartbeatService.processFrame(serial, "ONLINE");
         }
     }
 

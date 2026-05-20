@@ -117,14 +117,21 @@ public class MeterHeartbeatManager {
 
         long now = System.currentTimeMillis();
         long thresholdMillis = TimeUnit.MINUTES.toMillis(OFFLINE_THRESHOLD_MINUTES);
+        LocalDateTime offlineTime = LocalDateTime.now();
+        Set<String> recentlySeenMeters = new HashSet<>();
 
         for (Map.Entry<String, MeterState> entry : stateMap.entrySet()) {
 
             String meterId = entry.getKey();
             MeterState state = entry.getValue();
+            long millisSinceLastSeen = now - state.lastSeenEpoch;
+
+            if (millisSinceLastSeen <= thresholdMillis) {
+                recentlySeenMeters.add(meterId);
+            }
 
             if ("ONLINE".equals(state.status) &&
-                    (now - state.lastSeenEpoch) > thresholdMillis) {
+                    millisSinceLastSeen > thresholdMillis) {
 
                 log.info("🔻 Meter {} marked OFFLINE (timeout)", meterId);
 
@@ -133,9 +140,19 @@ public class MeterHeartbeatManager {
                 // Buffer OFFLINE update (same pipeline)
                 writeBuffer.put(
                         meterId,
-                        new MeterUpdateDTO(meterId, "OFFLINE", LocalDateTime.now())
+                        new MeterUpdateDTO(meterId, "OFFLINE", offlineTime)
                 );
             }
+        }
+
+        try {
+            LocalDateTime staleBefore = offlineTime.minusMinutes(OFFLINE_THRESHOLD_MINUTES);
+            int staleRows = batchRepository.markStaleOnlineMetersOffline(staleBefore, offlineTime, recentlySeenMeters);
+            if (staleRows > 0) {
+                log.info("🔻 Marked {} stale ONLINE meter rows OFFLINE (timeout)", staleRows);
+            }
+        } catch (Exception e) {
+            log.error("❌ Failed to mark stale ONLINE meter rows OFFLINE", e);
         }
     }
 
