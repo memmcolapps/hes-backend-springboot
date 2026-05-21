@@ -1,6 +1,8 @@
 package com.memmcol.hes.nettyUtils;
 
 import com.memmcol.hes.dto.MeterUpdateDTO;
+import com.memmcol.hes.gridflex.sse.MeterStatusEvent;
+import com.memmcol.hes.gridflex.sse.MeterStatusSsePublisher;
 import com.memmcol.hes.repository.MetersConnectionEventBatchRepository;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
@@ -40,9 +42,12 @@ public class MeterHeartbeatManager {
     );
 
     private final MetersConnectionEventBatchRepository batchRepository;
+    private final MeterStatusSsePublisher statusPublisher;
 
-    public MeterHeartbeatManager(MetersConnectionEventBatchRepository batchRepository) {
+    public MeterHeartbeatManager(MetersConnectionEventBatchRepository batchRepository,
+                                 MeterStatusSsePublisher statusPublisher) {
         this.batchRepository = batchRepository;
+        this.statusPublisher = statusPublisher;
 
         scheduler.scheduleAtFixedRate(
                 this::flushToDatabase,
@@ -142,6 +147,7 @@ public class MeterHeartbeatManager {
                         meterId,
                         new MeterUpdateDTO(meterId, "OFFLINE", offlineTime)
                 );
+                statusPublisher.publish(new MeterStatusEvent(meterId, offlineTime, "OFFLINE"));
             }
         }
 
