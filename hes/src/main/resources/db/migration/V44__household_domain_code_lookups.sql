@@ -64,5 +64,19 @@ ALTER TABLE household_management_token_event
 ALTER TABLE household_control_event
     DROP COLUMN IF EXISTS reason_of_operation;
 
+DROP VIEW IF EXISTS vw_event_details;
+
 ALTER TABLE household_management_token_event
     DROP COLUMN IF EXISTS manage_token_type;
+
+CREATE OR REPLACE VIEW vw_event_details
+ AS
+ SELECT el.meter_serial AS meterno,
+    el.event_time,
+    el.event_type_id,
+    et.name AS event_type,
+    ecl.event_name AS event,
+    COALESCE(ecl.critical_level, 1) AS critical_level
+   FROM event_log el
+     LEFT JOIN event_type et ON el.event_type_id = et.id
+     LEFT JOIN event_code_lookup ecl ON el.event_type_id = ecl.event_type_id AND el.event_code = ecl.code;

@@ -55,8 +55,8 @@ public class ProfileChannelOneHouseholdService {
             ProfileTimestamp cursor = new ProfileTimestamp(seedFrom);
 
             CapturePeriod cp = new CapturePeriod(capturePeriodPort.resolveCapturePeriodSeconds(meterSerial, profileObis));
-            if (cp.seconds() < 900) {
-                cp = new CapturePeriod(900);
+            if (cp.seconds() < 3600) {
+                cp = new CapturePeriod(3600);
             }
 
             LocalDateTime now = LocalDateTime.now();

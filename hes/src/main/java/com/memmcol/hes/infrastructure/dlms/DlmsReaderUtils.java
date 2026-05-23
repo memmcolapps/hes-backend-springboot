@@ -1,11 +1,14 @@
 package com.memmcol.hes.infrastructure.dlms;
 
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import com.memmcol.hes.application.port.out.MeterLockPort;
 import com.memmcol.hes.application.port.out.ProfileReadException;
 import com.memmcol.hes.application.port.out.TxRxService;
 import com.memmcol.hes.domain.profile.ProfileMetadataResult;
 import com.memmcol.hes.domain.profile.ProfileRowGeneric;
 import com.memmcol.hes.dto.MeterDTO;
+import com.memmcol.hes.exception.DlmsTransportException;
 import com.memmcol.hes.mocks.MockRequestResponseService;
 import com.memmcol.hes.mocks.MockRxDecoderWithReply;
 import com.memmcol.hes.model.*;
@@ -25,18 +28,19 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import java.io.ByteArrayOutputStream;
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 
 import static com.memmcol.hes.nettyUtils.RequestResponseService.logTx;
-
-//import static com.memmcol.hes.nettyUtils.RequestResponseService.logTx;
 
 
 @Service
@@ -52,6 +56,16 @@ public class DlmsReaderUtils {
     private final MeterProfileStateRepository meterProfileStateRepository;
     private final MeterRepository meterRepository;
     private final DlmsResponseDecoder responseDecoder;
+    private final DlmsExecutionGuard dlmsExecutionGuard;
+
+    private final Cache<String, Boolean> cooldownCache = Caffeine.newBuilder()
+            .expireAfterWrite(2, TimeUnit.SECONDS)
+            .build();
+
+    private final Cache<String, CircuitBreakerState> circuitCache =
+            Caffeine.newBuilder()
+                    .expireAfterWrite(10, TimeUnit.MINUTES)
+                    .build();
 
     private record DlmsRangeWindow(LocalDateTime from, LocalDateTime to) {}
 
@@ -795,7 +809,7 @@ public class DlmsReaderUtils {
         }
     }
 
-    public List<ProfileRowGeneric> readRange(String model, String meterSerial, String profileObis,
+    public List<ProfileRowGeneric> readRangeV3(String model, String meterSerial, String profileObis,
                                              ProfileMetadataResult metadataResult,
                                              LocalDateTime from, LocalDateTime to, boolean mdMeter) throws Exception {
         if (profileObis == null || profileObis.isBlank()) {
@@ -859,7 +873,7 @@ public class DlmsReaderUtils {
                 log.warn("Association lost for {} on first frame.", meterSerial);
                 sessionManager.removeSession(meterSerial);
                 log.info("Creating new Association and Reading all over!");
-                readRange(model, meterSerial, profileObis, metadataResult, from, to, mdMeter);
+                readRangeV3(model, meterSerial, profileObis, metadataResult, from, to, mdMeter);
 //                throw new AssociationLostException("Association lost on first frame");
             }
             client.getData(resp1, reply, null);
@@ -968,6 +982,272 @@ public class DlmsReaderUtils {
         }
     }
 
+    public DlmsFailureType classify(Throwable ex) {
+
+        if (ex instanceof AssociationLostException) {
+            return DlmsFailureType.SESSION;
+        }
+
+        if (ex instanceof DlmsTransportException dte) {
+
+            if ("TIMEOUT".equals(dte.getCode())) {
+                return DlmsFailureType.TRANSIENT;
+            }
+
+            return DlmsFailureType.FATAL;
+        }
+
+        return DlmsFailureType.TRANSIENT; // safest default
+    }
+
+    public List<ProfileRowGeneric> readRange(
+            String model,
+            String meterSerial,
+            String profileObis,
+            ProfileMetadataResult metadataResult,
+            LocalDateTime from,
+            LocalDateTime to,
+            boolean mdMeter
+    ) throws Exception {
+
+        validateInputs(profileObis, metadataResult, from, to);
+        enforceWindow(from, to);
+
+        // =========================
+        // PHASE 1: PRE-CHECKS
+        // =========================
+        applyCircuitBreakerCheck(meterSerial);
+        applyCooldownCheck(meterSerial);
+
+        // =========================
+        // PHASE 2: SESSION + EXECUTION
+        // =========================
+        GXDLMSClient client = sessionManager.getOrCreateClient(meterSerial);
+        if (client == null) {
+            throw new IllegalStateException("DLMS client not available for " + meterSerial);
+        }
+
+        GXDLMSProfileGeneric profile = buildProfile(profileObis, metadataResult);
+
+        GXDateTime gxFrom = toGX(from);
+        GXDateTime gxTo = toGX(to);
+
+        log.info("Building DLMS range request model={} meter={} obis={} from={} to={}",
+                model, meterSerial, profileObis, from, to);
+
+        return dlmsExecutionGuard.execute(
+                meterSerial,
+                () -> executeWithRetry(
+                        () -> executeDlmsRead(
+                                client,
+                                profile,
+                                meterSerial,
+                                profileObis,
+                                gxFrom,
+                                gxTo,
+                                metadataResult
+                        ),
+                        meterSerial
+                )
+        );
+    }
+
+    private void applyCircuitBreakerCheck(String meterSerial) {
+
+        CircuitBreakerState cb = circuitCache.getIfPresent(meterSerial);
+
+        if (cb == null) return;
+
+        if (cb.state == CircuitState.OPEN) {
+
+            if (System.currentTimeMillis() < cb.openUntil) {
+                throw new IllegalStateException("Circuit OPEN for meter " + meterSerial);
+            }
+
+            cb.state = CircuitState.HALF_OPEN;
+            circuitCache.put(meterSerial, cb);
+        }
+    }
+
+    private void applyCooldownCheck(String meterSerial) {
+
+        Boolean exists = cooldownCache.getIfPresent(meterSerial);
+
+        if (exists != null) {
+            throw new IllegalStateException("Meter still in cooldown: " + meterSerial);
+        }
+
+        cooldownCache.put(meterSerial, Boolean.TRUE);
+    }
+
+    private GXDLMSProfileGeneric buildProfile(
+            String profileObis,
+            ProfileMetadataResult metadataResult
+    ) {
+
+        GXDLMSProfileGeneric profile = new GXDLMSProfileGeneric();
+        profile.setLogicalName(profileObis);
+
+        List<ModelProfileMetadata> metadataList = metadataResult.getMetadataList();
+
+        DlmsUtils.populateCaptureObjects(profile, metadataList);
+
+        return profile;
+    }
+
+    private GXDateTime toGX(LocalDateTime time) {
+        if (time == null) {
+            throw new IllegalArgumentException("time cannot be null");
+        }
+
+        return new GXDateTime(
+                Date.from(time.atZone(ZoneId.systemDefault()).toInstant())
+        );
+    }
+
+    private List<ProfileRowGeneric> executeDlmsRead(
+            GXDLMSClient client,
+            GXDLMSProfileGeneric profile,
+            String meterSerial,
+            String profileObis,
+            GXDateTime gxFrom,
+            GXDateTime gxTo,
+            ProfileMetadataResult metadataResult
+    ) throws Exception {
+
+        partialDecoder.clear(meterSerial, profileObis);
+
+        byte[][] frames = client.readRowsByRange(profile, gxFrom, gxTo);
+
+        if (frames == null || frames.length == 0) {
+            return List.of();
+        }
+
+        GXReplyData reply = new GXReplyData();
+
+        // First frame
+        byte[] resp = txRxService.sendReceiveWithContext(meterSerial, frames[0], 20000);
+
+        if (sessionManager.isAssociationLost(resp)) {
+            throw new AssociationLostException(meterSerial);
+        }
+
+        client.getData(resp, reply, null);
+        updateProfileBufferOnBlock(client, profile, profileObis, meterSerial, reply);
+
+        // Multi-block loop
+        while (reply.isMoreData()) {
+            byte[] next = client.receiverReady(reply);
+            if (next == null) break;
+
+            resp = txRxService.sendReceiveWithContext(meterSerial, next, 20000);
+
+            if (sessionManager.isAssociationLost(resp)) {
+                throw new AssociationLostException(meterSerial);
+            }
+
+            client.getData(resp, reply, null);
+            updateProfileBufferOnBlock(client, profile, profileObis, meterSerial, reply);
+        }
+
+        List<ProfileRowGeneric> rows =
+                decodeProfileBuffer(profile, meterSerial, profileObis, metadataResult.getMetadataList());
+
+        partialDecoder.clear(meterSerial, profileObis);
+
+        return rows;
+    }
+
+    private List<ProfileRowGeneric> executeWithRetry(
+            Callable<List<ProfileRowGeneric>> task,
+            String meterSerial
+    ) throws Exception {
+
+        Exception last = null;
+
+        for (int attempt = 1; attempt <= 3; attempt++) {
+
+            try {
+                List<ProfileRowGeneric> result = task.call();
+
+                // SUCCESS → reset circuit breaker
+                resetCircuit(meterSerial);
+
+                return result;
+            }
+
+            catch (Exception ex) {
+
+                last = ex;
+
+                DlmsFailureType type = classify(ex);
+
+                switch (type) {
+
+                    case SESSION -> {
+                        log.warn("SESSION failure meter={} attempt={}", meterSerial, attempt);
+                        sessionManager.removeSession(meterSerial);
+                    }
+
+                    case TRANSIENT -> {
+                        log.warn("TRANSIENT failure meter={} attempt={}", meterSerial, attempt);
+                        sessionManager.removeSession(meterSerial);
+                    }
+
+                    case FATAL -> {
+                        log.error("FATAL failure meter={} aborting retry", meterSerial);
+                        break; // do not retry
+                    }
+                }
+
+                if (type == DlmsFailureType.FATAL) {
+                    break;
+                }
+
+                if (attempt < 3) {
+                    backoff(attempt);
+                }
+            }
+        }
+
+        // FAILURE → circuit breaker decision is now CLEAN
+        openCircuit(meterSerial);
+
+        throw last;
+    }
+
+    private void backoff(int attempt) {
+        try {
+            Thread.sleep(500L * attempt);
+        } catch (InterruptedException ignored) {}
+    }
+
+    private void openCircuit(String meterSerial) {
+
+        CircuitBreakerState cb = circuitCache.get(meterSerial, k -> new CircuitBreakerState());
+
+        cb.failureCount++;
+
+        if (cb.failureCount >= 3) {
+            cb.state = CircuitState.OPEN;
+            cb.openUntil = System.currentTimeMillis() + 300_000;
+        }
+
+        circuitCache.put(meterSerial, cb);
+    }
+
+    private void resetCircuit(String meterSerial) {
+
+        CircuitBreakerState cb = circuitCache.getIfPresent(meterSerial);
+
+        if (cb != null) {
+            cb.state = CircuitState.CLOSED;
+            cb.failureCount = 0;
+            cb.openUntil = 0;
+            circuitCache.put(meterSerial, cb);
+        }
+    }
+
     private void updateProfileBufferOnBlock(GXDLMSClient client, GXDLMSProfileGeneric profile, String profileObis, String meterSerial, GXReplyData reply) throws Exception {
         Object val = reply.getValue() != null ? reply.getValue() : reply.getData();
 
@@ -995,6 +1275,45 @@ public class DlmsReaderUtils {
                     log.debug("Accumulated {} GXByteBuffer rows so far.", buf.size());
                 }
             }
+        }
+    }
+
+    private void enforceWindow(LocalDateTime from, LocalDateTime to) {
+
+        if (!from.isBefore(to)) {
+            throw new IllegalArgumentException("Invalid DLMS window");
+        }
+
+        if (Duration.between(from, to).toHours() > 24) {
+            throw new IllegalArgumentException("DLMS window exceeds 24h");
+        }
+    }
+
+    private void validateInputs(
+            String profileObis,
+            ProfileMetadataResult metadataResult,
+            LocalDateTime from,
+            LocalDateTime to
+    ) {
+
+        if (profileObis == null || profileObis.isBlank()) {
+            throw new IllegalArgumentException("profileObis must not be null/blank");
+        }
+
+        if (metadataResult == null
+                || metadataResult.getMetadataList() == null
+                || metadataResult.getMetadataList().isEmpty()) {
+            throw new IllegalArgumentException("Capture objects not read.");
+        }
+
+        if (from == null || to == null) {
+            throw new IllegalArgumentException("from/to must not be null");
+        }
+
+        if (!from.isBefore(to)) {
+            throw new IllegalArgumentException(
+                    "Invalid DLMS range: from must be before to. from=" + from + ", to=" + to
+            );
         }
     }
 
