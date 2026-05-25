@@ -53,6 +53,30 @@ public class DlmsReaderUtils {
     private final MeterRepository meterRepository;
     private final DlmsResponseDecoder responseDecoder;
 
+    private byte[] sendReceiveWithRetry(String serial, byte[] request, long timeoutMs) throws Exception {
+        int attempts = 0;
+        int maxAttempts = 3;
+        while (attempts < maxAttempts) {
+            try {
+                attempts++;
+                return txRxService.sendReceiveWithContext(serial, request, timeoutMs);
+            } catch (Exception e) {
+                if (sessionManager.isAssociationLost(null)) { // Check if we can determine loss without response
+                    // If it's a known association loss, we might want to throw immediately or handle it separately
+                    // but isAssociationLost usually takes the response.
+                }
+
+                if (attempts >= maxAttempts) {
+                    log.error("Failed to send/receive after {} attempts for meter {}", maxAttempts, serial);
+                    throw e;
+                }
+                log.warn("Attempt {} failed for meter {}: {}. Retrying in 5 seconds...", attempts, serial, e.getMessage());
+                Thread.sleep(5000);
+            }
+        }
+        throw new Exception("Failed to send/receive bytes after retry");
+    }
+
     private record DlmsRangeWindow(LocalDateTime from, LocalDateTime to) {}
 
     private DlmsRangeWindow resolveDlmsRangeWindow(
@@ -108,7 +132,7 @@ public class DlmsReaderUtils {
 
         // Send initial request
 //        byte[] response = RequestResponseService.sendCommandWithRetry(serial, firstRequest);
-        byte[] response = txRxService.sendReceiveWithContext(serial, firstRequest, 20000);
+        byte[] response = sendReceiveWithRetry(serial, firstRequest, 20000);
         if (sessionManager.isAssociationLost(response)) {
             sessionManager.removeSession(serial);
             throw new AssociationLostException("Association lost with " + serial);
@@ -131,7 +155,7 @@ public class DlmsReaderUtils {
             if (nextRequest == null) break; // Safety
 
 //            response = RequestResponseService.sendCommandWithRetry(serial, nextRequest);
-            response = txRxService.sendReceiveWithContext(serial, nextRequest, 20000);
+            response = sendReceiveWithRetry(serial, nextRequest, 20000);
 
             if (sessionManager.isAssociationLost(response)) {
                 sessionManager.removeSession(serial);
@@ -146,7 +170,7 @@ public class DlmsReaderUtils {
 
     public void readScalerUnit(GXDLMSClient client, String serial, GXDLMSObject obj, int index) throws Exception {
         byte[][] scalerUnitRequest = client.read(obj, index);
-        byte[] response = txRxService.sendReceiveWithContext(serial, scalerUnitRequest[0], 20000);
+        byte[] response = sendReceiveWithRetry(serial, scalerUnitRequest[0], 20000);
         if (sessionManager.isAssociationLost(response)) {
             sessionManager.removeSession(serial);
             throw new AssociationLostException();
@@ -224,7 +248,7 @@ public class DlmsReaderUtils {
                 log.debug("📤 DLMS TX [{} / {}] → meter={}, bytes={}",
                         i + 1, requests.length, serial, toHex(requestFrame));
 
-                byte[] response = txRxService.sendReceiveWithContext(serial, requestFrame, 20000);
+                byte[] response = sendReceiveWithRetry(serial, requestFrame, 20000);
                 lastResponse = response;
                 if (sessionManager.isAssociationLost(response)) {
                     sessionManager.removeSession(serial);
@@ -294,7 +318,7 @@ public class DlmsReaderUtils {
     }
 
     private DlmsResponse getDlmsResponse(GXDLMSClient client, String serial, byte[][] request) throws Exception {
-        byte[] response = txRxService.sendReceiveWithContext(serial, request[0], 20000);
+        byte[] response = sendReceiveWithRetry(serial, request[0], 20000);
 
         if (sessionManager.isAssociationLost(response)) {
             sessionManager.removeSession(serial);
@@ -324,7 +348,7 @@ public class DlmsReaderUtils {
 
                 log.debug( "📤 DLMS METHOD TX [{} / {}] → meter={}, bytes={}", i + 1,requests.length,serial,toHex(requestFrame));
 
-                byte[] response = txRxService.sendReceiveWithContext(serial,requestFrame,20000);
+                byte[] response = sendReceiveWithRetry(serial,requestFrame,20000);
 
                 if (sessionManager.isAssociationLost(response)) {
 
@@ -517,7 +541,7 @@ public class DlmsReaderUtils {
         byte[][] request = client.read(obj, index);
 //        byte[] response = RequestResponseService.sendOnceListen(serial, request[0], 4000, 16000, 100);
 
-        byte[] response = txRxService.sendReceiveWithContext(serial, request[0], 20000);
+        byte[] response = sendReceiveWithRetry(serial, request[0], 20000);
 
         if (sessionManager.isAssociationLost(response)) {
             sessionManager.removeSession(serial);
@@ -561,25 +585,30 @@ public class DlmsReaderUtils {
 
     public Object readObisObject(String meterSerial, String obisCode, int classId, int attributeIndex) throws Exception {
         return meterLockPort.withExclusive(meterSerial, () -> {
-            try {
-                //Step 1: Establish DLMS Association
-                GXDLMSClient client = sessionManager.getOrCreateClient(meterSerial);
-                if (client == null) {
-                    log.warn("No active session for {}.", meterSerial);
-                    throw new Exception("No active session for " + meterSerial + ".");
+            int attempts = 0;
+            while (attempts < 2) {
+                try {
+                    attempts++;
+                    //Step 1: Establish DLMS Association
+                    GXDLMSClient client = sessionManager.getOrCreateClient(meterSerial);
+                    if (client == null) {
+                        log.warn("No active session for {}.", meterSerial);
+                        throw new Exception("No active session for " + meterSerial + ".");
+                    }
+                    //Step 2: Create DLMS objects and read objects
+                    GXDLMSObject object = GuruxObjectFactory.create(classId, obisCode);
+                    return readAttribute(client, meterSerial, object, attributeIndex);
+                } catch (AssociationLostException lostException) {
+                    //Step3: Catch Association Lost Exception and retry
+                    log.warn("Association lost for {}. Attempt {}", meterSerial, attempts);
+                    sessionManager.removeSession(meterSerial);
+                    if (attempts >= 2) throw lostException;
+                } catch (Exception e) {
+                    log.error(e.getMessage(), e);
+                    return e.getMessage();
                 }
-                //Step 2: Create DLMS objects and read objects
-                GXDLMSObject object = GuruxObjectFactory.create(classId, obisCode);
-                return readAttribute(client, meterSerial, object, attributeIndex);
-            } catch (AssociationLostException lostException) {
-                //Step3: Catch Association Lost Exception and retry
-                log.warn("Association lost for {}.", meterSerial);
-                sessionManager.removeSession(meterSerial);
-                return readObisObject(meterSerial, obisCode, classId, attributeIndex);
-            } catch (Exception e) {
-                log.error(e.getMessage(), e);
-                return e.getMessage();
             }
+            return "Failed to read OBIS object after re-association";
         });
     }
 
@@ -590,6 +619,22 @@ public class DlmsReaderUtils {
      * 3. client.getData(resp1, reply, null);
      * */
     public List<ProfileRowGeneric> mockReadRange(String model, String meterSerial, String profileObis,
+                                                 ProfileMetadataResult metadataResult,
+                                                 LocalDateTime from, LocalDateTime to, boolean mdMeter) throws Exception {
+        int attempts = 0;
+        while (attempts < 2) {
+            try {
+                attempts++;
+                return mockReadRangeInternal(model, meterSerial, profileObis, metadataResult, from, to, mdMeter);
+            } catch (AssociationLostException e) {
+                log.warn("Association lost for {}. Re-attempting mockReadRange. Attempt {}", meterSerial, attempts);
+                if (attempts >= 2) throw e;
+            }
+        }
+        throw new Exception("mockReadRange failed after re-association attempts");
+    }
+
+    private List<ProfileRowGeneric> mockReadRangeInternal(String model, String meterSerial, String profileObis,
                                                  ProfileMetadataResult metadataResult,
                                                  LocalDateTime from, LocalDateTime to, boolean mdMeter) throws Exception {
         List<String> rxFrames = List.of(
@@ -641,9 +686,7 @@ public class DlmsReaderUtils {
             if (sessionManager.isAssociationLost(resp1)) {
                 log.warn("Association lost for {} on first frame.", meterSerial);
                 sessionManager.removeSession(meterSerial);
-                log.info("Creating new Association and Reading all over!");
-                readRange(model, meterSerial, profileObis, metadataResult, from, to, mdMeter);
-//                throw new AssociationLostException("Association lost on first frame");
+                throw new AssociationLostException("Association lost on first frame");
             }
             client.getData(resp1, reply, null);
 
@@ -675,6 +718,26 @@ public class DlmsReaderUtils {
     }
 
     public List<ProfileRowGeneric> readRangeV2(String model,
+                                               String meterSerial,
+                                               String profileObis,
+                                               ProfileMetadataResult metadataResult,
+                                               LocalDateTime from,
+                                               LocalDateTime to,
+                                               boolean mdMeter) throws Exception {
+        int attempts = 0;
+        while (attempts < 2) {
+            try {
+                attempts++;
+                return readRangeV2Internal(model, meterSerial, profileObis, metadataResult, from, to, mdMeter);
+            } catch (AssociationLostException e) {
+                log.warn("Association lost for {}. Re-attempting readRangeV2. Attempt {}", meterSerial, attempts);
+                if (attempts >= 2) throw e;
+            }
+        }
+        throw new Exception("readRangeV2 failed after re-association attempts");
+    }
+
+    private List<ProfileRowGeneric> readRangeV2Internal(String model,
                                                String meterSerial,
                                                String profileObis,
                                                ProfileMetadataResult metadataResult,
@@ -731,12 +794,12 @@ public class DlmsReaderUtils {
 
         try {
             // --- First frame
-            byte[] resp = txRxService.sendReceiveWithContext(meterSerial, reqFrames[0], 20000);
+            byte[] resp = sendReceiveWithRetry(meterSerial, reqFrames[0], 20000);
 
             if (sessionManager.isAssociationLost(resp)) {
                 log.warn("Association lost for {} on first frame. Re-establishing session...", meterSerial);
                 sessionManager.removeSession(meterSerial);
-                return readRange(model, meterSerial, profileObis, metadataResult, from, to, mdMeter);
+                throw new AssociationLostException("Association lost on first frame");
             }
 
             client.getData(resp, reply, null);
@@ -746,7 +809,7 @@ public class DlmsReaderUtils {
                 byte[] nextReq = client.receiverReady(reply);
                 if (nextReq == null) break;
 
-                resp = txRxService.sendReceiveWithContext(meterSerial, nextReq, 20000);
+                resp = sendReceiveWithRetry(meterSerial, nextReq, 20000);
                 client.getData(resp, reply, null);
             }
 
@@ -796,6 +859,22 @@ public class DlmsReaderUtils {
     }
 
     public List<ProfileRowGeneric> readRange(String model, String meterSerial, String profileObis,
+                                             ProfileMetadataResult metadataResult,
+                                             LocalDateTime from, LocalDateTime to, boolean mdMeter) throws Exception {
+        int attempts = 0;
+        while (attempts < 2) {
+            try {
+                attempts++;
+                return readRangeInternal(model, meterSerial, profileObis, metadataResult, from, to, mdMeter);
+            } catch (AssociationLostException e) {
+                log.warn("Association lost for {}. Re-attempting readRange. Attempt {}", meterSerial, attempts);
+                if (attempts >= 2) throw e;
+            }
+        }
+        throw new Exception("readRange failed after re-association attempts");
+    }
+
+    private List<ProfileRowGeneric> readRangeInternal(String model, String meterSerial, String profileObis,
                                              ProfileMetadataResult metadataResult,
                                              LocalDateTime from, LocalDateTime to, boolean mdMeter) throws Exception {
         if (profileObis == null || profileObis.isBlank()) {
@@ -854,13 +933,11 @@ public class DlmsReaderUtils {
 
             // --- Send first frame
             byte[] firstFrame = reqFrames[0];
-            byte[] resp1 = txRxService.sendReceiveWithContext(meterSerial, firstFrame, 20000);
+            byte[] resp1 = sendReceiveWithRetry(meterSerial, firstFrame, 20000);
             if (sessionManager.isAssociationLost(resp1)) {
                 log.warn("Association lost for {} on first frame.", meterSerial);
                 sessionManager.removeSession(meterSerial);
-                log.info("Creating new Association and Reading all over!");
-                readRange(model, meterSerial, profileObis, metadataResult, from, to, mdMeter);
-//                throw new AssociationLostException("Association lost on first frame");
+                throw new AssociationLostException("Association lost on first frame");
             }
             client.getData(resp1, reply, null);
 
@@ -871,7 +948,7 @@ public class DlmsReaderUtils {
             while (reply.isMoreData()) {
                 byte[] nextReq = client.receiverReady(reply);
                 if (nextReq == null) break;
-                byte[] resp = txRxService.sendReceiveWithContext(meterSerial, nextReq, 20000);
+                byte[] resp = sendReceiveWithRetry(meterSerial, nextReq, 20000);
                 client.getData(resp, reply, null);
                 updateProfileBufferOnBlock(client, profile, profileObis, meterSerial, reply);
             }
@@ -892,6 +969,22 @@ public class DlmsReaderUtils {
     }
 
     public List<ProfileRowGeneric> readRangeV1(String model, String meterSerial, String profileObis,
+                                               ProfileMetadataResult metadataResult,
+                                               LocalDateTime from, LocalDateTime to, boolean mdMeter) throws Exception {
+        int attempts = 0;
+        while (attempts < 2) {
+            try {
+                attempts++;
+                return readRangeV1Internal(model, meterSerial, profileObis, metadataResult, from, to, mdMeter);
+            } catch (AssociationLostException e) {
+                log.warn("Association lost for {}. Re-attempting readRangeV1. Attempt {}", meterSerial, attempts);
+                if (attempts >= 2) throw e;
+            }
+        }
+        throw new Exception("readRangeV1 failed after re-association attempts");
+    }
+
+    private List<ProfileRowGeneric> readRangeV1Internal(String model, String meterSerial, String profileObis,
                                                ProfileMetadataResult metadataResult,
                                                LocalDateTime from, LocalDateTime to, boolean mdMeter) throws Exception {
         GXDLMSClient client = null;
@@ -931,13 +1024,11 @@ public class DlmsReaderUtils {
 
             // --- Send first frame
             byte[] firstFrame = reqFrames[0];
-            byte[] resp1 = txRxService.sendReceiveWithContext(meterSerial, firstFrame, 20000);
+            byte[] resp1 = sendReceiveWithRetry(meterSerial, firstFrame, 20000);
             if (sessionManager.isAssociationLost(resp1)) {
                 log.warn("Association lost for {} on first frame.", meterSerial);
                 sessionManager.removeSession(meterSerial);
-                log.info("Creating new Association and Reading all over!");
-                readRangeV1(model, meterSerial, profileObis, metadataResult, from, to, mdMeter);
-//                throw new AssociationLostException("Association lost on first frame");
+                throw new AssociationLostException("Association lost on first frame");
             }
             client.getData(resp1, reply, null);
 
@@ -948,7 +1039,7 @@ public class DlmsReaderUtils {
             while (reply.isMoreData()) {
                 byte[] nextReq = client.receiverReady(reply);
                 if (nextReq == null) break;
-                byte[] resp = txRxService.sendReceiveWithContext(meterSerial, nextReq, 20000);
+                byte[] resp = sendReceiveWithRetry(meterSerial, nextReq, 20000);
                 client.getData(resp, reply, null);
                 updateProfileBufferOnBlock(client, profile, profileObis, meterSerial, reply);
             }
@@ -1064,7 +1155,8 @@ public class DlmsReaderUtils {
                 Object value = row.get(i);
                 values.put(key, value);
             }
-            ProfileRowGeneric rowGeneric = new ProfileRowGeneric(Instant.now().truncatedTo(ChronoUnit.SECONDS), meterSerial, profileObis, values);
+            Instant rowInstant = ts.atZone(ZoneId.systemDefault()).toInstant();
+            ProfileRowGeneric rowGeneric = new ProfileRowGeneric(rowInstant, meterSerial, profileObis, values);
             out.add(rowGeneric);
         }
         return out;
@@ -1104,7 +1196,8 @@ public class DlmsReaderUtils {
                 Object value = row.get(i);
                 values.put(key, value);
             }
-            ProfileRowGeneric rowGeneric = new ProfileRowGeneric(Instant.now().truncatedTo(ChronoUnit.SECONDS), meterSerial, profileObis, values);
+            Instant rowInstant = ts.atZone(ZoneId.systemDefault()).toInstant();
+            ProfileRowGeneric rowGeneric = new ProfileRowGeneric(rowInstant, meterSerial, profileObis, values);
             out.add(rowGeneric);
         }
         return out;
@@ -1247,7 +1340,7 @@ public class DlmsReaderUtils {
 
             log.debug("📤 DLMS RR → meter={}, bytes={}", serial, toHex(rr));
 
-            response = txRxService.sendReceiveWithContext(serial, rr, 20000);
+            response = sendReceiveWithRetry(serial, rr, 20000);
 
             log.debug("📥 DLMS RX (segment) → meter={}, bytes={}", serial, toHex(response));
 
