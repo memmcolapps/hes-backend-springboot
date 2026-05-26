@@ -110,10 +110,9 @@ public class EventLogService {
                 }
 
                 if (rawRows == null || rawRows.isEmpty()) {
-                    log.info("No rows, no exception — advancing cursor, meter={} profile={}", meterSerial, profileObis);
-                    cursor = new ProfileTimestamp(to).plus(cp);
-                    statePort.upsertState(meterSerial, profileObis, new ProfileTimestamp(to), cp);
-                    continue;
+                    log.warn("Empty profile response meter={} profile={} from={} to={}",
+                            meterSerial, profileObis, from, to);
+                    break;
                 }
 
                 List<EventLogDTO> eventDtos = eventLogMapper.toDTOs(rawRows, meterSerial, model);
@@ -124,7 +123,7 @@ public class EventLogService {
 
                 // Persist new cursor — null-safe
                 ProfileTimestamp resume = ProfileTimestamp.ofNullable(syncResult.getAdvanceTo());
-                cursor = (resume != null) ? resume.plus(cp) : cursor.plus(cp);
+                cursor = (resume != null) ? resume : cursor;
 
                 if (cp.seconds() <= 0) {
                     log.warn("cp.seconds() <= 0 : {}", cp);

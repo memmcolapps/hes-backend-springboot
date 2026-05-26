@@ -1,4 +1,4 @@
-name: HES CI/CD Pipeline
+name: HES CI/CD pipeline
 
 on:
   push:
@@ -6,110 +6,152 @@ on:
       - staging
       - main
 
-
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
       # =====================
-      # Checkout code
+      # Checkout
       # =====================
       - name: Checkout code
         uses: actions/checkout@v4
 
       # =====================
-      # Setup Java
+      # Java Setup
       # =====================
       - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "21"
+          java-version: '21'
+          cache: maven
 
       # =====================
-      # Build app
+      # Build
       # =====================
       - name: Build with Maven
-        run: |
-          chmod +x mvnw
-          ./mvnw clean package -DskipTests
         working-directory: hes
+        run: |
+          chmod +x ./mvnw
+          ./mvnw package -DskipTests
+
+      # =====================
+      # Resolve JAR
+      # =====================
+      - name: Resolve JAR
+        working-directory: hes
+        run: |
+          JAR_FILE=$(find target -name "*.jar" ! -name "*original*.jar" | head -n 1)
+
+          if [ -z "$JAR_FILE" ]; then
+            echo "No JAR found"
+            exit 1
+          fi
+
+          echo "JAR_FILE=hes/$JAR_FILE" >> $GITHUB_ENV
+          echo "Found JAR: $JAR_FILE"
 
       # =====================================================
-      # STAGING DEPLOYMENT
+      # SSH SETUP (STAGING)
       # =====================================================
-      - name: Setup SSH Agent (Staging)
+      - name: Setup SSH (Staging)
         if: github.ref == 'refs/heads/staging'
-        uses: webfactory/ssh-agent@v0.9.0
+        uses: webfactory/ssh-agent@v0.8.0
         with:
           ssh-private-key: ${{ secrets.STAGING_SSH_PRIVATE_KEY }}
 
-      - name: Deploy to Staging Server
+      # =====================================================
+      # DEPLOY STAGING
+      # =====================================================
+      - name: Deploy Staging
         if: github.ref == 'refs/heads/staging'
         run: |
-          ssh -o StrictHostKeyChecking=no \
-            ${{ secrets.STAGING_SERVER_USER }}@${{ secrets.STAGING_SERVER_HOST }} << 'EOF'
-              sudo mkdir -p /opt/java-webservices
-              sudo chown -R $USER:$USER /opt/java-webservices
-              pkill -f hes-app.jar || true
-          EOF
+          SERVER="${{ secrets.STAGING_SERVER_USER }}@${{ secrets.STAGING_SERVER_HOST }}"
+          REMOTE_PATH="/opt/java-webservices/gridflex-backend-service.jar"
 
-          scp -o StrictHostKeyChecking=no \
-            hes/target/*.jar \
-            ${{ secrets.STAGING_SERVER_USER }}@${{ secrets.STAGING_SERVER_HOST }}:/opt/java-webservices/hes-app.jar
+          echo "Creating remote directory..."
+          ssh -o StrictHostKeyChecking=no $SERVER "mkdir -p /opt/java-webservices"
 
-          ssh -o StrictHostKeyChecking=no \
-            ${{ secrets.STAGING_SERVER_USER }}@${{ secrets.STAGING_SERVER_HOST }} << 'EOF'
-              export SPRING_PROFILES_ACTIVE=staging
+          echo "Uploading JAR..."
+          rsync -az --delete -e "ssh -o StrictHostKeyChecking=no" \
+            "$JAR_FILE" \
+            $SERVER:$REMOTE_PATH
 
-              export SPRING_DATASOURCE_USERNAME=${{ secrets.STAGING_DB_USERNAME }}
-              export SPRING_DATASOURCE_PASSWORD=${{ secrets.STAGING_DB_PASSWORD }}
-              export SPRING_SECURITY_USER=${{ secrets.SPRING_SECURITY_USER }}
-              export SPRING_SECURITY_PASSWORD=${{ secrets.SPRING_SECURITY_PASSWORD }}
+          echo "Deploying (safe SSH execution)..."
+          ssh -o StrictHostKeyChecking=no $SERVER 'bash -s' << 'EOF'
 
-              nohup java -jar \
-                -Dspring.profiles.active=staging \
-                /opt/java-webservices/hes-app.jar \
-                > /opt/java-webservices/hes-staging.log 2>&1 &
+            set -e
+
+            echo "Stopping app safely..."
+
+            PID=$(ps -ef | grep hes-app.jar | grep -v grep | awk '{print $2}')
+
+            if [ -n "$PID" ]; then
+              echo "Killing PID: $PID"
+              kill -9 $PID || true
+            else
+              echo "No running process found"
+            fi
+
+            echo "Starting app..."
+
+            nohup java -Dspring.profiles.active=staging \
+              -jar /opt/java-webservices/hes-app.jar \
+              > /opt/java-webservices/hes-staging.log 2>&1 &
+
+            echo "Deployment complete"
           EOF
 
       # =====================================================
-      # PRODUCTION DEPLOYMENT
+      # SSH SETUP (PRODUCTION)
       # =====================================================
-      - name: Setup SSH Agent (Production)
+      - name: Setup SSH (Production)
         if: github.ref == 'refs/heads/main'
-        uses: webfactory/ssh-agent@v0.9.0
+        uses: webfactory/ssh-agent@v0.8.0
         with:
           ssh-private-key: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
 
-      - name: Deploy to Production Server
+      # =====================================================
+      # DEPLOY PRODUCTION
+      # =====================================================
+      - name: Deploy Production
         if: github.ref == 'refs/heads/main'
         run: |
-          ssh -o StrictHostKeyChecking=no \
-            ${{ secrets.PROD_SERVER_USER }}@${{ secrets.PROD_SERVER_HOST }} << 'EOF'
-              mkdir -p /opt/java-webservices
-              chown -R $USER:$USER /opt/java-webservices
-              pkill -f hes-app.jar || true
-          EOF
+          SERVER="${{ secrets.PROD_SERVER_USER }}@${{ secrets.PROD_SERVER_HOST }}"
+          REMOTE_PATH="/opt/java-webservices/gridflex-backend-service.jar"
 
-          scp -o StrictHostKeyChecking=no \
-            hes/target/*.jar \
-            ${{ secrets.PROD_SERVER_USER }}@${{ secrets.PROD_SERVER_HOST }}:/opt/java-webservices/hes-app.jar
+          echo "Creating remote directory..."
+          ssh -o StrictHostKeyChecking=no $SERVER "mkdir -p /opt/java-webservices"
 
-          ssh -o StrictHostKeyChecking=no \
-            ${{ secrets.PROD_SERVER_USER }}@${{ secrets.PROD_SERVER_HOST }} << 'EOF'
-              export SPRING_PROFILES_ACTIVE=prod
+          echo "Uploading JAR..."
+          rsync -az --delete -e "ssh -o StrictHostKeyChecking=no" \
+            "$JAR_FILE" \
+            $SERVER:$REMOTE_PATH
 
-              export SPRING_DATASOURCE_USERNAME=${{ secrets.PROD_DB_USERNAME }}
-              export SPRING_DATASOURCE_PASSWORD=${{ secrets.PROD_DB_PASSWORD }}
-              export SPRING_SECURITY_USER=${{ secrets.PROD_SPRING_SECURITY_USER }}
-              export SPRING_SECURITY_PASSWORD=${{ secrets.PROD_SPRING_SECURITY_PASSWORD }}
+          echo "Deploying (safe SSH execution)..."
+          ssh -o StrictHostKeyChecking=no $SERVER 'bash -s' << 'EOF'
 
-              nohup java -jar \
-                -Dspring.profiles.active=prod \
-                /opt/java-webservices/hes-app.jar \
-                > /opt/java-webservices/hes-prod.log 2>&1 &
+            set -e
+
+            echo "Stopping app safely..."
+
+            PID=$(ps -ef | grep hes-app.jar | grep -v grep | awk '{print $2}')
+
+            if [ -n "$PID" ]; then
+              echo "Killing PID: $PID"
+              kill -9 $PID || true
+            else
+              echo "No running process found"
+            fi
+
+            echo "Starting app..."
+
+            nohup java -Dspring.profiles.active=prod \
+              -jar /opt/java-webservices/hes-app.jar \
+              > /opt/java-webservices/hes-prod.log 2>&1 &
+
+            echo "Deployment complete"
           EOF
 
 

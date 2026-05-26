@@ -795,7 +795,7 @@ public class DlmsReaderUtils {
         }
     }
 
-    public List<ProfileRowGeneric> readRange(String model, String meterSerial, String profileObis,
+    public List<ProfileRowGeneric> readRangeV3(String model, String meterSerial, String profileObis,
                                              ProfileMetadataResult metadataResult,
                                              LocalDateTime from, LocalDateTime to, boolean mdMeter) throws Exception {
         if (profileObis == null || profileObis.isBlank()) {
@@ -966,6 +966,101 @@ public class DlmsReaderUtils {
             log.error(e.getMessage(), e);
             throw new Exception(e.getMessage());
         }
+    }
+
+    public List<ProfileRowGeneric> readRange(String model, String meterSerial, String profileObis,
+                                             ProfileMetadataResult metadataResult,
+                                             LocalDateTime from, LocalDateTime to, boolean mdMeter) throws Exception {
+        long t0 = System.currentTimeMillis();
+
+        // Clear any stale partial buffer before starting a fresh read run
+        partialDecoder.clear(meterSerial, profileObis);
+
+
+            try {
+                // 🚀 1. Fetch or establish an active, authenticated DLMS session
+                GXDLMSClient client = sessionManager.getOrCreateClient(meterSerial);
+                if (client == null) {
+                    throw new IllegalStateException("DLMS client context could not be created for " + meterSerial);
+                }
+
+                // Keep tracking alive inside the manager's access map
+//                sessionManager.markSessionActive(meterSerial);
+
+                // 2. Setup the target DLMS profile object infrastructure
+                GXDLMSProfileGeneric profile = new GXDLMSProfileGeneric();
+                profile.setLogicalName(profileObis);
+
+                GXDateTime gxFrom = new GXDateTime(Date.from(from.atZone(ZoneId.systemDefault()).toInstant()));
+                GXDateTime gxTo = new GXDateTime(Date.from(to.atZone(ZoneId.systemDefault()).toInstant()));
+
+                String msg = String.format(
+                        "Building DLMS range request model=%s meter=%s obis=%s from=%s to=%s",
+                        model, meterSerial, profileObis, from, to);
+                log.info(msg);
+                logTx(meterSerial, msg);
+
+                // Populate the captured columns/scalers metadata into the profile reference object
+                List<ModelProfileMetadata> metadataList = metadataResult.getMetadataList();
+                DlmsUtils.populateCaptureObjects(profile, metadataList);
+
+                // 3. Generate raw DLMS request byte payloads
+                byte[][] reqFrames = client.readRowsByRange(profile, gxFrom, gxTo);
+                if (reqFrames == null || reqFrames.length == 0) {
+                    log.warn("readRowsByRange produced no frames meter={} obis={}", meterSerial, profileObis);
+                    return List.of();
+                }
+
+                GXReplyData reply = new GXReplyData();
+
+                // --- Execute Phase: Send first PDU frame block ---
+                byte[] firstFrame = reqFrames[0];
+                byte[] resp1 = txRxService.sendReceiveWithContext(meterSerial, firstFrame, 20000);
+
+                // Check if the physical or application association state dropped mid-execution
+                if (sessionManager.isAssociationLost(resp1)) {
+                    log.warn("Application association lost for {} on frame zero entry.", meterSerial);
+                    sessionManager.removeSession(meterSerial);
+                }
+
+                // Unpack wrapper headers and feed data payload structures into the client engine
+                client.getData(resp1, reply, null);
+
+                // Accumulate partial raw buffer blocks for intermediate fallback security
+                updateProfileBufferOnBlock(client, profile, profileObis, meterSerial, reply);
+
+                // --- Execute Phase: Multi-block streaming loop ---
+                while (reply.isMoreData()) {
+                    byte[] nextReq = client.receiverReady(reply);
+                    if (nextReq == null) {
+                        break;
+                    }
+
+                    byte[] resp = txRxService.sendReceiveWithContext(meterSerial, nextReq, 20000);
+                    client.getData(resp, reply, null);
+                    updateProfileBufferOnBlock(client, profile, profileObis, meterSerial, reply);
+                }
+
+                // SUCCESS PATH: Process fully assembled target buffer values
+                List<ProfileRowGeneric> rows = decodeProfileBuffer(profile, meterSerial, profileObis, metadataList);
+
+                // Clean out tracking structures since the capture transaction completed safely
+                partialDecoder.clear(meterSerial, profileObis);
+
+                long ms = System.currentTimeMillis() - t0;
+                log.info("Range read complete meter={} obis={} rows={} totalElapsedMs={}", meterSerial, profileObis, rows.size(), ms);
+                return rows;
+
+            } catch (Exception e) {
+                log.error(STR."Error reading range block  for meter \{meterSerial}: \{e.getMessage()}", e);
+
+                // On hard transmission or link errors, evict the tracking profile session immediately
+                sessionManager.removeSession(meterSerial);
+
+                log.info("Retrying range execution block after hardware/network layer error...");
+            }
+
+       return List.of();
     }
 
     private void updateProfileBufferOnBlock(GXDLMSClient client, GXDLMSProfileGeneric profile, String profileObis, String meterSerial, GXReplyData reply) throws Exception {
