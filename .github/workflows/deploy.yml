@@ -31,10 +31,10 @@ jobs:
       # Build app
       # =====================
       - name: Build with Maven
+        working-directory: hes
         run: |
           chmod +x mvnw
           ./mvnw clean package -DskipTests
-        working-directory: hes
 
       # =====================================================
       # STAGING DEPLOYMENT
