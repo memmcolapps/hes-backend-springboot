@@ -31,6 +31,135 @@ public class MonthlyBillingDataHouseholdService {
     public void readProfileAndSave(String model, String meterSerial, String profileObis, boolean isMD) {
         try {
             final String safeObis = (profileObis == null || profileObis.isBlank()) ? "unknown" : profileObis;
+
+            if (profileObis == null || profileObis.isBlank()) {
+                metricsPort.recordFailure(meterSerial, safeObis, "missing_profile_obis");
+                return;
+            }
+
+            log.info("MonthlyBillingDataHousehold read start. meter={} model={} obis={} md={}",
+                    meterSerial, model, safeObis, isMD);
+
+            // =========================
+            // 1. STATE SEED (UNCHANGED)
+            // =========================
+            LocalDateTime seedFrom = null;
+
+            ProfileState st = statePort.loadState(meterSerial, profileObis);
+            if (st != null && st.lastTimestamp() != null) {
+                seedFrom = st.lastTimestamp().value();
+            }
+
+            if (seedFrom == null) {
+                seedFrom = meterRepository.findMeterDetailsByMeterNumber(meterSerial)
+                        .map(m -> m.getCreatedAt())
+                        .orElse(null);
+            }
+
+            if (seedFrom == null) {
+                seedFrom = LocalDateTime.now()
+                        .minusMonths(1)
+                        .withDayOfMonth(1)
+                        .withHour(0).withMinute(0).withSecond(0).withNano(0);
+            }
+
+            ProfileTimestamp cursor = new ProfileTimestamp(seedFrom);
+
+            // Monthly billing uses logical 1-day stepping (FIXED semantic mismatch)
+            CapturePeriod cp = new CapturePeriod(1);
+
+            LocalDateTime now = LocalDateTime.now();
+
+            // =========================
+            // 2. MAIN LOOP
+            // =========================
+            while (cursor.value().isBefore(now)) {
+
+                LocalDateTime from = cursor.value();
+                LocalDateTime to = from.plusMonths(1);
+                if (to.isAfter(now)) to = now;
+
+                log.info("MonthlyBillingDataHousehold range meter={} obis={} from={} to={}",
+                        meterSerial, safeObis, from, to);
+
+                final ProfileMetadataResult metadataResult;
+                try {
+                    metadataResult = metadataProvider.resolve(meterSerial, profileObis, model);
+                } catch (Exception metaEx) {
+                    metricsPort.recordFailure(meterSerial, safeObis, "metadata_resolve_failed");
+                    return;
+                }
+
+                boolean exceptionOccurred = false;
+                List<ProfileRowGeneric> rawRows;
+
+                try {
+                    rawRows = dlmsReaderUtils.readRange(
+                            model, meterSerial, profileObis, metadataResult, from, to, isMD
+                    );
+                } catch (Exception e) {
+                    exceptionOccurred = true;
+                    rawRows = attemptRecovery(model, meterSerial, profileObis, metadataResult);
+                }
+
+                // =========================
+                // 3. EMPTY + FAILURE HANDLING
+                // =========================
+                if ((rawRows == null || rawRows.isEmpty()) && exceptionOccurred) {
+                    return;
+                }
+
+                if (rawRows == null || rawRows.isEmpty()) {
+                    log.warn("Empty profile response meter={} profile={} from={} to={}",
+                            meterSerial, profileObis, from, to);
+                    break;
+                }
+
+                // =========================
+                // 4. MAP + PERSIST
+                // =========================
+                List<BillingDataHouseholdDTO> dtos =
+                        mapper.toDTO(rawRows, meterSerial, model, true, metadataResult);
+
+                persistenceAdapter.createPartitionsIfMissing(dtos);
+
+                ProfileSyncResult syncResult =
+                        persistenceAdapter.saveBatchAndAdvanceCursor(
+                                meterSerial, profileObis, dtos, cp
+                        );
+
+                metricsPort.recordBatch(
+                        meterSerial,
+                        profileObis,
+                        syncResult.getInsertedCount(),
+                        0
+                );
+
+                // =========================
+                // 5. CRITICAL FIX (STATE ADVANCEMENT)
+                // =========================
+
+                ProfileTimestamp resume = ProfileTimestamp.ofNullable(syncResult.getAdvanceTo());
+                cursor = (resume != null) ? resume : cursor;
+
+                if (cp.seconds() <= 0) {
+                    log.warn("cp.seconds() <= 0 : {}", cp);
+                    return;
+                }
+            }
+
+        } catch (Exception ex) {
+            String safeObis = (profileObis == null || profileObis.isBlank()) ? "unknown" : profileObis;
+            log.error("MonthlyBillingDataHousehold unhandled exception meter={} obis={}",
+                    meterSerial, safeObis, ex);
+
+            metricsPort.recordFailure(meterSerial, safeObis, "unhandled_exception");
+        }
+    }
+
+    public void readProfileAndSaveV1(String model, String meterSerial, String profileObis, boolean isMD) {
+        try {
+            final String safeObis = (profileObis == null || profileObis.isBlank()) ? "unknown" : profileObis;
             if (profileObis == null || profileObis.isBlank()) {
                 metricsPort.recordFailure(meterSerial, safeObis, "missing_profile_obis");
                 return;

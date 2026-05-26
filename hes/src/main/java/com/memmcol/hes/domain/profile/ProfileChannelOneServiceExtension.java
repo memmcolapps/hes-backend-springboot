@@ -107,10 +107,9 @@ public class ProfileChannelOneServiceExtension {
                 }
 
                 if (rawRows == null || rawRows.isEmpty()) {
-                    log.info("No rows, no exception — advancing cursor, meter={} profile={}", meterSerial, profileObis);
-                    cursor = new ProfileTimestamp(to).plus(cp);
-                    statePort.upsertState(meterSerial, profileObis, new ProfileTimestamp(to), cp);
-                    continue;
+                    log.warn("Empty profile response meter={} profile={} from={} to={}",
+                            meterSerial, profileObis, from, to);
+                    break;
                 }
 
                 // Map, createPartitionsIfMissing & save
@@ -123,12 +122,15 @@ public class ProfileChannelOneServiceExtension {
                 metricsPort.recordBatch(meterSerial, profileObis, syncResult.getInsertedCount(), t1);
 
                 // Persist new cursor
-                ProfileTimestamp resume = ProfileTimestamp.ofNullable(syncResult.getAdvanceTo());
-                cursor = (resume != null ? resume.plus(cp) : cursor.plus(cp));
+                ProfileTimestamp resume =
+                        ProfileTimestamp.ofNullable(syncResult.getAdvanceTo());
 
-                // Safety guard to avoid infinite loop if capture period = 0 (should not happen)
+                cursor = (resume != null)
+                        ? resume
+                        : cursor;
+
                 if (cp.seconds() <= 0) {
-                    log.warn("cp.seconds() <= 0 :  {}", cp);
+                    log.warn("cp.seconds() <= 0 : {}", cp);
                     return;
                 }
             }
