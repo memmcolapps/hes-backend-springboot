@@ -31,6 +31,123 @@ public class MonthlyBillingEnergyHouseholdService {
     public void readProfileAndSave(String model, String meterSerial, String profileObis, boolean isMD) {
         try {
             final String safeObis = (profileObis == null || profileObis.isBlank()) ? "unknown" : profileObis;
+
+            if (profileObis == null || profileObis.isBlank()) {
+                metricsPort.recordFailure(meterSerial, safeObis, "missing_profile_obis");
+                return;
+            }
+
+            LocalDateTime seedFrom = null;
+
+            ProfileState st = statePort.loadState(meterSerial, profileObis);
+            if (st != null && st.lastTimestamp() != null) {
+                seedFrom = st.lastTimestamp().value();
+            }
+
+            if (seedFrom == null) {
+                seedFrom = meterRepository.findMeterDetailsByMeterNumber(meterSerial)
+                        .map(m -> m.getCreatedAt())
+                        .orElse(null);
+            }
+
+            if (seedFrom == null) {
+                seedFrom = LocalDateTime.now()
+                        .minusMonths(1)
+                        .withDayOfMonth(1)
+                        .withHour(0).withMinute(0).withSecond(0).withNano(0);
+            }
+
+            ProfileTimestamp cursor = new ProfileTimestamp(seedFrom);
+
+            CapturePeriod cp = new CapturePeriod(1);
+
+            LocalDateTime now = LocalDateTime.now();
+
+            while (cursor.value().isBefore(now)) {
+
+                LocalDateTime from = cursor.value();
+                LocalDateTime to = from.plusMonths(1);
+
+                if (to.isAfter(now)) {
+                    to = now;
+                }
+
+                boolean exceptionOccurred = false;
+
+                final ProfileMetadataResult metadataResult;
+                try {
+                    metadataResult = metadataProvider.resolve(meterSerial, profileObis, model);
+                } catch (Exception metaEx) {
+                    metricsPort.recordFailure(meterSerial, safeObis, "metadata_resolve_failed");
+                    return;
+                }
+
+                List<ProfileRowGeneric> rawRows;
+
+                try {
+                    rawRows = dlmsReaderUtils.readRange(
+                            model, meterSerial, profileObis, metadataResult, from, to, isMD
+                    );
+                } catch (Exception e) {
+                    exceptionOccurred = true;
+                    rawRows = attemptRecovery(model, meterSerial, profileObis, metadataResult);
+                }
+
+                // =========================
+                // EMPTY + FAILURE HANDLING
+                // =========================
+                if ((rawRows == null || rawRows.isEmpty()) && exceptionOccurred) {
+                    return;
+                }
+
+                if (rawRows == null || rawRows.isEmpty()) {
+                    // ❌ DO NOT persist "to"
+                    log.warn("Empty profile response meter={} profile={} from={} to={}",
+                            meterSerial, profileObis, from, to);
+                    break;
+                }
+
+                // =========================
+                // MAP + PERSIST
+                // =========================
+                List<BillingEnergyHouseholdDTO> dtos =
+                        mapper.toDTO(rawRows, meterSerial, model, isMD, metadataResult);
+
+                persistenceAdapter.createPartitionsIfMissing(dtos);
+
+                ProfileSyncResult syncResult =
+                        persistenceAdapter.saveBatchAndAdvanceCursor(
+                                meterSerial, profileObis, dtos, cp
+                        );
+
+                metricsPort.recordBatch(
+                        meterSerial,
+                        profileObis,
+                        syncResult.getInsertedCount(),
+                        0
+                );
+
+                // =========================
+                // CRITICAL FIX (STATE UPDATE)
+                // =========================
+                ProfileTimestamp resume = ProfileTimestamp.ofNullable(syncResult.getAdvanceTo());
+                cursor = (resume != null) ? resume : cursor;
+
+                if (cp.seconds() <= 0) {
+                    log.warn("cp.seconds() <= 0 : {}", cp);
+                    return;
+                }
+            }
+
+        } catch (Exception ex) {
+            String safeObis = (profileObis == null || profileObis.isBlank()) ? "unknown" : profileObis;
+            metricsPort.recordFailure(meterSerial, safeObis, "unhandled_exception");
+        }
+    }
+
+    public void readProfileAndSaveV1(String model, String meterSerial, String profileObis, boolean isMD) {
+        try {
+            final String safeObis = (profileObis == null || profileObis.isBlank()) ? "unknown" : profileObis;
             if (profileObis == null || profileObis.isBlank()) {
                 metricsPort.recordFailure(meterSerial, safeObis, "missing_profile_obis");
                 return;

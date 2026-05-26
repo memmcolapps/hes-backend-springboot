@@ -30,7 +30,258 @@ public class ProfileChannelThreeHouseholdService {
     private final ProfileChannelThreeHouseholdMapper mapper;
     private final MeterRepository meterRepository;
 
-    public void readProfileAndSave(String model, String meterSerial, String profileObis, boolean isMD) {
+    public void readProfileAndSave(String model,
+                                   String meterSerial,
+                                   String profileObis,
+                                   boolean isMD) {
+
+        final String safeObis =
+                (profileObis == null || profileObis.isBlank())
+                        ? "unknown"
+                        : profileObis;
+
+        try {
+
+            // =====================================================
+            // VALIDATION
+            // =====================================================
+            if (profileObis == null || profileObis.isBlank()) {
+                log.error("Profile OBIS is null/blank; skipping read meter={} model={}",
+                        meterSerial, model);
+
+                metricsPort.recordFailure(
+                        meterSerial,
+                        safeObis,
+                        "missing_profile_obis"
+                );
+
+                return;
+            }
+
+            // =====================================================
+            // LOAD WATERMARK (SOURCE OF TRUTH)
+            // =====================================================
+            LocalDateTime seedFrom = null;
+
+            ProfileState st = statePort.loadState(meterSerial, profileObis);
+
+            if (st != null && st.lastTimestamp() != null) {
+                seedFrom = st.lastTimestamp().value();
+            }
+
+            if (seedFrom == null) {
+                seedFrom = meterRepository.findMeterDetailsByMeterNumber(meterSerial)
+                        .map(m -> m.getCreatedAt())
+                        .orElse(null);
+            }
+
+            if (seedFrom == null) {
+                seedFrom = LocalDateTime.now().minusDays(1);
+            }
+
+            // IMPORTANT: watermark cursor ONLY
+            ProfileTimestamp cursor = new ProfileTimestamp(seedFrom);
+
+            // =====================================================
+            // CAPTURE PERIOD
+            // =====================================================
+            CapturePeriod cp = new CapturePeriod(
+                    capturePeriodPort.resolveCapturePeriodSeconds(
+                            meterSerial,
+                            profileObis
+                    )
+            );
+
+            if (cp.seconds() <= 0) {
+                log.warn("Invalid capture period meter={} profile={} cp={}",
+                        meterSerial, profileObis, cp.seconds());
+
+                cp = new CapturePeriod(3600);
+            }
+
+            if (cp.seconds() < 3600) {
+                cp = new CapturePeriod(3600);
+            }
+
+            final LocalDateTime now = LocalDateTime.now();
+
+            // =====================================================
+            // REPLAY LOOP
+            // =====================================================
+            while (cursor.value().isBefore(now)) {
+
+                final LocalDateTime from = cursor.value();
+                LocalDateTime to = from.plusDays(1);
+
+                if (to.isAfter(now)) {
+                    to = now;
+                }
+
+                long t0 = System.currentTimeMillis();
+
+                boolean recoveryAttempted = false;
+
+                // =================================================
+                // METADATA
+                // =================================================
+                final ProfileMetadataResult metadataResult;
+
+                try {
+                    metadataResult = metadataProvider.resolve(
+                            meterSerial,
+                            profileObis,
+                            model
+                    );
+                } catch (Exception ex) {
+
+                    log.error("Metadata resolve failed meter={} profile={} model={}",
+                            meterSerial, profileObis, model, ex);
+
+                    metricsPort.recordFailure(
+                            meterSerial,
+                            safeObis,
+                            "metadata_resolve_failed"
+                    );
+
+                    return;
+                }
+
+                // =================================================
+                // READ RANGE
+                // =================================================
+                List<ProfileRowGeneric> rows;
+
+                try {
+                    rows = dlmsReaderUtils.readRange(
+                            model,
+                            meterSerial,
+                            profileObis,
+                            metadataResult,
+                            from,
+                            to,
+                            isMD
+                    );
+                } catch (Exception ex) {
+
+                    recoveryAttempted = true;
+
+                    log.warn("Range read failed meter={} profile={} from={} to={}",
+                            meterSerial, profileObis, from, to, ex);
+
+                    rows = attemptRecovery(
+                            model,
+                            meterSerial,
+                            profileObis,
+                            metadataResult
+                    );
+                }
+
+                // =================================================
+                // EMPTY HANDLING (NO CURSOR ADVANCE)
+                // =================================================
+                if (rows == null || rows.isEmpty()) {
+                    log.warn("Empty profile response meter={} profile={} from={} to={}",
+                            meterSerial, profileObis, from, to);
+                    break;
+                }
+
+                // =================================================
+                // MAP DTOs
+                // =================================================
+                List<ProfileChannelThreeHouseholdDTO> dtos =
+                        mapper.toDTO(
+                                rows,
+                                meterSerial,
+                                model,
+                                isMD,
+                                metadataResult
+                        );
+
+                if (dtos == null || dtos.isEmpty()) {
+                    log.warn("DTO mapping empty meter={} profile={}",
+                            meterSerial, profileObis);
+
+                    break;
+                }
+
+                // =================================================
+                // PARTITIONS
+                // =================================================
+                persistenceAdapter.createPartitionsIfMissing(dtos);
+
+                // =================================================
+                // PERSIST + WATERMARK ADVANCE
+                // =================================================
+                ProfileSyncResult syncResult =
+                        persistenceAdapter.saveBatchAndAdvanceCursor(
+                                meterSerial,
+                                profileObis,
+                                dtos,
+                                cp
+                        );
+
+                long duration = System.currentTimeMillis() - t0;
+
+                metricsPort.recordBatch(
+                        meterSerial,
+                        profileObis,
+                        syncResult.getInsertedCount(),
+                        duration
+                );
+
+                // =================================================
+                // WATERMARK VALIDATION
+                // =================================================
+                ProfileTimestamp resume =
+                        ProfileTimestamp.ofNullable(syncResult.getAdvanceTo());
+
+                if (resume == null || resume.value() == null) {
+
+                    log.warn("Null advanceTo meter={} profile={}",
+                            meterSerial, profileObis);
+
+                    break;
+                }
+
+                // =================================================
+                // STAGNATION PROTECTION
+                // =================================================
+                if (!resume.value().isAfter(cursor.value())) {
+
+                    log.warn("Non-advancing cursor meter={} profile={} cursor={} resume={}",
+                            meterSerial, profileObis, cursor.value(), resume.value());
+
+                    break;
+                }
+
+                // =================================================
+                // CRITICAL FIX:
+                // NO resume.plus(cp)
+                // =================================================
+                cursor = resume;
+
+                log.info("Profile3HH advanced meter={} profile={} cursor={} inserted={} durationMs={}",
+                        meterSerial,
+                        profileObis,
+                        cursor.value(),
+                        syncResult.getInsertedCount(),
+                        duration);
+            }
+
+        } catch (Exception ex) {
+
+            log.error("Fatal exception reading profile3HH meter={} profile={}",
+                    meterSerial, profileObis, ex);
+
+            metricsPort.recordFailure(
+                    meterSerial,
+                    safeObis,
+                    "unhandled_exception"
+            );
+        }
+    }
+
+    public void readProfileAndSaveV1(String model, String meterSerial, String profileObis, boolean isMD) {
         try {
             final String safeObis = (profileObis == null || profileObis.isBlank()) ? "unknown" : profileObis;
 
@@ -56,8 +307,8 @@ public class ProfileChannelThreeHouseholdService {
             ProfileTimestamp cursor = new ProfileTimestamp(seedFrom);
 
             CapturePeriod cp = new CapturePeriod(capturePeriodPort.resolveCapturePeriodSeconds(meterSerial, profileObis));
-            if (cp.seconds() < 900) {
-                cp = new CapturePeriod(900);
+            if (cp.seconds() < 3600) {
+                cp = new CapturePeriod(3600);
             }
 
             LocalDateTime now = LocalDateTime.now();
@@ -97,10 +348,9 @@ public class ProfileChannelThreeHouseholdService {
                 }
 
                 if (rows == null || rows.isEmpty()) {
-                    log.info("No rows, no exception — advancing cursor, meter={} profile={}", meterSerial, profileObis);
-                    cursor = new ProfileTimestamp(to).plus(cp);
-                    statePort.upsertState(meterSerial, profileObis, new ProfileTimestamp(to), cp);
-                    continue;
+                    log.warn("Empty read meter={} profile={} from={} to={}",
+                            meterSerial, profileObis, from, to);
+                    break;
                 }
 
                 List<ProfileChannelThreeHouseholdDTO> dtos = mapper.toDTO(rows, meterSerial, model, isMD, metadataResult);

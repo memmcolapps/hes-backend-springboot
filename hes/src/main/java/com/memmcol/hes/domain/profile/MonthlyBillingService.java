@@ -36,6 +36,157 @@ public class MonthlyBillingService {
         try {
             final String safeObis = (profileObis == null || profileObis.isBlank()) ? "unknown" : profileObis;
 
+            if (profileObis == null || profileObis.isBlank()) {
+                log.error("Profile OBIS is null/blank; skipping read meter={} model={}", meterSerial, model);
+                metricsPort.recordFailure(meterSerial, safeObis, "missing_profile_obis");
+                return;
+            }
+
+            // =========================
+            // STEP 1: WATERMARK SEED
+            // =========================
+            LocalDateTime seedFrom = null;
+
+            ProfileState st = statePort.loadState(meterSerial, profileObis);
+            if (st != null && st.lastTimestamp() != null) {
+                seedFrom = st.lastTimestamp().value();
+            }
+
+            if (seedFrom == null) {
+                seedFrom = meterRepository.findMeterDetailsByMeterNumber(meterSerial)
+                        .map(m -> m.getCreatedAt())
+                        .orElse(null);
+            }
+
+            if (seedFrom == null) {
+                seedFrom = LocalDateTime.now()
+                        .minusMonths(1)
+                        .withDayOfMonth(1)
+                        .withHour(0)
+                        .withMinute(0)
+                        .withSecond(0)
+                        .withNano(0);
+            }
+
+            ProfileTimestamp cursor = new ProfileTimestamp(seedFrom);
+
+            // NOTE: cp is no longer used for state progression (kept only for adapter compatibility)
+            CapturePeriod cp = new CapturePeriod(1);
+
+            LocalDateTime now = LocalDateTime.now();
+
+            // =========================
+            // STEP 2: MAIN LOOP
+            // =========================
+            while (cursor.value().isBefore(now)) {
+
+                LocalDateTime from = cursor.value();
+
+                // FIX: correct monthly batching (NOT 12 months)
+                LocalDateTime to = from.plusMonths(1);
+                if (to.isAfter(now)) {
+                    to = now;
+                }
+
+                long t0 = System.currentTimeMillis();
+                boolean exceptionOccurred = false;
+
+                // =========================
+                // METADATA RESOLUTION
+                // =========================
+                final ProfileMetadataResult metadataResult;
+                try {
+                    metadataResult = metadataProvider.resolve(meterSerial, profileObis, model);
+                } catch (Exception metaEx) {
+                    log.error("Metadata resolve failed meter={} profile={} model={}",
+                            meterSerial, profileObis, model, metaEx);
+                    metricsPort.recordFailure(meterSerial, safeObis, "metadata_resolve_failed");
+                    return;
+                }
+
+                // =========================
+                // DLMS READ
+                // =========================
+                List<ProfileRowGeneric> rawRows;
+                try {
+                    rawRows = dlmsReaderUtils.readRange(
+                            model, meterSerial, profileObis, metadataResult, from, to, isMD
+                    );
+                } catch (Exception e) {
+                    log.warn("Range read failed; attempting recovery meter={} profile={}",
+                            meterSerial, profileObis, e);
+                    exceptionOccurred = true;
+                    rawRows = attemptRecovery(model, meterSerial, profileObis, metadataResult);
+                }
+
+                // =========================
+                // FAILURE HANDLING
+                // =========================
+                if ((rawRows == null || rawRows.isEmpty()) && exceptionOccurred) {
+                    log.warn("Breaking (no rows + exception) meter={} profile={} from={} to={}",
+                            meterSerial, profileObis, from, to);
+                    return;
+                }
+
+                // =========================
+                // EMPTY WINDOW HANDLING
+                // =========================
+                if (rawRows == null || rawRows.isEmpty()) {
+                    log.info("No rows, advancing window meter={} profile={}", meterSerial, profileObis);
+
+                    cursor = new ProfileTimestamp(to);
+                    statePort.upsertState(meterSerial, profileObis, cursor, cp);
+                    continue;
+                }
+
+                // =========================
+                // TRANSFORM + PERSIST
+                // =========================
+                List<MonthlyBillingDTO> dtos =
+                        billingMapper.toDTO(rawRows, meterSerial, model, true, metadataResult);
+
+                monthlyBillingPersistenceAdapter.createPartitionsIfMissing(dtos);
+
+                ProfileSyncResult syncResult =
+                        monthlyBillingPersistenceAdapter.saveBatchAndAdvanceCursor(
+                                meterSerial, profileObis, dtos, cp
+                        );
+
+                long duration = System.currentTimeMillis() - t0;
+
+                metricsPort.recordBatch(
+                        meterSerial,
+                        profileObis,
+                        syncResult.getInsertedCount(),
+                        duration
+                );
+
+                // =========================
+                // CRITICAL FIX: CURSOR LOGIC
+                // =========================
+                ProfileTimestamp resume = ProfileTimestamp.ofNullable(syncResult.getAdvanceTo());
+
+                if (resume != null) {
+                    cursor = resume;   // NO +cp
+                }
+
+                // persist watermark ONLY (no transformation)
+                statePort.upsertState(meterSerial, profileObis, cursor, cp);
+            }
+
+        } catch (Exception ex) {
+            log.error("Fatal exception while reading profile, meter={}, profile={}",
+                    meterSerial, profileObis, ex);
+
+            String safeObis = (profileObis == null || profileObis.isBlank()) ? "unknown" : profileObis;
+            metricsPort.recordFailure(meterSerial, safeObis, "unhandled_exception");
+        }
+    }
+
+    public void readProfileAndSaveV1(String model, String meterSerial, String profileObis, boolean isMD) {
+        try {
+            final String safeObis = (profileObis == null || profileObis.isBlank()) ? "unknown" : profileObis;
+
             // Guard: OBIS must be present
             if (profileObis == null || profileObis.isBlank()) {
                 log.error("Profile OBIS is null/blank; skipping read meter={} model={}", meterSerial, model);
@@ -114,10 +265,9 @@ public class MonthlyBillingService {
                 }
 
                 if (rawRows == null || rawRows.isEmpty()) {
-                    log.info("No rows, no exception — advancing cursor, meter={} profile={}", meterSerial, profileObis);
-                    cursor = new ProfileTimestamp(to).plus(cp);
-                    statePort.upsertState(meterSerial, profileObis, new ProfileTimestamp(to), cp);
-                    continue;
+                    log.warn("Empty profile response meter={} profile={} from={} to={}",
+                            meterSerial, profileObis, from, to);
+                    break;
                 }
 
                 // Map, createPartitionsIfMissing & save
@@ -130,8 +280,12 @@ public class MonthlyBillingService {
                 metricsPort.recordBatch(meterSerial, profileObis, syncResult.getInsertedCount(), t1);
 
                 // Persist new cursor — null-safe
-                ProfileTimestamp resume = ProfileTimestamp.ofNullable(syncResult.getAdvanceTo());
-                cursor = (resume != null) ? resume.plus(cp) : cursor.plus(cp);
+                ProfileTimestamp resume =
+                        ProfileTimestamp.ofNullable(syncResult.getAdvanceTo());
+
+                cursor = (resume != null)
+                        ? resume
+                        : cursor;
 
                 if (cp.seconds() <= 0) {
                     log.warn("cp.seconds() <= 0 : {}", cp);

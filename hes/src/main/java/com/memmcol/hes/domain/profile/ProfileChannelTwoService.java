@@ -119,12 +119,9 @@ public class ProfileChannelTwoService {
                 }
 
                 if (rows == null || rows.isEmpty()) {
-                    log.info("No rows, no exception — advancing cursor, meter={} profile={}",
-                            meterSerial, profileObis);
-
-                    cursor = new ProfileTimestamp(to).plus(cp);
-                    statePort.upsertState(meterSerial, profileObis, new ProfileTimestamp(to), cp);
-                    continue;
+                    log.warn("Empty profile response meter={} profile={} from={} to={}",
+                            meterSerial, profileObis, from, to);
+                    break;
                 }
 
                 // ✅ Map & Persist
@@ -151,8 +148,8 @@ public class ProfileChannelTwoService {
                 ProfileTimestamp resume = ProfileTimestamp.ofNullable(syncResult.getAdvanceTo());
 
                 cursor = (resume != null)
-                        ? resume.plus(cp)
-                        : cursor.plus(cp);
+                        ? resume
+                        : cursor;
 
                 // Safety guard
                 if (cp.seconds() <= 0) {

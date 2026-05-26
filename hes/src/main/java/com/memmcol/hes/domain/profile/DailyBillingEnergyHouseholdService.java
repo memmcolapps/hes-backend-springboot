@@ -52,7 +52,7 @@ public class DailyBillingEnergyHouseholdService {
 
             while (cursor.value().isBefore(now)) {
                 LocalDateTime from = cursor.value();
-                LocalDateTime to = from.plusDays(15);
+                LocalDateTime to = from.plusDays(1);
                 if (to.isAfter(now)) to = now;
 
                 boolean exceptionOccurred = false;
@@ -74,9 +74,9 @@ public class DailyBillingEnergyHouseholdService {
 
                 if ((rawRows == null || rawRows.isEmpty()) && exceptionOccurred) return;
                 if (rawRows == null || rawRows.isEmpty()) {
-                    cursor = new ProfileTimestamp(to).plus(cp);
-                    statePort.upsertState(meterSerial, profileObis, new ProfileTimestamp(to), cp);
-                    continue;
+                    log.warn("Empty profile response meter={} profile={} from={} to={}",
+                            meterSerial, profileObis, from, to);
+                    break;
                 }
 
                 List<BillingEnergyHouseholdDTO> dtos = mapper.toDTO(rawRows, meterSerial, model, isMD, metadataResult);
@@ -85,8 +85,12 @@ public class DailyBillingEnergyHouseholdService {
                 metricsPort.recordBatch(meterSerial, profileObis, syncResult.getInsertedCount(), 0);
 
                 ProfileTimestamp resume = ProfileTimestamp.ofNullable(syncResult.getAdvanceTo());
-                cursor = (resume != null) ? resume.plus(cp) : cursor.plus(cp);
-                statePort.upsertState(meterSerial, profileObis, resume, cp);
+                cursor = (resume != null) ? resume : cursor;
+
+                if (cp.seconds() <= 0) {
+                    log.warn("cp.seconds() <= 0 : {}", cp);
+                    return;
+                }
             }
         } catch (Exception ex) {
             String safeObis = (profileObis == null || profileObis.isBlank()) ? "unknown" : profileObis;
