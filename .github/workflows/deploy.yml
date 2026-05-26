@@ -31,8 +31,9 @@ jobs:
       # Build
       # =====================
       - name: Build with Maven
+        working-directory: hes
         run: |
-          chmod +x mvnw
+          chmod +x ./mvnw
           ./mvnw package -DskipTests
 
       # =====================
