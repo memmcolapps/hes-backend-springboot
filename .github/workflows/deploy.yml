@@ -40,6 +40,7 @@ jobs:
       # Resolve JAR
       # =====================
       - name: Resolve JAR
+        working-directory: hes
         run: |
           JAR_FILE=$(find target -name "*.jar" ! -name "*original*.jar" | head -n 1)
 
@@ -48,8 +49,8 @@ jobs:
             exit 1
           fi
 
-          echo "JAR_FILE=$JAR_FILE" >> $GITHUB_ENV
-          echo "Found: $JAR_FILE"
+          echo "JAR_FILE=hes/$JAR_FILE" >> $GITHUB_ENV
+          echo "Found JAR: $JAR_FILE"
 
       # =====================================================
       # SSH SETUP (STAGING)
