@@ -294,5 +294,22 @@
     "obisCodes": "0.0.99.98.11.255",
     "obisCodesHousehold": "0.0.99.98.5.255",
     "name": "Management Token Event Logs"
+  },
+  {
+    "jobName": "NightlyDataCorrectionJob",
+    "jobGroup": "maintenance",
+    "jobStatus": "COMPLETED",
+    "jobClass": "com.memmcol.hes.jobs.NightlyDataCorrectionJob",
+    "cronExpression": "0 30 0 * * ?",
+    "description": "Master orchestrator job that repairs missing data during the nightly low-traffic window (00:30-06:00).",
+    "interfaceName": "Maintenance Jobs",
+    "repeatTime": 0,
+    "cronJob": true,
+    "repeatSeconds": 0,
+    "repeatMinutes": 0,
+    "repeatHours": 0,
+    "lastRunTime": "2026-05-29T00:30:00",
+    "obisCodes": "REPLAY",
+    "name": "Nightly Data Correction & Replay"
   }
 ]
