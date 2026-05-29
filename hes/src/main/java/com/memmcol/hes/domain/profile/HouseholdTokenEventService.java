@@ -104,9 +104,10 @@ public class HouseholdTokenEventService {
                 }
 
                 if (rawRows == null || rawRows.isEmpty()) {
-                    log.warn("Empty profile response meter={} profile={} from={} to={}",
+                     log.warn("Empty profile response meter={} profile={} from={} to={}",
                             meterSerial, profileObis, from, to);
-                    break;
+                    cursor = new ProfileTimestamp(to);   // ALWAYS move forward deterministically
+                    continue;
                 }
 
                 ProfileSyncResult syncResult = persistRows(kind, rawRows, meterSerial, model, profileObis);
@@ -115,7 +116,10 @@ public class HouseholdTokenEventService {
                 metricsPort.recordBatch(meterSerial, profileObis, syncResult.getInsertedCount(), t1);
 
                 ProfileTimestamp resume = ProfileTimestamp.ofNullable(syncResult.getAdvanceTo());
-                cursor = (resume != null) ? resume : cursor;
+
+                cursor = (resume != null)
+              ? resume
+              : new ProfileTimestamp(to);
 
                 if (cp.seconds() <= 0) {
                     log.warn("cp.seconds() <= 0 : {}", cp);

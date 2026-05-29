@@ -119,9 +119,10 @@ public class ProfileChannelTwoService {
                 }
 
                 if (rows == null || rows.isEmpty()) {
-                    log.warn("Empty profile response meter={} profile={} from={} to={}",
+                     log.warn("Empty profile response meter={} profile={} from={} to={}",
                             meterSerial, profileObis, from, to);
-                    break;
+                    cursor = new ProfileTimestamp(to);   // ALWAYS move forward deterministically
+                    continue;
                 }
 
                 // ✅ Map & Persist
@@ -148,8 +149,8 @@ public class ProfileChannelTwoService {
                 ProfileTimestamp resume = ProfileTimestamp.ofNullable(syncResult.getAdvanceTo());
 
                 cursor = (resume != null)
-                        ? resume
-                        : cursor;
+              ? resume
+              : new ProfileTimestamp(to);
 
                 // Safety guard
                 if (cp.seconds() <= 0) {
