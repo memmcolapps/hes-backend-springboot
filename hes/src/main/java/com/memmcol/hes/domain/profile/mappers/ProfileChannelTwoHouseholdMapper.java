@@ -53,12 +53,13 @@ public class ProfileChannelTwoHouseholdMapper implements GenericDtoMappers<Profi
 
         for (Map.Entry<String, Object> entry : raw.getValues().entrySet()) {
             String obisWithAttr = entry.getKey();
-            String obisCode = obisWithAttr.split("-")[0];
             Object rawValue = entry.getValue();
             if (rawValue == null) continue;
 
-            ProfileMetadataResult.ProfilePersistenceInfo persistenceInfo = metadataResult.forPersistence(obisCode);
+            ProfileMetadataResult.ProfilePersistenceInfo persistenceInfo = metadataResult.forPersistence(obisWithAttr);
             if (persistenceInfo == null) continue;
+
+            String obisCode = obisWithAttr.split("-")[0];
 
             ObisObjectType objectType = persistenceInfo.getType();
             if (objectType == ObisObjectType.CLOCK) {
@@ -102,7 +103,7 @@ public class ProfileChannelTwoHouseholdMapper implements GenericDtoMappers<Profi
 
                 finalValue = finalValue.setScale(2, RoundingMode.HALF_UP);
 
-                ProfileMetadataResult.ProfileMappingInfo mappingInfo = metadataResult.forMapping(obisCode);
+                ProfileMetadataResult.ProfileMappingInfo mappingInfo = metadataResult.forMapping(obisWithAttr);
                 if (mappingInfo != null) {
                     setDtoField(dto, mappingInfo.getColumnName(), finalValue);
                 }

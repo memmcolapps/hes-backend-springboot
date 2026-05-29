@@ -566,28 +566,42 @@ public class DlmsReaderUtils {
         List<ProfileRowGeneric> out = new ArrayList<>();
         int rowIndex = 0;
 
+        // Find the clock object to determine timestamp index
+        ModelProfileMetadata clockMeta = metadataList.stream()
+                .filter(m -> m.getClassId() == 8 || "CLOCK".equalsIgnoreCase(String.valueOf(m.getType())))
+                .findFirst()
+                .orElse(null);
+
+        if (clockMeta == null) {
+            log.error("No clock object found in metadata for meter={} profile={}", meterSerial, profileObis);
+            return out;
+        }
+
+        int clockIndex = clockMeta.getCaptureIndex();
+
         for (List<Object> row : raw) {
             rowIndex++;
-            if (row == null || row.isEmpty()) continue;
+            if (row == null || row.isEmpty() || row.size() <= clockIndex) continue;
 
             Map<String, Object> values = new LinkedHashMap<>();
 
-            Object tsRaw = row.get(0);
+            Object tsRaw = row.get(clockIndex);
             LocalDateTime ts = timestampDecoder.decodeTimestamp(tsRaw);
             if (ts == null) {
-                log.debug("Skipping row {} (no timestamp) meter={} obis={}", rowIndex, meterSerial, profileObis);
+                log.debug("Skipping row {} (no timestamp at index {}) meter={} obis={}", rowIndex, clockIndex, meterSerial, profileObis);
                 continue;
             }
-            
-            String timestampObis = metadataList.get(0).getCaptureObis();
-            values.put(timestampObis, ts);
 
-            for (int i = 1; i < row.size() && i < metadataList.size(); i++) {
-                ModelProfileMetadata meta = metadataList.get(i);
-                String key = meta.getCaptureObis() + "-" + meta.getAttributeIndex();
-                Object value = row.get(i);
-                values.put(key, value);
+            // Map all captured objects using their respective captureIndex
+            for (ModelProfileMetadata meta : metadataList) {
+                int dataIdx = meta.getCaptureIndex();
+                if (dataIdx >= 0 && dataIdx < row.size()) {
+                    String key = meta.getCaptureObis() + "-" + meta.getAttributeIndex();
+                    Object value = row.get(dataIdx);
+                    values.put(key, value);
+                }
             }
+
             ProfileRowGeneric rowGeneric = new ProfileRowGeneric(ts.atZone(ZoneId.systemDefault()).toInstant(), meterSerial, profileObis, values);
             out.add(rowGeneric);
         }

@@ -35,11 +35,12 @@ public class ProfileMetadataResult {
     }
 
     /**
-     * Returns the mapping info for a specific OBIS code.
+     * Returns the mapping info for a specific OBIS code (or OBIS-attribute key).
      */
-    public ProfileMappingInfo forMapping(String obisCode) {
+    public ProfileMappingInfo forMapping(String key) {
+        String obis = key.split("-")[0];
         return metadataList.stream()
-                .filter(m -> m.getCaptureObis().equals(obisCode))
+                .filter(m -> m.getCaptureObis().equals(obis))
                 .findFirst()
                 .map(m -> new ProfileMappingInfo(m.getCaptureIndex(), m.getColumnName()))
                 .orElse(null);
@@ -63,11 +64,12 @@ public class ProfileMetadataResult {
     }
 
     /**
-     * Returns the persistence info for a specific OBIS code.
+     * Returns the persistence info for a specific OBIS code (or OBIS-attribute key).
      */
-    public ProfilePersistenceInfo forPersistence(String obisCode) {
+    public ProfilePersistenceInfo forPersistence(String key) {
+        String obis = key.split("-")[0];
         return metadataList.stream()
-                .filter(m -> m.getCaptureObis().equals(obisCode))
+                .filter(m -> m.getCaptureObis().equals(obis))
                 .findFirst()
                 .map(m -> new ProfilePersistenceInfo(m.getScaler(), m.getMultiplyBy(), m.getType()))
                 .orElse(null);

@@ -122,7 +122,12 @@ public class ProfileMetadataService {
 
         if (hasNoneType) return true;
 
-        // Condition 2: Known misalignment for MMX-310-NG Channel 2 (0.2.24.3.0.255 is often used as a dummy or alias for Ch2 in some systems,
+        // Condition 2: Missing Clock object (Critical for mapping)
+        boolean hasClock = metadata.stream()
+                .anyMatch(m -> m.getClassId() == 8 || m.getType() == ObisObjectType.CLOCK);
+        if (!hasClock) return true;
+
+        // Condition 3: Known misalignment for MMX-310-NG Channel 2 (0.2.24.3.0.255 is often used as a dummy or alias for Ch2 in some systems,
         // but based on prompt it's 0.2.24.3.0.255)
         // If current_l1 (index 2) comes before voltage_l2 (index 5), it's misaligned for MMX-310-NG
         if ("MMX-310-NG".equals(metadata.get(0).getMeterModel())) {
