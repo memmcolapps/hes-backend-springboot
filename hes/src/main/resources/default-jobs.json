@@ -296,12 +296,12 @@
     "name": "Management Token Event Logs"
   },
   {
-    "jobName": "NightlyDataCorrectionJob",
+    "jobName": "NightlyMasterOrchestrator",
     "jobGroup": "maintenance",
     "jobStatus": "COMPLETED",
-    "jobClass": "com.memmcol.hes.jobs.NightlyDataCorrectionJob",
+    "jobClass": "com.memmcol.hes.jobs.NightlyMasterOrchestrator",
     "cronExpression": "0 30 0 * * ?",
-    "description": "Master orchestrator job that repairs missing data during the nightly low-traffic window (00:30-06:00).",
+    "description": "Master orchestrator for nightly maintenance window (00:30-06:00). Manages Class A Replay and Class B Incremental jobs.",
     "interfaceName": "Maintenance Jobs",
     "repeatTime": 0,
     "cronJob": true,
@@ -309,7 +309,7 @@
     "repeatMinutes": 0,
     "repeatHours": 0,
     "lastRunTime": "2026-05-29T00:30:00",
-    "obisCodes": "REPLAY",
-    "name": "Nightly Data Correction & Replay"
+    "obisCodes": "ORCHESTRATOR",
+    "name": "Nightly Master Orchestrator"
   }
 ]
