@@ -107,9 +107,10 @@ public class ProfileChannelOneServiceExtension {
                 }
 
                 if (rawRows == null || rawRows.isEmpty()) {
-                    log.warn("Empty profile response meter={} profile={} from={} to={}",
+                     log.warn("Empty profile response meter={} profile={} from={} to={}",
                             meterSerial, profileObis, from, to);
-                    break;
+                     cursor = new ProfileTimestamp(to);   // ALWAYS move forward deterministically
+                     continue;
                 }
 
                 // Map, createPartitionsIfMissing & save
@@ -126,8 +127,8 @@ public class ProfileChannelOneServiceExtension {
                         ProfileTimestamp.ofNullable(syncResult.getAdvanceTo());
 
                 cursor = (resume != null)
-                        ? resume
-                        : cursor;
+              ? resume
+              : new ProfileTimestamp(to);
 
                 if (cp.seconds() <= 0) {
                     log.warn("cp.seconds() <= 0 : {}", cp);

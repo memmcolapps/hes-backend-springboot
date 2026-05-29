@@ -80,7 +80,8 @@ public class DailyBillingDataHouseholdService {
                 if (rawRows == null || rawRows.isEmpty()) {
                     log.warn("Empty profile response meter={} profile={} from={} to={}",
                             meterSerial, profileObis, from, to);
-                    break;
+                     cursor = new ProfileTimestamp(to);
+                     continue;
                 }
 
                 List<BillingDataHouseholdDTO> dtos = mapper.toDTO(rawRows, meterSerial, model, isMD, metadataResult);
@@ -92,8 +93,8 @@ public class DailyBillingDataHouseholdService {
                         ProfileTimestamp.ofNullable(syncResult.getAdvanceTo());
 
                 cursor = (resume != null)
-                        ? resume
-                        : cursor;
+                      ? resume
+                      : new ProfileTimestamp(to);
 
                 if (cp.seconds() <= 0) {
                     log.warn("cp.seconds() <= 0 : {}", cp);

@@ -73,7 +73,7 @@ public class DlmsReaderUtilsTest {
 
         // Act
         List<ProfileRowGeneric> result =
-                utils.mapRawLists(raw, metadataList, "202006001314", "0.0.98.1.0.255", true);
+                utils.mapRawLists(raw, metadataList, "202006001314", "0.0.98.1.0.255");
 
         // Assert
         assertEquals(1, result.size(), "Should have exactly 1 mapped row");

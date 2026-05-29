@@ -30,7 +30,7 @@ public class ProfileChannelThreeHouseholdService {
     private final ProfileChannelThreeHouseholdMapper mapper;
     private final MeterRepository meterRepository;
 
-    public void readProfileAndSave(String model,
+    public void readProfileAndSaveV2(String model,
                                    String meterSerial,
                                    String profileObis,
                                    boolean isMD) {
@@ -180,9 +180,10 @@ public class ProfileChannelThreeHouseholdService {
                 // EMPTY HANDLING (NO CURSOR ADVANCE)
                 // =================================================
                 if (rows == null || rows.isEmpty()) {
-                    log.warn("Empty profile response meter={} profile={} from={} to={}",
+                     log.warn("Empty profile response meter={} profile={} from={} to={}",
                             meterSerial, profileObis, from, to);
-                    break;
+                    cursor = new ProfileTimestamp(to);   // ALWAYS move forward deterministically
+                    continue;
                 }
 
                 // =================================================
@@ -232,33 +233,11 @@ public class ProfileChannelThreeHouseholdService {
                 // =================================================
                 // WATERMARK VALIDATION
                 // =================================================
-                ProfileTimestamp resume =
-                        ProfileTimestamp.ofNullable(syncResult.getAdvanceTo());
+                ProfileTimestamp resume = ProfileTimestamp.ofNullable(syncResult.getAdvanceTo());
 
-                if (resume == null || resume.value() == null) {
-
-                    log.warn("Null advanceTo meter={} profile={}",
-                            meterSerial, profileObis);
-
-                    break;
-                }
-
-                // =================================================
-                // STAGNATION PROTECTION
-                // =================================================
-                if (!resume.value().isAfter(cursor.value())) {
-
-                    log.warn("Non-advancing cursor meter={} profile={} cursor={} resume={}",
-                            meterSerial, profileObis, cursor.value(), resume.value());
-
-                    break;
-                }
-
-                // =================================================
-                // CRITICAL FIX:
-                // NO resume.plus(cp)
-                // =================================================
-                cursor = resume;
+                cursor = (resume != null)
+              ? resume
+              : new ProfileTimestamp(to);
 
                 log.info("Profile3HH advanced meter={} profile={} cursor={} inserted={} durationMs={}",
                         meterSerial,
@@ -281,7 +260,7 @@ public class ProfileChannelThreeHouseholdService {
         }
     }
 
-    public void readProfileAndSaveV1(String model, String meterSerial, String profileObis, boolean isMD) {
+    public void readProfileAndSave(String model, String meterSerial, String profileObis, boolean isMD) {
         try {
             final String safeObis = (profileObis == null || profileObis.isBlank()) ? "unknown" : profileObis;
 
@@ -348,9 +327,10 @@ public class ProfileChannelThreeHouseholdService {
                 }
 
                 if (rows == null || rows.isEmpty()) {
-                    log.warn("Empty read meter={} profile={} from={} to={}",
+                    log.warn("Empty profile response meter={} profile={} from={} to={}",
                             meterSerial, profileObis, from, to);
-                    break;
+                    cursor = new ProfileTimestamp(to); // ALWAYS move forward deterministically
+                    continue;
                 }
 
                 List<ProfileChannelThreeHouseholdDTO> dtos = mapper.toDTO(rows, meterSerial, model, isMD, metadataResult);
@@ -361,8 +341,8 @@ public class ProfileChannelThreeHouseholdService {
                 metricsPort.recordBatch(meterSerial, profileObis, syncResult.getInsertedCount(), duration);
 
                 ProfileTimestamp resume = ProfileTimestamp.ofNullable(syncResult.getAdvanceTo());
-                cursor = (resume != null) ? resume.plus(cp) : cursor.plus(cp);
-                statePort.upsertState(meterSerial, profileObis, resume, cp);
+                cursor = (resume != null) ? resume.plus(cp) : new ProfileTimestamp(to);
+//                statePort.upsertState(meterSerial, profileObis, resume, cp);
 
                 if (cp.seconds() <= 0) {
                     log.warn("cp.seconds() <= 0 : {}", cp);

@@ -108,9 +108,10 @@ public class DailyBillingService {
                 }
 
                 if (rawRows == null || rawRows.isEmpty()) {
-                    log.warn("Empty profile response meter={} profile={} from={} to={}",
+                     log.warn("Empty profile response meter={} profile={} from={} to={}",
                             meterSerial, profileObis, from, to);
-                    break;
+                    cursor = new ProfileTimestamp(to);   // ALWAYS move forward deterministically
+                    continue;
                 }
 
                 List<DailyBillingProfileDTO> dtos = dailyBillingMapper.toDTO(rawRows, meterSerial, model, true, captureObjects);
@@ -123,7 +124,10 @@ public class DailyBillingService {
 
                 // Persist new cursor — null-safe, consistent with Methods 1 & 2
                 ProfileTimestamp resume = ProfileTimestamp.ofNullable(syncResult.getAdvanceTo());
-                cursor = (resume != null) ? resume : cursor;
+
+                cursor = (resume != null)
+              ? resume
+              : new ProfileTimestamp(to);
 
                 if (cp.seconds() <= 0) {
                     log.warn("cp.seconds() <= 0 : {}", cp);

@@ -184,11 +184,8 @@ public class ProfileChannelTwoHouseholdService {
                     log.warn("Empty profile response meter={} profile={} from={} to={}",
                             meterSerial, profileObis, from, to);
 
-                    // IMPORTANT:
-                    // Do NOT advance cursor
-                    // Do NOT update state
-                    // Avoid skipping potential delayed DLMS data
-                    break;
+                    cursor = new ProfileTimestamp(to);   // ALWAYS move forward deterministically
+                    continue;
                 }
 
                 // =================================================
@@ -238,33 +235,11 @@ public class ProfileChannelTwoHouseholdService {
                 // =================================================
                 // WATERMARK VALIDATION
                 // =================================================
-                ProfileTimestamp resume =
-                        ProfileTimestamp.ofNullable(syncResult.getAdvanceTo());
+                ProfileTimestamp resume = ProfileTimestamp.ofNullable(syncResult.getAdvanceTo());
 
-                if (resume == null || resume.value() == null) {
-
-                    log.warn("Null advanceTo meter={} profile={}",
-                            meterSerial, profileObis);
-
-                    break;
-                }
-
-                // =================================================
-                // STAGNATION PROTECTION
-                // =================================================
-                if (!resume.value().isAfter(cursor.value())) {
-
-                    log.warn("Non-advancing cursor meter={} profile={} cursor={} resume={}",
-                            meterSerial, profileObis, cursor.value(), resume.value());
-
-                    break;
-                }
-
-                // =================================================
-                // IMPORTANT FIX:
-                // NO cp addition here
-                // =================================================
-                cursor = resume;
+                cursor = (resume != null)
+              ? resume
+              : new ProfileTimestamp(to);
 
                 log.info("Profile2HH advanced meter={} profile={} cursor={} inserted={} durationMs={}",
                         meterSerial,
@@ -367,7 +342,8 @@ public class ProfileChannelTwoHouseholdService {
                 metricsPort.recordBatch(meterSerial, profileObis, syncResult.getInsertedCount(), duration);
 
                 ProfileTimestamp resume = ProfileTimestamp.ofNullable(syncResult.getAdvanceTo());
-                cursor = (resume != null) ? resume.plus(cp) : cursor.plus(cp);
+                cursor = (resume != null) ? resume
+        : new ProfileTimestamp(to);
                 statePort.upsertState(meterSerial, profileObis, resume, cp);
 
                 if (cp.seconds() <= 0) {
