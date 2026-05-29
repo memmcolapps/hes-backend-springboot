@@ -7,8 +7,7 @@ import org.springframework.cloud.client.discovery.EnableDiscoveryClient;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
-@SpringBootApplication
-@ComponentScan(basePackages = {
+@SpringBootApplication(scanBasePackages = {
         "com.memmcol.hes",
         "com.memmcol.hesTraining"
 })
