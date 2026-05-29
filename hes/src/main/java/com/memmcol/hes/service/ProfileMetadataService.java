@@ -34,6 +34,9 @@ public class ProfileMetadataService {
     private final DlmsReaderUtils dlmsReaderUtils;
     private final ObisMappingService obisMappingService;
 
+    @org.springframework.beans.factory.annotation.Value("${hes.metadata.refresh.enabled:true}")
+    private boolean refreshEnabled;
+
     /**
      * Return metadata for a given meter model & profile OBIS.
      * • Cache  →  DB  →  MetersEntity  (in that order)
@@ -43,21 +46,31 @@ public class ProfileMetadataService {
             String profileObis,
             String sampleSerial    // serial of *one* online meter of this model
     ) {
-        // ② Cache
+        // ① Cache
         String key = meterModel + "::" + profileObis;
         List<ModelProfileMetadata> cached = Objects.requireNonNull(cacheManager.getCache(CACHE)).get(key, List.class);
         if (cached != null) {
             log.info("📗 Caffeine hit for {}", key);
-            return cached;
+            if (!isBroken(cached)) {
+                return cached;
+            }
+            log.warn("⚠️ Cached metadata for {} is broken, ignoring cache", key);
         }
 
         // ② DB
         List<ModelProfileMetadata> dbRows =
                 repo.findByMeterModelAndProfileObisOrderByCaptureIndexAsc(meterModel, profileObis);
+
         if (!dbRows.isEmpty()) {
-            log.info("📙 Loaded {} rows from DB for {}", dbRows.size(), key);
-            Objects.requireNonNull(cacheManager.getCache(CACHE)).put(key, dbRows);
-            return dbRows;
+            if (isBroken(dbRows) && refreshEnabled) {
+                log.warn("📙 Loaded broken metadata from DB for {}. Triggering refresh from meter {}", key, sampleSerial);
+                // Clear the broken rows so we don't have duplicates or mixed versions
+                repo.deleteAll(dbRows);
+            } else {
+                log.info("📙 Loaded {} rows from DB for {}", dbRows.size(), key);
+                Objects.requireNonNull(cacheManager.getCache(CACHE)).put(key, dbRows);
+                return dbRows;
+            }
         }
 
         // ③ MetersEntity read (only once per model)
@@ -97,6 +110,30 @@ public class ProfileMetadataService {
 
     private static boolean isHouseholdExtendedEventObis(String profileObis) {
         return HouseholdExtendedEventObis.isHouseholdExtendedEvent(profileObis);
+    }
+
+    private boolean isBroken(List<ModelProfileMetadata> metadata) {
+        if (metadata == null || metadata.isEmpty()) return false;
+
+        // Condition 1: Any register/scaler with type NONE (Legacy issue)
+        boolean hasNoneType = metadata.stream()
+                .anyMatch(m -> (m.getClassId() == 3 || m.getClassId() == 4 || m.getClassId() == 5)
+                        && (m.getType() == null || m.getType() == ObisObjectType.NONE));
+
+        if (hasNoneType) return true;
+
+        // Condition 2: Known misalignment for MMX-310-NG Channel 2 (0.2.24.3.0.255 is often used as a dummy or alias for Ch2 in some systems,
+        // but based on prompt it's 0.2.24.3.0.255)
+        // If current_l1 (index 2) comes before voltage_l2 (index 5), it's misaligned for MMX-310-NG
+        if ("MMX-310-NG".equals(metadata.get(0).getMeterModel())) {
+             Optional<ModelProfileMetadata> curL1 = metadata.stream().filter(m -> "current_l1".equals(m.getColumnName())).findFirst();
+             Optional<ModelProfileMetadata> volL2 = metadata.stream().filter(m -> "voltage_l2".equals(m.getColumnName())).findFirst();
+             if (curL1.isPresent() && volL2.isPresent() && curL1.get().getCaptureIndex() < volL2.get().getCaptureIndex()) {
+                 return true;
+             }
+        }
+
+        return false;
     }
 
     /**
@@ -374,19 +411,31 @@ public class ProfileMetadataService {
                 double scaler = 1.0;
                 String unit = "N/A";
                 String obis = obj.getLogicalName();
+                int classId = obj.getObjectType().getValue();
+
+                ObisObjectType type = ObisObjectType.NON_SCALER;
+                if (classId == 8) {
+                    type = ObisObjectType.CLOCK;
+                } else if (classId == 3 || classId == 4 || classId == 5 || classId == 71) {
+                    type = ObisObjectType.SCALER;
+                }
 
                 // ── 2. Read Scaler/Unit for Register-type objects ───────────────────
-                // Combined checks for all register types
-                if (obj instanceof GXDLMSRegister ||
-                        obj instanceof GXDLMSExtendedRegister ||
-                        obj instanceof GXDLMSDemandRegister ||
-                        obj instanceof GXDLMSLimiter) {
+                if (type == ObisObjectType.SCALER) {
+                    try {
+                        dlmsReaderUtils.readScalerUnit(client, meterSerial, obj, 3);
+                        scaler = DlmsScalerUnitHelper.extractScaler(obj);
+                        unit = DlmsScalerUnitHelper.extractUnit(obj);
+                    } catch (Exception e) {
+                        log.warn("Could not read scaler/unit for OBIS {} on meter {}", obis, meterSerial);
+                    }
 
-                    dlmsReaderUtils.readScalerUnit(client, meterSerial, obj, 3);
-                    scaler = DlmsScalerUnitHelper.extractScaler(obj);
-                    unit = DlmsScalerUnitHelper.extractUnit(obj);
-
-                    log.debug("Fetched Scaler/Unit for {} -> Scaler: {}, Unit: {}", obis, scaler, unit);
+                    // Special handling for Phase Angle OBIS (1.0.81.7.x.255)
+                    // If manufacturer omitted scaler, it usually means it should be 0.1 (multiplied by 10 internally)
+                    if (obis.startsWith("1.0.81.7.") && (scaler == 1.0 || scaler == 0.0)) {
+                        log.info("Applying manual 0.1 scaler for phase angle OBIS {}", obis);
+                        scaler = 0.1;
+                    }
                 }
 
                 // ── 3. Mapping and Metadata Construction ──────────────────────────
@@ -394,14 +443,14 @@ public class ProfileMetadataService {
                 String multiplyBy = "CTPT";
                 ObisColumnDto dto = obisMappingService.getDescriptionAndColumnName(obis, meterModel);
 
-                log.info("Mapping Index [{}]: OBIS {} -> Column: {}, Unit: {}",
-                        captureIndex, obis, dto.getColumnName(), unit);
+                log.info("Mapping Index [{}]: OBIS {} -> Column: {}, Unit: {}, Type: {}",
+                        captureIndex, obis, dto.getColumnName(), unit, type);
 
                 ModelProfileMetadata row = ModelProfileMetadata.builder()
                         .meterModel(meterModel)
                         .profileObis(profileObis)
                         .captureObis(obis)
-                        .classId(obj.getObjectType().getValue())
+                        .classId(classId)
                         .attributeIndex(co.getAttributeIndex())
                         .scaler(scaler)
                         .unit(unit)
@@ -409,7 +458,7 @@ public class ProfileMetadataService {
                         .columnName(dto.getColumnName())
                         .description(dto.getDescription())
                         .multiplyBy(multiplyBy)
-                        .type(ObisObjectType.NONE)
+                        .type(type)
                         .build();
 
                 rows.add(row);
