@@ -132,10 +132,9 @@ public class MonthlyBillingService {
                 // EMPTY WINDOW HANDLING
                 // =========================
                 if (rawRows == null || rawRows.isEmpty()) {
-                    log.info("No rows, advancing window meter={} profile={}", meterSerial, profileObis);
-
-                    cursor = new ProfileTimestamp(to);
-                    statePort.upsertState(meterSerial, profileObis, cursor, cp);
+                    log.warn("Empty profile response meter={} profile={} from={} to={}",
+                            meterSerial, profileObis, from, to);
+                    cursor = new ProfileTimestamp(to);   // ALWAYS move forward deterministically
                     continue;
                 }
 
@@ -164,14 +163,17 @@ public class MonthlyBillingService {
                 // =========================
                 // CRITICAL FIX: CURSOR LOGIC
                 // =========================
+                // Persist new cursor — null-safe
                 ProfileTimestamp resume = ProfileTimestamp.ofNullable(syncResult.getAdvanceTo());
 
-                if (resume != null) {
-                    cursor = resume;   // NO +cp
-                }
+                cursor = (resume != null)
+              ? resume
+              : new ProfileTimestamp(to);
 
-                // persist watermark ONLY (no transformation)
-                statePort.upsertState(meterSerial, profileObis, cursor, cp);
+                if (cp.seconds() <= 0) {
+                    log.warn("cp.seconds() <= 0 : {}", cp);
+                    return;
+                }
             }
 
         } catch (Exception ex) {
@@ -265,9 +267,8 @@ public class MonthlyBillingService {
                 }
 
                 if (rawRows == null || rawRows.isEmpty()) {
-                    log.warn("Empty profile response meter={} profile={} from={} to={}",
-                            meterSerial, profileObis, from, to);
-                    break;
+                     cursor = new ProfileTimestamp(to);   // ALWAYS move forward deterministically
+                     continue;
                 }
 
                 // Map, createPartitionsIfMissing & save
@@ -284,8 +285,8 @@ public class MonthlyBillingService {
                         ProfileTimestamp.ofNullable(syncResult.getAdvanceTo());
 
                 cursor = (resume != null)
-                        ? resume
-                        : cursor;
+              ? resume
+              : new ProfileTimestamp(to);
 
                 if (cp.seconds() <= 0) {
                     log.warn("cp.seconds() <= 0 : {}", cp);

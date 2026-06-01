@@ -36,19 +36,14 @@ public class DailyBillingDataHouseholdService {
                 return;
             }
 
-            LocalDateTime seedFrom = null;
-            ProfileState st = statePort.loadState(meterSerial, profileObis);
-            if (st != null && st.lastTimestamp() != null) {
-                seedFrom = st.lastTimestamp().value();
-            }
-            if (seedFrom == null) {
-                seedFrom = meterRepository.findMeterDetailsByMeterNumber(meterSerial)
-                        .map(m -> m.getCreatedAt())
-                        .orElse(null);
-            }
-            if (seedFrom == null) {
-                seedFrom = LocalDateTime.now().minusDays(1);
-            }
+            LocalDateTime seedFrom = HouseholdDayWindowIngestionSupport.resolveSeedTimestamp(
+                    statePort,
+                    meterSerial,
+                    profileObis,
+                    meterRepository.findMeterDetailsByMeterNumber(meterSerial)
+                            .map(m -> m.getCreatedAt())
+                            .orElse(null)
+            );
 
             ProfileTimestamp cursor = new ProfileTimestamp(seedFrom);
             CapturePeriod cp = new CapturePeriod(1);
@@ -80,20 +75,28 @@ public class DailyBillingDataHouseholdService {
                 if (rawRows == null || rawRows.isEmpty()) {
                     log.warn("Empty profile response meter={} profile={} from={} to={}",
                             meterSerial, profileObis, from, to);
-                    break;
+                    cursor = HouseholdDayWindowIngestionSupport.advanceInMemoryCursor(to);
+                    continue;
                 }
 
                 List<BillingDataHouseholdDTO> dtos = mapper.toDTO(rawRows, meterSerial, model, isMD, metadataResult);
+                if (HouseholdDayWindowIngestionSupport.shouldSkipUnmappableBatch(
+                        dtos, dto -> dto.getEntryTimestamp() != null)) {
+                    log.warn("Mapped rows lack entry_timestamp meter={} profile={} from={} to={} rawCount={}",
+                            meterSerial, profileObis, from, to, rawRows.size());
+                    cursor = HouseholdDayWindowIngestionSupport.advanceInMemoryCursor(to);
+                    continue;
+                }
                 persistenceAdapter.createPartitionsIfMissing(dtos);
                 ProfileSyncResult syncResult = persistenceAdapter.saveBatchAndAdvanceCursor(meterSerial, profileObis, dtos, cp);
                 metricsPort.recordBatch(meterSerial, profileObis, syncResult.getInsertedCount(), 0);
 
-                ProfileTimestamp resume =
-                        ProfileTimestamp.ofNullable(syncResult.getAdvanceTo());
-
-                cursor = (resume != null)
-                        ? resume
-                        : cursor;
+                ProfileTimestamp resume = HouseholdDayWindowIngestionSupport.nextCursorAfterBatch(syncResult);
+                if (resume == null) {
+                    log.warn("No meter-derived advanceTo after persist meter={} profile={}", meterSerial, profileObis);
+                    break;
+                }
+                cursor = resume;
 
                 if (cp.seconds() <= 0) {
                     log.warn("cp.seconds() <= 0 : {}", cp);

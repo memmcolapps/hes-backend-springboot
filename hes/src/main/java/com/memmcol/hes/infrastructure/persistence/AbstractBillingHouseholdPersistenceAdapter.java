@@ -185,8 +185,6 @@ public abstract class AbstractBillingHouseholdPersistenceAdapter<TDto, TEntity, 
 
             boolean advanced = previousLast == null || (advanceTo != null && advanceTo.isAfter(previousLast));
             if (advanceTo != null) {
-//                LocalDateTime next = stateAdvanceTo(advanceTo);
-//                statePort().upsertState(meterSerial, profileObis, new ProfileTimestamp(next), capturePeriodSeconds);
                 statePort().upsertState(
                         meterSerial,
                         profileObis,

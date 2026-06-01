@@ -110,9 +110,10 @@ public class MonthlyBillingDataHouseholdService {
                 }
 
                 if (rawRows == null || rawRows.isEmpty()) {
-                    log.warn("Empty profile response meter={} profile={} from={} to={}",
+                     log.warn("Empty profile response meter={} profile={} from={} to={}",
                             meterSerial, profileObis, from, to);
-                    break;
+                    cursor = new ProfileTimestamp(to);   // ALWAYS move forward deterministically
+                    continue;
                 }
 
                 // =========================
@@ -140,7 +141,10 @@ public class MonthlyBillingDataHouseholdService {
                 // =========================
 
                 ProfileTimestamp resume = ProfileTimestamp.ofNullable(syncResult.getAdvanceTo());
-                cursor = (resume != null) ? resume : cursor;
+
+                cursor = (resume != null)
+              ? resume
+              : new ProfileTimestamp(to);
 
                 if (cp.seconds() <= 0) {
                     log.warn("cp.seconds() <= 0 : {}", cp);
@@ -234,7 +238,8 @@ public class MonthlyBillingDataHouseholdService {
                 metricsPort.recordBatch(meterSerial, profileObis, syncResult.getInsertedCount(), 0);
 
                 ProfileTimestamp resume = ProfileTimestamp.ofNullable(syncResult.getAdvanceTo());
-                cursor = (resume != null) ? resume.plus(cp) : cursor.plus(cp);
+                cursor = (resume != null) ? resume
+        : new ProfileTimestamp(to);
                 statePort.upsertState(meterSerial, profileObis, resume, cp);
             }
         } catch (Exception ex) {
