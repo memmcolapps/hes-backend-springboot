@@ -11,6 +11,8 @@ import java.util.function.Predicate;
  * {@code meter_profile_state.last_timestamp} must only be updated from timestamps present on
  * meter profile rows (via persistence adapters). Use {@link #advanceInMemoryCursor} for gap
  * skipping within a single job run — never persist cursor or system time as {@code last_timestamp}.
+ * <p>
+ * For event-type profiles, this rule may be relaxed to "jump" gaps when no data is returned.
  */
 public final class HouseholdDayWindowIngestionSupport {
 
@@ -43,6 +45,16 @@ public final class HouseholdDayWindowIngestionSupport {
      */
     public static ProfileTimestamp nextCursorAfterBatch(ProfileSyncResult syncResult) {
         return ProfileTimestamp.ofNullable(syncResult.getAdvanceTo());
+    }
+
+    /**
+     * Jumps the persistence state to the end of the window. Use with caution for events only.
+     */
+    public static void jumpAndPersistState(ProfileStatePort statePort,
+                                           String meterSerial,
+                                           String profileObis,
+                                           LocalDateTime windowEnd) {
+        statePort.upsertState(meterSerial, profileObis, new ProfileTimestamp(windowEnd), new CapturePeriod(1));
     }
 
     /**
