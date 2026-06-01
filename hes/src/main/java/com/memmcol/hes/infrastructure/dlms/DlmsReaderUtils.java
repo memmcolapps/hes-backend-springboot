@@ -49,37 +49,48 @@ public class DlmsReaderUtils {
 
     private record DlmsRangeWindow(LocalDateTime from, LocalDateTime to) {}
 
+    /**
+     * Resolves the DLMS read window. When {@code requestedFrom} is supplied by the ingestion loop,
+     * it takes precedence over {@code meter_profile_state} so in-memory cursor catch-up is not reset
+     * to an older persisted timestamp on every range read.
+     */
     private DlmsRangeWindow resolveDlmsRangeWindow(
             String meterSerial,
             String profileObis,
+            LocalDateTime requestedFrom,
             LocalDateTime requestedTo
     ) {
         LocalDateTime now = LocalDateTime.now();
-        Optional<LocalDateTime> stateTs = meterProfileStateRepository
-                .findByMeterSerialAndProfileObis(meterSerial, profileObis)
-                .map(s -> s.getLastTimestamp())
-                .filter(Objects::nonNull);
 
-        if (stateTs.isPresent()) {
-            LocalDateTime fromTs = stateTs.get();
-            LocalDateTime toTs = requestedTo != null ? requestedTo : fromTs.plusHours(24);
-            if (toTs.isAfter(now)) toTs = now;
-            log.info("profile state start time A ={} ~ profile state end time A ={}", fromTs, toTs);
-            return new DlmsRangeWindow(fromTs, toTs);
+        LocalDateTime fromTs = requestedFrom;
+        if (fromTs == null) {
+            fromTs = meterProfileStateRepository
+                    .findByMeterSerialAndProfileObis(meterSerial, profileObis)
+                    .map(s -> s.getLastTimestamp())
+                    .filter(Objects::nonNull)
+                    .orElse(null);
         }
 
-        Optional<MeterDTO> meterOpt = meterRepository.findMeterDetailsByMeterNumber(meterSerial);
-        if (meterOpt.isPresent() && meterOpt.get().getCreatedAt() != null) {
-            LocalDateTime fromTs = meterOpt.get().getCreatedAt();
-            LocalDateTime toTs = requestedTo != null ? requestedTo : fromTs.plusHours(24);
-            if (toTs.isAfter(now)) toTs = now;
-            log.info("profile state start time B ={} ~ profile state end time B ={}", fromTs, toTs);
-            return new DlmsRangeWindow(fromTs, toTs);
+        if (fromTs == null) {
+            fromTs = meterRepository.findMeterDetailsByMeterNumber(meterSerial)
+                    .map(MeterDTO::getCreatedAt)
+                    .filter(Objects::nonNull)
+                    .orElse(now.minusDays(1));
         }
 
-        LocalDateTime fromTs = now.minusDays(1);
-        LocalDateTime toTs = now;
-        log.info("profile state start time C ={} ~ profile state end time C ={}", fromTs, toTs);
+        LocalDateTime toTs = requestedTo != null ? requestedTo : fromTs.plusDays(1);
+        if (toTs.isAfter(now)) {
+            toTs = now;
+        }
+        if (!toTs.isAfter(fromTs)) {
+            toTs = fromTs.plusHours(1);
+            if (toTs.isAfter(now)) {
+                toTs = now;
+            }
+        }
+
+        log.info("DLMS range window meter={} obis={} from={} to={} (requestedFrom={} requestedTo={})",
+                meterSerial, profileObis, fromTs, toTs, requestedFrom, requestedTo);
         return new DlmsRangeWindow(fromTs, toTs);
     }
 
@@ -467,7 +478,7 @@ public class DlmsReaderUtils {
             GXDLMSProfileGeneric profile = new GXDLMSProfileGeneric();
             profile.setLogicalName(profileObis);
 
-            DlmsRangeWindow resolved = resolveDlmsRangeWindow(meterSerial, profileObis, to);
+            DlmsRangeWindow resolved = resolveDlmsRangeWindow(meterSerial, profileObis, from, to);
             LocalDateTime actualFrom = resolved.from();
             LocalDateTime actualTo = resolved.to();
 
@@ -570,6 +581,11 @@ public class DlmsReaderUtils {
             rowIndex++;
             if (row == null || row.isEmpty()) continue;
 
+            if (row.size() != metadataList.size()) {
+                log.warn("Row width mismatch meter={} obis={} rowIndex={} rowColumns={} metadataColumns={}",
+                        meterSerial, profileObis, rowIndex, row.size(), metadataList.size());
+            }
+
             Map<String, Object> values = new LinkedHashMap<>();
 
             Object tsRaw = row.get(0);
@@ -578,11 +594,12 @@ public class DlmsReaderUtils {
                 log.debug("Skipping row {} (no timestamp) meter={} obis={}", rowIndex, meterSerial, profileObis);
                 continue;
             }
-            
+
             String timestampObis = metadataList.get(0).getCaptureObis();
             values.put(timestampObis, ts);
 
-            for (int i = 1; i < row.size() && i < metadataList.size(); i++) {
+            int columnLimit = Math.min(row.size(), metadataList.size());
+            for (int i = 1; i < columnLimit; i++) {
                 ModelProfileMetadata meta = metadataList.get(i);
                 String key = meta.getCaptureObis() + "-" + meta.getAttributeIndex();
                 Object value = row.get(i);
