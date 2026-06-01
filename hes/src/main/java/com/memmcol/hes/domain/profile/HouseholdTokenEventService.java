@@ -62,7 +62,14 @@ public class HouseholdTokenEventService {
         }
 
         try {
-            LocalDateTime seedFrom = resolveSeedTimestamp(meterSerial, profileObis);
+            LocalDateTime seedFrom = HouseholdDayWindowIngestionSupport.resolveSeedTimestamp(
+                    statePort,
+                    meterSerial,
+                    profileObis,
+                    meterRepository.findMeterDetailsByMeterNumber(meterSerial)
+                            .map(m -> m.getCreatedAt())
+                            .orElse(null)
+            );
             ProfileTimestamp cursor = new ProfileTimestamp(seedFrom);
             CapturePeriod cp = new CapturePeriod(1);
             LocalDateTime now = LocalDateTime.now();
@@ -104,22 +111,29 @@ public class HouseholdTokenEventService {
                 }
 
                 if (rawRows == null || rawRows.isEmpty()) {
-                     log.warn("Empty profile response meter={} profile={} from={} to={}",
+                    log.warn("Empty profile response meter={} profile={} from={} to={}",
                             meterSerial, profileObis, from, to);
-                    cursor = new ProfileTimestamp(to);   // ALWAYS move forward deterministically
+                    cursor = HouseholdDayWindowIngestionSupport.advanceInMemoryCursor(to);
                     continue;
                 }
 
-                ProfileSyncResult syncResult = persistRows(kind, rawRows, meterSerial, model, profileObis);
+                ProfileSyncResult syncResult = mapAndPersistRows(kind, rawRows, meterSerial, model, profileObis);
+                if (syncResult == null) {
+                    log.warn("Mapped token event rows not persistable meter={} profile={} from={} to={} rawCount={}",
+                            meterSerial, profileObis, from, to, rawRows.size());
+                    cursor = HouseholdDayWindowIngestionSupport.advanceInMemoryCursor(to);
+                    continue;
+                }
 
                 long t1 = System.currentTimeMillis() - t0;
                 metricsPort.recordBatch(meterSerial, profileObis, syncResult.getInsertedCount(), t1);
 
-                ProfileTimestamp resume = ProfileTimestamp.ofNullable(syncResult.getAdvanceTo());
-
-                cursor = (resume != null)
-              ? resume
-              : new ProfileTimestamp(to);
+                ProfileTimestamp resume = HouseholdDayWindowIngestionSupport.nextCursorAfterBatch(syncResult);
+                if (resume == null) {
+                    log.warn("No meter-derived advanceTo after persist meter={} profile={}", meterSerial, profileObis);
+                    break;
+                }
+                cursor = resume;
 
                 if (cp.seconds() <= 0) {
                     log.warn("cp.seconds() <= 0 : {}", cp);
@@ -133,33 +147,31 @@ public class HouseholdTokenEventService {
         }
     }
 
-    private ProfileSyncResult persistRows(TokenKind kind,
-                                          List<ProfileRowGeneric> rawRows,
-                                          String meterSerial,
-                                          String model,
-                                          String profileObis) {
+    private ProfileSyncResult mapAndPersistRows(TokenKind kind,
+                                                List<ProfileRowGeneric> rawRows,
+                                                String meterSerial,
+                                                String model,
+                                                String profileObis) {
         return switch (kind) {
             case RECHARGE -> {
                 List<HouseholdRechargeTokenEventDTO> dtos =
                         rechargeMapper.toDTOs(rawRows, meterSerial, model, profileObis);
+                if (HouseholdDayWindowIngestionSupport.shouldSkipUnmappableBatch(
+                        dtos, dto -> dto.getEventTime() != null && dto.getEventCode() != null)) {
+                    yield null;
+                }
                 yield rechargePersistenceAdapter.saveBatch(meterSerial, profileObis, dtos);
             }
             case MANAGEMENT -> {
                 List<HouseholdManagementTokenEventDTO> dtos =
                         managementMapper.toDTOs(rawRows, meterSerial, model, profileObis);
+                if (HouseholdDayWindowIngestionSupport.shouldSkipUnmappableBatch(
+                        dtos, dto -> dto.getEventTime() != null && dto.getEventCode() != null)) {
+                    yield null;
+                }
                 yield managementPersistenceAdapter.saveBatch(meterSerial, profileObis, dtos);
             }
         };
-    }
-
-    private LocalDateTime resolveSeedTimestamp(String meterSerial, String profileObis) {
-        ProfileState st = statePort.loadState(meterSerial, profileObis);
-        if (st != null && st.lastTimestamp() != null) {
-            return st.lastTimestamp().value();
-        }
-        return meterRepository.findMeterDetailsByMeterNumber(meterSerial)
-                .map(m -> m.getCreatedAt())
-                .orElse(LocalDateTime.now().minusDays(1));
     }
 
     private static boolean isExpectedObis(String profileObis, TokenKind kind) {

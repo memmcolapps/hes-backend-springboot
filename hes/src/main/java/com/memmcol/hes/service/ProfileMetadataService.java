@@ -41,6 +41,33 @@ public class ProfileMetadataService {
      * Return metadata for a given meter model & profile OBIS.
      * • Cache  →  DB  →  MetersEntity  (in that order)
      */
+    /**
+     * Drops cache + DB rows for this model/profile and re-reads capture objects from the meter.
+     */
+    public List<ModelProfileMetadata> refreshFromMeter(
+            String meterSerial,
+            String meterModel,
+            String profileObis) {
+        String key = meterModel + "::" + profileObis;
+        var cache = cacheManager.getCache(CACHE);
+        if (cache != null) {
+            cache.evict(key);
+        }
+
+        List<ModelProfileMetadata> existing =
+                repo.findByMeterModelAndProfileObisOrderByCaptureIndexAsc(meterModel, profileObis);
+        if (!existing.isEmpty()) {
+            repo.deleteAll(existing);
+            log.info("Deleted {} stale metadata row(s) for {} before meter refresh", existing.size(), key);
+        }
+
+        List<ModelProfileMetadata> fresh = loadFromMeterAndPersist(meterSerial, meterModel, profileObis);
+        if (!fresh.isEmpty() && cache != null) {
+            cache.put(key, fresh);
+        }
+        return fresh;
+    }
+
     public List<ModelProfileMetadata> getOrLoadMetadata(
             String meterModel,
             String profileObis,

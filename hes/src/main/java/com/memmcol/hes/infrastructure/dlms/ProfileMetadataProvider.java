@@ -33,5 +33,13 @@ public class ProfileMetadataProvider {
         return new ProfileMetadataResult(metadataList);
     }
 
+    /**
+     * Re-learn capture objects from the meter (used after Gurux column-count mismatch).
+     */
+    public ProfileMetadataResult refreshFromMeter(String meterSerial, String profileObis, String model) {
+        List<ModelProfileMetadata> metadataList =
+                profileMetadataService.refreshFromMeter(meterSerial, model, profileObis);
+        return new ProfileMetadataResult(metadataList);
+    }
 
 }
