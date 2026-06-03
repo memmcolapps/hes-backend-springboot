@@ -110,10 +110,12 @@ public class EventLogService {
                 }
 
                 if (rawRows == null || rawRows.isEmpty()) {
-                     log.warn("Empty profile response meter={} profile={} from={} to={}",
+                    log.warn("Empty profile response meter={} profile={} from={} to={}",
                             meterSerial, profileObis, from, to);
-                     cursor = new ProfileTimestamp(to);   // ALWAYS move forward deterministically
-                     continue;
+                    // ALWAYS move forward and persist for event log
+                    HouseholdDayWindowIngestionSupport.jumpAndPersistState(statePort, meterSerial, profileObis, to);
+                    cursor = new ProfileTimestamp(to);
+                    continue;
                 }
 
                 List<EventLogDTO> eventDtos = eventLogMapper.toDTOs(rawRows, meterSerial, model);
@@ -125,9 +127,13 @@ public class EventLogService {
                 // Persist new cursor — null-safe
                 ProfileTimestamp resume = ProfileTimestamp.ofNullable(syncResult.getAdvanceTo());
 
-                cursor = (resume != null)
-              ? resume
-              : new ProfileTimestamp(to);
+                if (resume == null || !resume.value().isAfter(from)) {
+                    log.info("Persistence did not advance cursor meter={} profile={} to={}", meterSerial, profileObis, to);
+                    HouseholdDayWindowIngestionSupport.jumpAndPersistState(statePort, meterSerial, profileObis, to);
+                    cursor = new ProfileTimestamp(to);
+                } else {
+                    cursor = resume;
+                }
 
                 if (cp.seconds() <= 0) {
                     log.warn("cp.seconds() <= 0 : {}", cp);

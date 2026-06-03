@@ -113,6 +113,7 @@ public class HouseholdExtendedEventService {
                 if (rawRows == null || rawRows.isEmpty()) {
                     log.warn("Empty profile response meter={} profile={} from={} to={}",
                             meterSerial, profileObis, from, to);
+                    HouseholdDayWindowIngestionSupport.jumpAndPersistState(statePort, meterSerial, profileObis, to);
                     cursor = HouseholdDayWindowIngestionSupport.advanceInMemoryCursor(to);
                     continue;
                 }
@@ -121,6 +122,7 @@ public class HouseholdExtendedEventService {
                 if (syncResult == null) {
                     log.warn("Mapped event rows not persistable meter={} profile={} from={} to={} rawCount={}",
                             meterSerial, profileObis, from, to, rawRows.size());
+                    HouseholdDayWindowIngestionSupport.jumpAndPersistState(statePort, meterSerial, profileObis, to);
                     cursor = HouseholdDayWindowIngestionSupport.advanceInMemoryCursor(to);
                     continue;
                 }
@@ -129,11 +131,13 @@ public class HouseholdExtendedEventService {
                 metricsPort.recordBatch(meterSerial, profileObis, syncResult.getInsertedCount(), t1);
 
                 ProfileTimestamp resume = HouseholdDayWindowIngestionSupport.nextCursorAfterBatch(syncResult);
-                if (resume == null) {
-                    log.warn("No meter-derived advanceTo after persist meter={} profile={}", meterSerial, profileObis);
-                    break;
+                if (resume == null || !resume.value().isAfter(from)) {
+                    log.info("Persistence did not advance cursor meter={} profile={} to={}", meterSerial, profileObis, to);
+                    HouseholdDayWindowIngestionSupport.jumpAndPersistState(statePort, meterSerial, profileObis, to);
+                    cursor = HouseholdDayWindowIngestionSupport.advanceInMemoryCursor(to);
+                } else {
+                    cursor = resume;
                 }
-                cursor = resume;
 
                 if (cp.seconds() <= 0) {
                     log.warn("cp.seconds() <= 0 : {}", cp);
