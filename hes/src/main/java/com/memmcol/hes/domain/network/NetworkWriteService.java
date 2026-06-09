@@ -1,9 +1,11 @@
 package com.memmcol.hes.domain.network;
 
 import com.memmcol.hes.application.port.out.MeterLockPort;
+import com.memmcol.hes.dto.MeterDTO;
 import com.memmcol.hes.infrastructure.dlms.DlmsReaderUtils;
 import com.memmcol.hes.model.DlmsResponse;
 import com.memmcol.hes.nettyUtils.SessionManagerMultiVendor;
+import com.memmcol.hes.repository.MeterRepository;
 import gurux.dlms.GXDLMSClient;
 import gurux.dlms.enums.DataType;
 import lombok.RequiredArgsConstructor;
@@ -27,10 +29,12 @@ public class NetworkWriteService {
     private final SessionManagerMultiVendor sessionManager;
     private final DlmsReaderUtils dlmsReaderUtils;
     private final MeterLockPort meterLockPort;
+    private final MeterRepository meterRepository;
 
     /**
      * Write APN value into the meter.
-     * OBIS: 0.0.25.4.0.255 (Class 45 - GPRS Setup, Attribute 2 - APN)
+     * MD: OBIS: 0.0.25.4.0.255 (Class 45 - GPRS Setup, Attribute 2 - APN)
+     * Non-MD: OBIS: 0.11.25.4.0.255 (Class 45 - GPRS Setup, Attribute 2 - APN)
      */
     public Map<String, Object> writeApn(String meterSerial, String apn) throws Exception {
         return meterLockPort.withExclusive(meterSerial, () -> {
@@ -39,10 +43,15 @@ public class NetworkWriteService {
                 throw new IllegalStateException("No DLMS session found for meter: " + meterSerial);
             }
 
-            log.info("Writing APN '{}' to meter {}", apn, meterSerial);
+            MeterDTO meter = meterRepository.findMeterDetailsByMeterNumber(meterSerial)
+                    .orElseThrow(() -> new IllegalArgumentException("Meter not found: " + meterSerial));
+            boolean isMd = "MD".equalsIgnoreCase(meter.getMeterClass());
+            String obis = isMd ? "0.0.25.4.0.255" : "0.11.25.4.0.255";
+
+            log.info("Writing APN '{}' to meter {} (Class: {}, OBIS: {})", apn, meterSerial, meter.getMeterClass(), obis);
 
             // Class 45 (GPRS Setup), Attribute 2 (APN) is Octet String (DataType.OCTET_STRING)
-            DlmsResponse response = dlmsReaderUtils.writeAttribute(client, meterSerial, "0.0.25.4.0.255", 45, 2,
+            DlmsResponse response = dlmsReaderUtils.writeAttribute(client, meterSerial, obis, 45, 2,
                     apn.getBytes(StandardCharsets.UTF_8), DataType.OCTET_STRING);
 
             Map<String, Object> result = new LinkedHashMap<>();
@@ -62,8 +71,11 @@ public class NetworkWriteService {
     }
 
     /**
-     * Write IP Address and Port (Destination List) into the meter.
-     * OBIS: 0.0.2.1.0.255 (Class 29 - Auto Connect, Attribute 6 - Destination List)
+     * Write IP Address and Port into the meter.
+     * MD: OBIS: 0.0.2.1.0.255 (Class 29 - Auto Connect, Attribute 6 - Destination List)
+     * Non-MD:
+     * - Port: OBIS: 0.11.25.0.0.255 (Class 41 - TCP/UDP Setup, Attribute 2 - Port)
+     * - IP: OBIS: 0.11.25.4.0.255 (Class 45 - GPRS Setup, Attribute 5 - IP Address)
      */
     public Map<String, Object> writeIpPort(String meterSerial, List<String> ipPorts) throws Exception {
         return meterLockPort.withExclusive(meterSerial, () -> {
@@ -72,17 +84,42 @@ public class NetworkWriteService {
                 throw new IllegalStateException("No DLMS session found for meter: " + meterSerial);
             }
 
-            log.info("Writing Destination List {} to meter {}", ipPorts, meterSerial);
+            MeterDTO meter = meterRepository.findMeterDetailsByMeterNumber(meterSerial)
+                    .orElseThrow(() -> new IllegalArgumentException("Meter not found: " + meterSerial));
+            boolean isMd = "MD".equalsIgnoreCase(meter.getMeterClass());
 
-            // Class 29 (Auto Connect), Attribute 6 (Destination List) is an Array of Octet Strings
-            // Each entry in the destination list is typically an Octet String
-            // Converting List<String> to List<byte[]> for Gurux write operation
-            List<byte[]> octetStrings = ipPorts.stream()
-                    .map(s -> s.getBytes(StandardCharsets.UTF_8))
-                    .toList();
+            DlmsResponse response;
+            if (isMd) {
+                log.info("Writing Destination List {} to MD meter {}", ipPorts, meterSerial);
 
-            DlmsResponse response = dlmsReaderUtils.writeAttribute(client, meterSerial, "0.0.2.1.0.255", 29, 6,
-                    octetStrings, DataType.ARRAY);
+                // Class 29 (Auto Connect), Attribute 6 (Destination List) is an Array of Octet Strings
+                List<byte[]> octetStrings = ipPorts.stream()
+                        .map(s -> s.getBytes(StandardCharsets.UTF_8))
+                        .toList();
+
+                response = dlmsReaderUtils.writeAttribute(client, meterSerial, "0.0.2.1.0.255", 29, 6,
+                        octetStrings, DataType.ARRAY);
+            } else {
+                // Non-MD logic: Expecting "IP:Port" format in the first element of ipPorts
+                String ipPortStr = ipPorts.get(0);
+                String[] parts = ipPortStr.split(":");
+                if (parts.length != 2) {
+                    throw new IllegalArgumentException("Invalid IP:Port format for Non-MD meter: " + ipPortStr);
+                }
+                String ip = parts[0];
+                int port = Integer.parseInt(parts[1]);
+
+                log.info("Writing Port {} then IP {} to Non-MD meter {}", port, ip, meterSerial);
+
+                // Fallback: Write Port first (Class 41, Attr 2), then IP (Class 45, Attr 5)
+                response = dlmsReaderUtils.writeAttribute(client, meterSerial, "0.11.25.0.0.255", 41, 2,
+                        port, DataType.UINT16);
+
+                if (response.isSuccess()) {
+                    response = dlmsReaderUtils.writeAttribute(client, meterSerial, "0.11.25.4.0.255", 45, 5,
+                            ip.getBytes(StandardCharsets.UTF_8), DataType.OCTET_STRING);
+                }
+            }
 
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("meterSerial", meterSerial);
