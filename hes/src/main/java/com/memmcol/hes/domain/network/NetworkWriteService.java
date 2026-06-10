@@ -107,14 +107,14 @@ public class NetworkWriteService {
                     throw new IllegalArgumentException("Invalid IP:Port format for Non-MD meter: " + ipPortStr);
                 }
                 String ip = parts[0];
-                int port = Integer.parseInt(parts[1]);
+                String portStr = parts[1]; // Keep as string for string-based port configuration
 
-                log.info("Writing Port {} then IP {} to Non-MD meter {}", port, ip, meterSerial);
+                log.info("Writing Port {} then IP {} to Non-MD meter {}", portStr, ip, meterSerial);
 
-                // Fallback: Write Port first (Class 41, Attr 2), then IP (Class 45, Attr 5)
-                // Using UINT32 (double-long-unsigned) for Port to ensure hardware compatibility
+                // Fixed: Convert port string to raw UTF-8/ASCII bytes and use DataType.OCTET_STRING (Tag 0x09)
+                byte[] portBytes = portStr.getBytes(StandardCharsets.UTF_8);
                 response = dlmsReaderUtils.writeAttribute(client, meterSerial, "0.11.25.0.0.255", 41, 2,
-                        (long) port, DataType.UINT32);
+                        portBytes, DataType.OCTET_STRING);
 
                 if (response.isSuccess()) {
                     response = dlmsReaderUtils.writeAttribute(client, meterSerial, "0.11.25.4.0.255", 45, 5,
