@@ -112,8 +112,9 @@ public class NetworkWriteService {
                 log.info("Writing Port {} then IP {} to Non-MD meter {}", port, ip, meterSerial);
 
                 // Fallback: Write Port first (Class 41, Attr 2), then IP (Class 45, Attr 5)
+                // Using UINT32 (double-long-unsigned) for Port to ensure hardware compatibility
                 response = dlmsReaderUtils.writeAttribute(client, meterSerial, "0.11.25.0.0.255", 41, 2,
-                        port, DataType.UINT16);
+                        (long) port, DataType.UINT32);
 
                 if (response.isSuccess()) {
                     response = dlmsReaderUtils.writeAttribute(client, meterSerial, "0.11.25.4.0.255", 45, 5,
