@@ -228,7 +228,7 @@ public class DlmsService {
         return strclock;
     }
 
-    public String setClock(String serial, LocalDateTime dateTime) throws Exception {
+    public Map<String, Object> setClock(String serial, LocalDateTime dateTime) throws Exception {
         return clockWriteService.setClock(serial, dateTime);
     }
 

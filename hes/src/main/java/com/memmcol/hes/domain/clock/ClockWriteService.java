@@ -15,6 +15,8 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.Date;
+import java.util.HashMap;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -30,7 +32,7 @@ public class ClockWriteService {
      * @param serial   meter serial number
      * @param dateTime local date-time to set on the meter
      */
-    public String setClock(String serial, LocalDateTime dateTime) throws Exception {
+    public Map<String, Object> setClock(String serial, LocalDateTime dateTime) throws Exception {
         GXDLMSClient client = sessionManager.getOrCreateClient(serial);
         if (client == null) {
             throw new IllegalStateException("No DLMS session found for meter: " + serial);
@@ -38,22 +40,31 @@ public class ClockWriteService {
 
         GXDLMSClock clock = new GXDLMSClock("0.0.1.0.0.255");
 
+        // Gurux GXDateTime handles the complex DLMS structure (12-byte OCTET STRING)
         GXDateTime gxDateTime = new GXDateTime(Date.from(
                 dateTime.atZone(ZoneId.systemDefault()).toInstant()
         ));
 
         DlmsResponse response = dlmsReaderUtils.writeAttribute(client, serial, clock, 2, gxDateTime);
 
+        Map<String, Object> result = new HashMap<>();
+        result.put("serial", serial);
+        result.put("timestamp", LocalDateTime.now());
+
         String formatted = dateTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
         if (response.isSuccess()) {
             String message = "🕒 Meter Clock for " + serial + " set to: " + formatted;
             log.info(message);
-            return message;
+            result.put("status", "success");
+            result.put("message", message);
         } else {
             String message = "❌ Failed to set Meter Clock for " + serial + ": " + response.getMessage() + " (" + response.getStatus() + ")";
             log.error(message);
-            return message;
+            result.put("status", "failed");
+            result.put("message", message);
+            result.put("dlmsStatus", response.getStatus());
         }
+        return result;
     }
 
     public String setClockV1(String serial, LocalDateTime dateTime) throws Exception {
