@@ -72,15 +72,11 @@ public class DlmsController {
             LocalDateTime dateTime) {
         Map<String, Object> response = new HashMap<>();
         try {
-            String message = dlmsService.setClock(serial, dateTime);
-            response.put("status", "success");
-            response.put("message", message);
-            response.put("serial", serial);
-            response.put("timestamp", LocalDateTime.now());
-            return ResponseEntity.ok(response);
+            Map<String, Object> data = dlmsService.setClock(serial, dateTime);
+            return ResponseEntity.ok(data);
         } catch (Exception e) {
             response.put("status", "error");
-            response.put("message", "Failed to set meter clock");
+            response.put("message", "Internal error while setting meter clock");
             response.put("details", e.getMessage());
             response.put("serial", serial);
             response.put("timestamp", LocalDateTime.now());
