@@ -19,6 +19,7 @@ import gurux.dlms.enums.Unit;
 import gurux.dlms.internal.GXCommon;
 import gurux.dlms.internal.GXDataInfo;
 import gurux.dlms.objects.*;
+import io.netty.channel.Channel;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -771,5 +772,39 @@ public class DlmsReaderUtils {
         }
         if (value instanceof byte[] bytes) return GXCommon.toHex(bytes, false);
         return null;
+    }
+
+    public DlmsResponse executeAtomicWrites(GXDLMSClient client,
+                                            String serial,
+                                            byte[][] portFrames,
+                                            byte[][] ipFrames) throws Exception {
+        try {
+            // 1. Calculate the total combined frame size
+            int totalFrames = portFrames.length + ipFrames.length;
+            byte[][] combinedRequest = new byte[totalFrames][];
+
+            // 2. Copy the Port request frames into the combined matrix
+            System.arraycopy(portFrames, 0, combinedRequest, 0, portFrames.length);
+
+            // 3. Copy the IP request frames right behind the Port frames
+            System.arraycopy(ipFrames, 0, combinedRequest, portFrames.length, ipFrames.length);
+
+            // 4. Reuse your existing working network execution pipeline
+            // This ensures the transport layer transmits and processes the frames sequentially
+            return getDlmsResponse(client, serial, combinedRequest);
+
+        } catch (java.net.SocketTimeoutException | java.util.concurrent.TimeoutException te) {
+            return DlmsResponse.builder()
+                    .status(DlmsResponseStatus.TIMEOUT)
+                    .message("Connection timeout during atomic write: " + te.getMessage())
+                    .meterSerial(serial)
+                    .build();
+        } catch (Exception e) {
+            return DlmsResponse.builder()
+                    .status(DlmsResponseStatus.COMMUNICATION_ERROR)
+                    .message("Communication error during atomic write: " + e.getMessage())
+                    .meterSerial(serial)
+                    .build();
+        }
     }
 }
