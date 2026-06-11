@@ -358,7 +358,6 @@ public Map<String, Object> setToken(String serial, String token) throws Exceptio
         }
     }
 
-
     public ResponseEntity<Map<String, Object>> readObisValue(String meterSerial, String obis) {
         try {
             String[] parts = obis.split(";");
