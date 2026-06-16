@@ -228,7 +228,9 @@ public class MeterReadAdapter {
             return DlmsReadResponse.error(errorCode, errorMsg, rawHex);
         }
 
-        Object value = client.updateValue(obj, index, reply.getValue());
+//        Object value = client.updateValue(obj, index, reply.getValue());
+        Object value = reply.getValue();
+
         log.debug("DLMS attribute read success for meter {}: value={}", serial, value);
         return DlmsReadResponse.success(rawHex, value);
     }
