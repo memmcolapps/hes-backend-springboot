@@ -138,7 +138,7 @@ public class ProfileChannelOneMapper implements GenericDtoMappers<ProfileChannel
 
     @Override
     public void setDtoField(ProfileChannelOneDTO dto, String columnName, BigDecimal value) {
-        log.info("column mapping: {}, value: {}", columnName, value);
+//        log.info("column mapping: {}, value: {}", columnName, value);
         switch (columnName.toLowerCase()) {
             case "entry_timestamp" -> dto.setEntryTimestamp(asDateTime(value));
             case "profile_status" -> dto.setMeterHealthIndicator(value.intValue());

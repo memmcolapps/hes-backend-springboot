@@ -530,6 +530,11 @@ public Map<String, Object> setToken(String serial, String token) throws Exceptio
 
         if (value == null) return null;
 
+        if (value instanceof String str) {
+            // Strip trailing hidden system characters, null terminators, or whitespace
+            return str.replaceAll("[\\x00-\\x1F\\x7F]", "").trim();
+        }
+
         if (value instanceof GXDateTime dt) {
             return dt.getMeterCalendar()
                     .toInstant()
@@ -554,8 +559,18 @@ public Map<String, Object> setToken(String serial, String token) throws Exceptio
                 return new String(bytes, StandardCharsets.UTF_8);
             }
 
+            StringBuilder hex = new StringBuilder();
+            for (byte b : bytes) {
+                hex.append(String.format("%02X", b));
+            }
+            return hex.toString();
+
             // fallback for binary (DO NOT Base64 encode unless needed for API contract)
-            return Arrays.toString(bytes);
+//            return Arrays.toString(bytes);
+        }
+
+        if (value instanceof java.util.List<?> list) {
+            return list.stream().map(this::normalize).toList();
         }
 
         return value;
