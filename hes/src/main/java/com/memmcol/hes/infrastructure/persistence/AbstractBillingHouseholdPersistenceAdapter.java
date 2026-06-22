@@ -106,9 +106,10 @@ public abstract class AbstractBillingHouseholdPersistenceAdapter<TDto, TEntity, 
         });
     }
 
-    public int persistReadings(List<TDto> rows) {
+    public UpsertCounts persistReadings(List<TDto> rows) {
         Session session = em().unwrap(Session.class);
-        AtomicInteger saved = new AtomicInteger();
+        AtomicInteger inserted = new AtomicInteger();
+        AtomicInteger updated = new AtomicInteger();
         rows.stream()
                 .filter(dto -> entryTimestamp(dto) != null)
                 .forEach(dto -> {
@@ -117,18 +118,22 @@ public abstract class AbstractBillingHouseholdPersistenceAdapter<TDto, TEntity, 
                     TEntity existing = session.get(entityClass(), id);
                     if (existing == null) {
                         session.persist(entity);
+                        inserted.incrementAndGet();
                     } else {
                         session.merge(entity);
+                        updated.incrementAndGet();
                     }
-                    if (saved.incrementAndGet() % FLUSH_BATCH == 0) {
+                    if ((inserted.get() + updated.get()) % FLUSH_BATCH == 0) {
                         session.flush();
                         session.clear();
                     }
                 });
         session.flush();
         session.clear();
-        return saved.get();
+        return new UpsertCounts(inserted.get(), updated.get());
     }
+
+    protected record UpsertCounts(int inserted, int updated) {}
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public ProfileSyncResult saveBatchAndAdvanceCursor(String meterSerial,
@@ -169,9 +174,9 @@ public abstract class AbstractBillingHouseholdPersistenceAdapter<TDto, TEntity, 
             String meterModel = FactTablePersistenceLogging.nz(meterModelFromFirstDto(readings.get(0)));
 
             int total = readings.size();
-            List<TDto> filtered = deduplicate(meterSerial, readings, jpqlEntityName);
-            int inserted = persistReadings(filtered);
-            int duplicate = total - inserted;
+            UpsertCounts counts = persistReadings(readings);
+            int inserted = counts.inserted();
+            int duplicate = counts.updated();
 
             LocalDateTime incomingMax = readings.stream()
                     .map(this::entryTimestamp)
