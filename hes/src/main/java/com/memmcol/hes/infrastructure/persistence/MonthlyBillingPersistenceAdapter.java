@@ -56,11 +56,9 @@ public class MonthlyBillingPersistenceAdapter {
         }
 
         int total = readings.size();
-        //Deduplication by timestamp only
-        List<MonthlyBillingDTO> filteredRows = deduplicate(meterSerial, readings);
-        //Insert filtered rows
-        int inserted = persistReadingsByMonth(filteredRows);
-        int duplicate = total - inserted;
+        UpsertCounts counts = persistReadingsByMonth(readings);
+        int inserted = counts.inserted();
+        int duplicate = counts.updated();
 
         LocalDateTime incomingMax = readings.stream()
                 .map(MonthlyBillingDTO::getEntryTimestamp)
@@ -140,15 +138,15 @@ public class MonthlyBillingPersistenceAdapter {
      * •	Extract all months from the incoming readings
      * •	Pre-create missing partitions once before persisting
      */
-    public int persistReadingsByMonth(List<MonthlyBillingDTO> filteredRows) {
+    public UpsertCounts persistReadingsByMonth(List<MonthlyBillingDTO> rows) {
         Session session = entityManager.unwrap(Session.class);
 
-        log.info("💾 Persisting readings to DB....");
-        final AtomicInteger saved = new AtomicInteger();
-        filteredRows.forEach(dto -> {
+        log.info("💾 Persisting readings to DB (idempotent upsert)....");
+        final AtomicInteger inserted = new AtomicInteger();
+        final AtomicInteger updated = new AtomicInteger();
+        rows.forEach(dto -> {
             MonthlyBillingEntity entity = MonthlyBillingToEntity.toEntity(dto);
 
-            // Check if record exists
             MonthlyBillingId id = new MonthlyBillingId(
                     entity.getMeterSerial(),
                     entity.getEntryTimestamp()
@@ -157,12 +155,14 @@ public class MonthlyBillingPersistenceAdapter {
             MonthlyBillingEntity existing = session.get(MonthlyBillingEntity.class, id);
 
             if (existing == null) {
-                session.persist(entity); // Insert new
+                session.persist(entity);
+                inserted.incrementAndGet();
             } else {
-                session.merge(entity);   // Update existing
+                session.merge(entity);
+                updated.incrementAndGet();
             }
 
-            if (saved.incrementAndGet() % FLUSH_BATCH == 0) {
+            if ((inserted.get() + updated.get()) % FLUSH_BATCH == 0) {
                 session.flush();
                 session.clear();
             }
@@ -171,9 +171,12 @@ public class MonthlyBillingPersistenceAdapter {
         session.flush();
         session.clear();
 
-        log.info("💾 Saved {} readings to DB.", saved.get());
-        return saved.get();
+        log.info("💾 Upserted {} readings (inserted={}, updated={}).",
+                inserted.get() + updated.get(), inserted.get(), updated.get());
+        return new UpsertCounts(inserted.get(), updated.get());
     }
+
+    private record UpsertCounts(int inserted, int updated) {}
 
     /**
      * Creates monthly partition tables for any missing months found in the DTO list.

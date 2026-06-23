@@ -43,6 +43,7 @@ import java.io.File;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.nio.charset.StandardCharsets;
 import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
@@ -359,6 +360,255 @@ public Map<String, Object> setToken(String serial, String token) throws Exceptio
     }
 
     public ResponseEntity<Map<String, Object>> readObisValue(String meterSerial, String obis) {
+
+        try {
+            String[] parts = obis.split(";");
+            if (parts.length != 4) {
+                throw new IllegalArgumentException(
+                        "OBIS format must be: classId;obisCode;attributeIndex;dataIndex"
+                );
+            }
+
+            int classId = Integer.parseInt(parts[0]);
+            String obisCode = parts[1].trim();
+            int attributeIndex = Integer.parseInt(parts[2]);
+            int dataIndex = Integer.parseInt(parts[3]);
+
+            GXDLMSClient client = sessionManager.getClient(meterSerial);
+
+            if (client == null) {
+                sessionManager.addSession(
+                        meterSerial,
+                        MeterConnections.getChannel(meterSerial)
+                );
+
+                client = sessionManager.getClient(meterSerial);
+
+                if (client == null) {
+                    return ResponseEntity.status(HttpStatus.NOT_FOUND).body(
+                            Map.of(
+                                    "error", "No active session",
+                                    "serial", meterSerial,
+                                    "tip", "Please establish association before reading OBIS"
+                            )
+                    );
+                }
+            }
+
+            final GXDLMSClient dlmsClient = client;
+
+            ObjectType type = ObjectType.forValue(classId);
+
+            GXDLMSObject object;
+            double scaler = 1.0;
+            Unit unit = null;
+            Object result;
+
+            switch (type) {
+
+                case REGISTER -> {
+                    GXDLMSRegister reg = new GXDLMSRegister();
+                    reg.setLogicalName(obisCode);
+
+                    Object raw = readRaw(dlmsClient, meterSerial, reg, attributeIndex);
+                    result = normalize(raw);
+
+                    scaler = reg.getScaler();
+                    if (scaler == 0) scaler = 1.0;
+
+                    unit = reg.getUnit();
+                    object = reg;
+                }
+
+                case DEMAND_REGISTER -> {
+                    GXDLMSDemandRegister dr = new GXDLMSDemandRegister();
+                    dr.setLogicalName(obisCode);
+
+                    Object raw = readRaw(dlmsClient, meterSerial, dr, attributeIndex);
+                    result = normalize(raw);
+
+                    scaler = dr.getScaler();
+                    if (scaler == 0) scaler = 1.0;
+
+                    unit = dr.getUnit();
+                    object = dr;
+                }
+
+                case CLOCK -> {
+
+                    GXDLMSObject obj = GXDLMSClient.createObject(type);
+                    obj.setLogicalName(obisCode);
+
+                    Object raw = readRaw(client, meterSerial, obj, attributeIndex);
+
+                    result = normalizeClock(raw);
+
+                    object = obj;
+                    unit = null;
+                }
+
+                case DATA -> {
+                    GXDLMSData data = new GXDLMSData();
+                    data.setLogicalName(obisCode);
+
+                    Object raw = readRaw(dlmsClient, meterSerial, data, attributeIndex);
+                    result = normalize(raw);
+
+                    object = data;
+                    unit = null;
+                }
+
+                default -> {
+                    GXDLMSObject obj = GXDLMSClient.createObject(type);
+                    obj.setLogicalName(obisCode);
+
+                    Object raw = readRaw(dlmsClient, meterSerial, obj, attributeIndex);
+                    result = normalize(raw);
+
+                    object = obj;
+                    unit = null;
+                }
+            }
+
+            Map<String, Object> response = new LinkedHashMap<>();
+            response.put("Meter No", meterSerial);
+            response.put("obisCode", obisCode);
+            response.put("attributeIndex", attributeIndex);
+            response.put("dataIndex", dataIndex);
+            response.put("value", result);
+            response.put("scaler", scaler);
+
+            if (unit != null) {
+                response.put("unit", getUnitSymbol(unit));
+            }
+
+            response.put("status", "success");
+
+            return ResponseEntity.ok(response);
+
+        } catch (AssociationLostException ex) {
+            sessionManager.removeSession(meterSerial);
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(
+                    Map.of(
+                            "error", "Association lost with meter: " + meterSerial,
+                            "details", ex.getMessage()
+                    )
+            );
+
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(
+                    Map.of(
+                            "error", "Failed to read from OBIS",
+                            "details", e.getMessage()
+                    )
+            );
+        }
+    }
+
+    private Object readRaw(
+            GXDLMSClient client,
+            String meterSerial,
+            GXDLMSObject obj,
+            int attributeIndex) throws Exception {
+
+        DlmsReadResponse response =
+                readAdapter.readAttributeWithResponse(
+                        client,
+                        meterSerial,
+                        obj,
+                        attributeIndex
+                );
+
+        if (!response.isSuccess()) {
+            throw new RuntimeException("DLMS read failed");
+        }
+
+        return response.getValue();
+    }
+
+    private Object normalize(Object value) {
+
+        if (value == null) return null;
+
+        if (value instanceof String str) {
+            // Strip trailing hidden system characters, null terminators, or whitespace
+            return str.replaceAll("[\\x00-\\x1F\\x7F]", "").trim();
+        }
+
+        if (value instanceof GXDateTime dt) {
+            return dt.getMeterCalendar()
+                    .toInstant()
+                    .atZone(ZoneId.systemDefault())
+                    .toLocalDateTime()
+                    .toString();
+        }
+
+        if (value instanceof byte[] bytes) {
+
+            // IMPORTANT: DO NOT blindly return raw bytes
+            boolean printable = true;
+
+            for (byte b : bytes) {
+                if (b < 32 || b > 126) {
+                    printable = false;
+                    break;
+                }
+            }
+
+            if (printable) {
+                return new String(bytes, StandardCharsets.UTF_8);
+            }
+
+            StringBuilder hex = new StringBuilder();
+            for (byte b : bytes) {
+                hex.append(String.format("%02X", b));
+            }
+            return hex.toString();
+
+            // fallback for binary (DO NOT Base64 encode unless needed for API contract)
+//            return Arrays.toString(bytes);
+        }
+
+        if (value instanceof java.util.List<?> list) {
+            return list.stream().map(this::normalize).toList();
+        }
+
+        return value;
+    }
+
+    private Object normalizeClock(Object value) {
+
+        if (value == null) return null;
+
+        // Already decoded
+        if (value instanceof GXDateTime dt) {
+            return dt.getMeterCalendar()
+                    .toInstant()
+                    .atZone(ZoneId.systemDefault())
+                    .toLocalDateTime()
+                    .toString();
+        }
+
+        // RAW DLMS CLOCK (your current case)
+        if (value instanceof byte[] b && b.length >= 8) {
+
+            int year = ((b[0] & 0xFF) << 8) | (b[1] & 0xFF);
+            int month = b[2] & 0xFF;
+            int day = b[3] & 0xFF;
+            int hour = b[5] & 0xFF;
+            int minute = b[6] & 0xFF;
+            int second = b[7] & 0xFF;
+
+            return String.format(
+                    "%04d-%02d-%02d %02d:%02d:%02d",
+                    year, month, day, hour, minute, second
+            );
+        }
+
+        return value;
+    }
+
+    public ResponseEntity<Map<String, Object>> readObisValueV1(String meterSerial, String obis) {
         try {
             String[] parts = obis.split(";");
             if (parts.length != 4) {

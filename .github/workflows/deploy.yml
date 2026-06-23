@@ -68,19 +68,18 @@ jobs:
         if: github.ref == 'refs/heads/staging'
         run: |
           SERVER="${{ secrets.STAGING_SERVER_USER }}@${{ secrets.STAGING_SERVER_HOST }}"
-          SSH_PORT="${{ secrets.STAGING_SERVER_SSH_PORT }}"
           REMOTE_PATH="/opt/java-webservices/hes-app.jar"
 
           echo "Creating remote directory..."
-          ssh -p $SSH_PORT -o StrictHostKeyChecking=no $SERVER "mkdir -p /opt/java-webservices"
+          ssh -o StrictHostKeyChecking=no $SERVER "mkdir -p /opt/java-webservices"
 
           echo "Uploading JAR..."
-          rsync -az --delete -e "ssh -p $SSH_PORT -o StrictHostKeyChecking=no" \
+          rsync -az --delete -e "ssh -o StrictHostKeyChecking=no" \
             "$JAR_FILE" \
             $SERVER:$REMOTE_PATH
 
           echo "Deploying (safe SSH execution)..."
-          ssh -p $SSH_PORT -o StrictHostKeyChecking=no $SERVER 'bash -s' << 'EOF'
+          ssh -o StrictHostKeyChecking=no $SERVER 'bash -s' << 'EOF'
 
             set -e
 

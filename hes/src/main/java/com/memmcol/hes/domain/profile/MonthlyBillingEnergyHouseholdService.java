@@ -3,6 +3,7 @@ package com.memmcol.hes.domain.profile;
 import com.memmcol.hes.application.port.out.ProfileMetricsPort;
 import com.memmcol.hes.application.port.out.ProfileReadException;
 import com.memmcol.hes.application.port.out.ProfileStatePort;
+import com.memmcol.hes.config.BillingDeterminantsProperties;
 import com.memmcol.hes.domain.profile.mappers.BillingEnergyHouseholdMapper;
 import com.memmcol.hes.dto.BillingEnergyHouseholdDTO;
 import com.memmcol.hes.infrastructure.dlms.DlmsReaderUtils;
@@ -27,6 +28,8 @@ public class MonthlyBillingEnergyHouseholdService {
     private final BillingEnergyHouseholdMapper mapper;
     private final MonthlyBillingEnergyHouseholdPersistenceAdapter persistenceAdapter;
     private final MeterRepository meterRepository;
+    private final BillingDeterminantsProperties billingProperties;
+    private final BillingCycleGracePeriodPolicy gracePeriodPolicy;
 
     public void readProfileAndSave(String model, String meterSerial, String profileObis, boolean isMD) {
         try {
@@ -37,40 +40,22 @@ public class MonthlyBillingEnergyHouseholdService {
                 return;
             }
 
-            LocalDateTime seedFrom = null;
+            LocalDateTime meterCreatedAt = meterRepository.findMeterDetailsByMeterNumber(meterSerial)
+                    .map(m -> m.getCreatedAt())
+                    .orElse(null);
 
-            ProfileState st = statePort.loadState(meterSerial, profileObis);
-            if (st != null && st.lastTimestamp() != null) {
-                seedFrom = st.lastTimestamp().value();
-            }
-
-            if (seedFrom == null) {
-                seedFrom = meterRepository.findMeterDetailsByMeterNumber(meterSerial)
-                        .map(m -> m.getCreatedAt())
-                        .orElse(null);
-            }
-
-            if (seedFrom == null) {
-                seedFrom = LocalDateTime.now()
-                        .minusMonths(1)
-                        .withDayOfMonth(1)
-                        .withHour(0).withMinute(0).withSecond(0).withNano(0);
-            }
+            LocalDateTime seedFrom = BillingDeterminantsIngestionSupport.resolveSeedTimestamp(
+                    statePort, meterSerial, profileObis, meterCreatedAt);
+            seedFrom = BillingDeterminantsIngestionSupport.effectiveSeedFrom(seedFrom, gracePeriodPolicy);
 
             ProfileTimestamp cursor = new ProfileTimestamp(seedFrom);
-
             CapturePeriod cp = new CapturePeriod(1);
-
             LocalDateTime now = LocalDateTime.now();
+            int readWindowDays = billingProperties.getReadWindowDays();
 
             while (cursor.value().isBefore(now)) {
-
                 LocalDateTime from = cursor.value();
-                LocalDateTime to = from.plusMonths(1);
-
-                if (to.isAfter(now)) {
-                    to = now;
-                }
+                LocalDateTime to = BillingDeterminantsIngestionSupport.computeWindowEnd(from, now, readWindowDays);
 
                 boolean exceptionOccurred = false;
 
@@ -93,24 +78,17 @@ public class MonthlyBillingEnergyHouseholdService {
                     rawRows = attemptRecovery(model, meterSerial, profileObis, metadataResult);
                 }
 
-                // =========================
-                // EMPTY + FAILURE HANDLING
-                // =========================
-                if ((rawRows == null || rawRows.isEmpty()) && exceptionOccurred) {
+                if (BillingDeterminantsIngestionSupport.shouldBreakOnEmptyWithException(exceptionOccurred, rawRows)) {
                     return;
                 }
 
-                if (rawRows == null || rawRows.isEmpty()) {
-                    // ❌ DO NOT persist "to"
-                     log.warn("Empty profile response meter={} profile={} from={} to={}",
+                if (BillingDeterminantsIngestionSupport.isEmptyWindow(rawRows)) {
+                    log.warn("Empty profile response meter={} profile={} from={} to={}",
                             meterSerial, profileObis, from, to);
-                    cursor = new ProfileTimestamp(to);   // ALWAYS move forward deterministically
+                    cursor = BillingDeterminantsIngestionSupport.advanceInMemoryCursor(to);
                     continue;
                 }
 
-                // =========================
-                // MAP + PERSIST
-                // =========================
                 List<BillingEnergyHouseholdDTO> dtos =
                         mapper.toDTO(rawRows, meterSerial, model, isMD, metadataResult);
 
@@ -128,14 +106,7 @@ public class MonthlyBillingEnergyHouseholdService {
                         0
                 );
 
-                // =========================
-                // CRITICAL FIX (STATE UPDATE)
-                // =========================
-                ProfileTimestamp resume = ProfileTimestamp.ofNullable(syncResult.getAdvanceTo());
-
-                cursor = (resume != null)
-              ? resume
-              : new ProfileTimestamp(to);
+                cursor = BillingDeterminantsIngestionSupport.nextCursorAfterBatch(syncResult, to);
 
                 if (cp.seconds() <= 0) {
                     log.warn("cp.seconds() <= 0 : {}", cp);
@@ -143,78 +114,6 @@ public class MonthlyBillingEnergyHouseholdService {
                 }
             }
 
-        } catch (Exception ex) {
-            String safeObis = (profileObis == null || profileObis.isBlank()) ? "unknown" : profileObis;
-            metricsPort.recordFailure(meterSerial, safeObis, "unhandled_exception");
-        }
-    }
-
-    public void readProfileAndSaveV1(String model, String meterSerial, String profileObis, boolean isMD) {
-        try {
-            final String safeObis = (profileObis == null || profileObis.isBlank()) ? "unknown" : profileObis;
-            if (profileObis == null || profileObis.isBlank()) {
-                metricsPort.recordFailure(meterSerial, safeObis, "missing_profile_obis");
-                return;
-            }
-
-            LocalDateTime seedFrom = null;
-            ProfileState st = statePort.loadState(meterSerial, profileObis);
-            if (st != null && st.lastTimestamp() != null) seedFrom = st.lastTimestamp().value();
-            if (seedFrom == null) {
-                seedFrom = meterRepository.findMeterDetailsByMeterNumber(meterSerial)
-                        .map(m -> m.getCreatedAt())
-                        .orElse(null);
-            }
-            if (seedFrom == null) {
-                seedFrom = LocalDateTime.now()
-                        .minusMonths(1)
-                        .withDayOfMonth(1)
-                        .withHour(0).withMinute(0).withSecond(0).withNano(0);
-            }
-
-            ProfileTimestamp cursor = new ProfileTimestamp(seedFrom);
-            CapturePeriod cp = new CapturePeriod(1);
-            LocalDateTime now = LocalDateTime.now();
-
-            while (cursor.value().isBefore(now)) {
-                LocalDateTime from = cursor.value();
-                LocalDateTime to = from.plusMonths(12);
-                if (to.isAfter(now)) to = now;
-
-                boolean exceptionOccurred = false;
-                final ProfileMetadataResult metadataResult;
-                try {
-                    metadataResult = metadataProvider.resolve(meterSerial, profileObis, model);
-                } catch (Exception metaEx) {
-                    metricsPort.recordFailure(meterSerial, safeObis, "metadata_resolve_failed");
-                    return;
-                }
-
-                List<ProfileRowGeneric> rawRows;
-                try {
-                    rawRows = dlmsReaderUtils.readRange(model, meterSerial, profileObis, metadataResult, from, to, isMD);
-                } catch (Exception e) {
-                    exceptionOccurred = true;
-                    rawRows = attemptRecovery(model, meterSerial, profileObis, metadataResult);
-                }
-
-                if ((rawRows == null || rawRows.isEmpty()) && exceptionOccurred) return;
-                if (rawRows == null || rawRows.isEmpty()) {
-                    cursor = new ProfileTimestamp(to).plus(cp);
-                    statePort.upsertState(meterSerial, profileObis, new ProfileTimestamp(to), cp);
-                    continue;
-                }
-
-                List<BillingEnergyHouseholdDTO> dtos = mapper.toDTO(rawRows, meterSerial, model, isMD, metadataResult);
-                persistenceAdapter.createPartitionsIfMissing(dtos);
-                ProfileSyncResult syncResult = persistenceAdapter.saveBatchAndAdvanceCursor(meterSerial, profileObis, dtos, cp);
-                metricsPort.recordBatch(meterSerial, profileObis, syncResult.getInsertedCount(), 0);
-
-                ProfileTimestamp resume = ProfileTimestamp.ofNullable(syncResult.getAdvanceTo());
-                cursor = (resume != null) ? resume
-        : new ProfileTimestamp(to);
-                statePort.upsertState(meterSerial, profileObis, resume, cp);
-            }
         } catch (Exception ex) {
             String safeObis = (profileObis == null || profileObis.isBlank()) ? "unknown" : profileObis;
             metricsPort.recordFailure(meterSerial, safeObis, "unhandled_exception");
@@ -230,4 +129,3 @@ public class MonthlyBillingEnergyHouseholdService {
         }
     }
 }
-
