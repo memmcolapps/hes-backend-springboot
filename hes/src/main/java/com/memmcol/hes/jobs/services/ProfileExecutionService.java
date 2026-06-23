@@ -56,8 +56,8 @@ public class ProfileExecutionService {
                                    EventObisResolutionPort eventObisResolutionPort,
                                    @Value("${hes.profile.execution.batch-size:${hes.meter.executor.size:50}}") int meterBatchSize,
                                    @Value("${hes.profile.execution.window.zone:Africa/Lagos}") String executionWindowZone,
-                                   @Value("${hes.profile.execution.window.start:22:00}") String executionWindowStart,
-                                   @Value("${hes.profile.execution.window.end:06:00}") String executionWindowEnd,
+                                   @Value("${hes.profile.execution.window.start:00:00}") String executionWindowStart,
+                                   @Value("${hes.profile.execution.window.end:23:59}") String executionWindowEnd,
                                     @Value("${hes.profile.execution.window.enabled:true}") boolean executionWindowEnabled,
                                     @Value("${hes.profile.household.models:}") String householdModelsCsv) {
         this.metersLockService = metersLockService;
