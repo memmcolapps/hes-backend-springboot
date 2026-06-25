@@ -68,15 +68,39 @@ jobs:
         if: github.ref == 'refs/heads/staging'
         run: |
           SERVER="${{ secrets.STAGING_SERVER_USER }}@${{ secrets.STAGING_SERVER_HOST }}"
-          REMOTE_PATH="/opt/java-webservices/hes-app.jar"
+          REMOTE_PATH="/${{LOCATION}}/hes-app.jar"
 
           echo "Creating remote directory..."
-          ssh -o StrictHostKeyChecking=no $SERVER "mkdir -p /opt/java-webservices"
+          ssh -o StrictHostKeyChecking=no $SERVER "mkdir -p /${{LOCATION}}"
 
           echo "Uploading JAR..."
           rsync -az --delete -e "ssh -o StrictHostKeyChecking=no" \
             "$JAR_FILE" \
             $SERVER:$REMOTE_PATH
+
+          echo "Writing env file..."
+          ssh -o StrictHostKeyChecking=no $SERVER "cat > /${{LOCATION}}/staging.env" << EOF
+          DB_HOST="${{ secrets.STAGING_DB_HOST }}"
+          DB_PORT="${{ secrets.STAGING_DB_PORT }}"
+          DB_NAME="${{ secrets.STAGING_DB_NAME }}"
+          MONGO_HOST="${{ secrets.STAGING_MONGO_HOST }}"
+          MONGO_PORT="${{ secrets.STAGING_MONGO_PORT }}"
+          MONGO_DB="${{ secrets.STAGING_MONGO_DB }}"
+          DB_USERNAME="${{ secrets.STAGING_DB_USERNAME }}"
+          DB_PASSWORD="${{ secrets.STAGING_DB_PASSWORD }}"
+          EUREKA_ADDRESS="${{ secrets.EUREKA_ADDRESS }}"
+          EUREKA_PORT="${{ secrets.EUREKA_ADDRESS }}"
+          TOKEN_ISSUER="${{ secrets.T_ISSUER }}"
+          TOKEN_ACCESS="${{ secrets.T_ACCESS }}"
+          TOKEN_REFRESH="${{ secrets.T_REFRESH }}"
+          TOKEN_SECRET="${{ secrets.T_SECRET }}"
+          SPRING_SECURITY_USER="${{ secrets.SPRING_SECURITY_USER }}"
+          SPRING_SECURITY_PASSWORD="${{ secrets.SPRING_SECURITY_PASSWORD }}"
+          EOF
+          
+          ssh -o StrictHostKeyChecking=no $SERVER "chmod 600 /${{LOCATION}}/staging.env"
+
+
 
           echo "Deploying (safe SSH execution)..."
           ssh -o StrictHostKeyChecking=no $SERVER 'bash -s' << 'EOF'
@@ -96,9 +120,13 @@ jobs:
 
             echo "Starting app..."
 
+             set -a
+            source /${{LOCATION}}/staging.env
+            set +a
+
             nohup java -Dspring.profiles.active=staging \
-              -jar /opt/java-webservices/hes-app.jar \
-              > /opt/java-webservices/hes-staging.log 2>&1 &
+              -jar /${{LOCATION}}/hes-app.jar \
+              > /${{LOCATION}}/hes-staging.log 2>&1 &
 
             echo "Deployment complete"
           EOF
@@ -119,15 +147,37 @@ jobs:
         if: github.ref == 'refs/heads/main'
         run: |
           SERVER="${{ secrets.PROD_SERVER_USER }}@${{ secrets.PROD_SERVER_HOST }}"
-          REMOTE_PATH="/opt/java-webservices/hes-app.jar"
+          REMOTE_PATH="/${{LOCATION}}/hes-app.jar"
 
           echo "Creating remote directory..."
-          ssh -o StrictHostKeyChecking=no $SERVER "mkdir -p /opt/java-webservices"
+          ssh -o StrictHostKeyChecking=no $SERVER "mkdir -p /${{LOCATION}}"
 
           echo "Uploading JAR..."
           rsync -az --delete -e "ssh -o StrictHostKeyChecking=no" \
             "$JAR_FILE" \
             $SERVER:$REMOTE_PATH
+
+          echo "Writing env file..."
+          ssh -o StrictHostKeyChecking=no $SERVER "cat > /${{LOCATION}}/prod.env" << EOF
+          DB_HOST="${{ secrets.PROD_DB_HOST }}"
+          DB_PORT="${{ secrets.PROD_DB_PORT }}"
+          DB_NAME="${{ secrets.PROD_DB_NAME }}"
+          MONGO_HOST="${{ secrets.PROD_MONGO_HOST }}"
+          MONGO_PORT="${{ secrets.PROD_MONGO_PORT }}"
+          MONGO_DB="${{ secrets.PROD_MONGO_DB }}"
+          DB_USERNAME="${{ secrets.PROD_DB_USERNAME }}"
+          DB_PASSWORD="${{ secrets.PROD_DB_PASSWORD }}"
+          EUREKA_ADDRESS="${{ secrets.EUREKA_ADDRESS }}"
+          EUREKA_PORT="${{ secrets.EUREKA_ADDRESS }}"
+          TOKEN_ISSUER="${{ secrets.T_ISSUER }}"
+          TOKEN_ACCESS="${{ secrets.T_ACCESS }}"
+          TOKEN_REFRESH="${{ secrets.T_REFRESH }}"
+          TOKEN_SECRET="${{ secrets.T_SECRET }}"
+          SPRING_SECURITY_USER="${{ secrets.SPRING_SECURITY_USER }}"
+          SPRING_SECURITY_PASSWORD="${{ secrets.SPRING_SECURITY_PASSWORD }}"
+          EOF
+          
+          ssh -o StrictHostKeyChecking=no $SERVER "chmod 600 /${{LOCATION}}/prod.env"
 
           echo "Deploying (safe SSH execution)..."
           ssh -o StrictHostKeyChecking=no $SERVER 'bash -s' << 'EOF'
@@ -148,8 +198,8 @@ jobs:
             echo "Starting app..."
 
             nohup java -Dspring.profiles.active=prod \
-              -jar /opt/java-webservices/hes-app.jar \
-              > /opt/java-webservices/hes-prod.log 2>&1 &
+              -jar /${{LOCATION}}/hes-app.jar \
+              > /${{LOCATION}}/hes-prod.log 2>&1 &
 
             echo "Deployment complete"
           EOF
