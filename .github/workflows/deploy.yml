@@ -79,7 +79,7 @@ jobs:
             $SERVER:$REMOTE_PATH
 
           echo "Writing env file..."
-          ssh -o StrictHostKeyChecking=no $SERVER "cat > /${{secrets.LOCATION}}/staging.env" << EOF
+          ssh -o StrictHostKeyChecking=no $SERVER "cat > /${{secrets.LOCATION}}/hes-staging.env" << EOF
           DB_HOST="${{ secrets.STAGING_DB_HOST }}"
           DB_PORT="${{ secrets.STAGING_DB_PORT }}"
           DB_NAME="${{ secrets.STAGING_DB_NAME }}"
@@ -88,22 +88,8 @@ jobs:
           MONGO_HOST="${{ secrets.STAGING_MONGO_HOST }}"
           MONGO_PORT="${{ secrets.STAGING_MONGO_PORT }}"
           MONGO_DB="${{ secrets.STAGING_MONGO_DB }}"
-          MONGO_USERNAME="${{ secrets.STAGING_MONGO_USERNAME }}"
-          MONGO_PASSWORD="${{ secrets.STAGING_MONGO_PASSWORD }}"
-          HES_PORT="${{ secrets.HES_PORT }}"
-          HES_ADDRESS="${{ secrets.STAGING_HES_ADDRESS }}"
-          T_ADDRESS="${{ secrets.T_ADDRESS }}"
-          T_PORT="${{ secrets.T_PORT }}"
-          ADMIN_API_VALUE="${{ secrets.ADMIN_API_VALUE }}"
-          USER_API_VALUE="${{ secrets.USER_API_VALUE }}"
-          SETUP_API_VALUE="${{ secrets.SETUP_API_VALUE }}"
-          JWT_SECRET="${{ secrets.JWT_SECRET }}"
-          HEADER_KEY="${{ secrets.HEADER_KEY }}"
           EUREKA_ADDRESS="${{ secrets.EUREKA_ADDRESS }}"
-          EUREKA_PORT="${{ secrets.EUREKA_ADDRESS }}"
-          BASE_ADDRESS="${{ secrets.BASE_ADDRESS }}"
-          DOC_ADDRESS="${{ secrets.DOC_ADDRESS }}"
-          PROD_DOMAIN="${{ secrets.PROD_DOMAIN }}"
+          EUREKA_PORT="${{ secrets.EUREKA_PORT }}"
           TOKEN_ISSUER="${{ secrets.T_ISSUER }}"
           TOKEN_ACCESS="${{ secrets.T_ACCESS }}"
           TOKEN_REFRESH="${{ secrets.T_REFRESH }}"
@@ -113,7 +99,7 @@ jobs:
           LOCATION="${{ secrets.LOCATION }}"
           EOF
           
-          ssh -o StrictHostKeyChecking=no $SERVER "chmod 600 /${{secrets.LOCATION}}/staging.env"
+          ssh -o StrictHostKeyChecking=no $SERVER "chmod 600 /${{secrets.LOCATION}}/hes-staging.env"
 
 
 
@@ -135,8 +121,8 @@ jobs:
 
             echo "Starting app..."
 
-             set -a
-            source /${{secrets.LOCATION}}/staging.env
+            set -a
+            source /${{secrets.LOCATION}}/hes-staging.env
             set +a
 
             nohup java -Dspring.profiles.active=staging \
@@ -173,7 +159,7 @@ jobs:
             $SERVER:$REMOTE_PATH
 
           echo "Writing env file..."
-          ssh -o StrictHostKeyChecking=no $SERVER "cat > /${{secrets.LOCATION}}/prod.env" << EOF
+          ssh -o StrictHostKeyChecking=no $SERVER "cat > /${{secrets.LOCATION}}/hes-prod.env" << EOF
           DB_HOST="${{ secrets.PROD_DB_HOST }}"
           DB_PORT="${{ secrets.PROD_DB_PORT }}"
           DB_NAME="${{ secrets.PROD_DB_NAME }}"
@@ -182,22 +168,8 @@ jobs:
           MONGO_HOST="${{ secrets.PROD_MONGO_HOST }}"
           MONGO_PORT="${{ secrets.PROD_MONGO_PORT }}"
           MONGO_DB="${{ secrets.PROD_MONGO_DB }}"
-          MONGO_USERNAME="${{ secrets.PROD_MONGO_USERNAME }}"
-          MONGO_PASSWORD="${{ secrets.PROD_MONGO_PASSWORD }}"
-          HES_PORT="${{ secrets.HES_PORT }}"
-          HES_ADDRESS="${{ secrets.PROD_HES_ADDRESS }}"
-          T_ADDRESS="${{ secrets.T_ADDRESS }}"
-          T_PORT="${{ secrets.T_PORT }}"
-          ADMIN_API_VALUE="${{ secrets.ADMIN_API_VALUE }}"
-          USER_API_VALUE="${{ secrets.USER_API_VALUE }}"
-          SETUP_API_VALUE="${{ secrets.SETUP_API_VALUE }}"
-          JWT_SECRET="${{ secrets.JWT_SECRET }}"
-          HEADER_KEY="${{ secrets.HEADER_KEY }}"
           EUREKA_ADDRESS="${{ secrets.EUREKA_ADDRESS }}"
           EUREKA_PORT="${{ secrets.EUREKA_PORT }}"
-          BASE_ADDRESS="${{ secrets.BASE_ADDRESS }}"
-          DOC_ADDRESS="${{ secrets.DOC_ADDRESS }}"
-          PROD_DOMAIN="${{ secrets.PROD_DOMAIN }}"
           TOKEN_ISSUER="${{ secrets.T_ISSUER }}"
           TOKEN_ACCESS="${{ secrets.T_ACCESS }}"
           TOKEN_REFRESH="${{ secrets.T_REFRESH }}"
@@ -207,7 +179,7 @@ jobs:
           LOCATION="${{ secrets.LOCATION }}"
           EOF
           
-          ssh -o StrictHostKeyChecking=no $SERVER "chmod 600 /${{secrets.LOCATION}}/prod.env"
+          ssh -o StrictHostKeyChecking=no $SERVER "chmod 600 /${{secrets.LOCATION}}/hes-prod.env"
 
           echo "Deploying (safe SSH execution)..."
           ssh -o StrictHostKeyChecking=no $SERVER 'bash -s' << 'EOF'
@@ -226,6 +198,10 @@ jobs:
             fi
 
             echo "Starting app..."
+
+            set -a
+            source /${{ secrets.LOCATION }}/hes-prod.env
+            set +a
 
             nohup java -Dspring.profiles.active=prod \
               -jar /${{secrets.LOCATION}}/hes-app.jar \
