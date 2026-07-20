@@ -5,6 +5,7 @@ import com.memmcol.hes.application.port.out.TxRxService;
 import com.memmcol.hes.exception.AssociationLostException;
 import com.memmcol.hes.infrastructure.dlms.DlmsReaderUtils;
 import com.memmcol.hes.model.DlmsResponse;
+import com.memmcol.hes.model.DlmsResponseStatus;
 import com.memmcol.hes.model.TokenWriteResult;
 import com.memmcol.hes.nettyUtils.SessionManagerMultiVendor;
 import gurux.dlms.GXDLMSClient;
@@ -63,6 +64,22 @@ public class TokenService {
             byte[][] writeRequest = client.write(tokenObject, 2);
 
             DlmsResponse response = dlmsReaderUtils.executeMethod(client,meterSerial,writeRequest);
+
+            if (response.getStatus() != DlmsResponseStatus.SUCCESS) {
+
+                Map<String, Object> result = new LinkedHashMap<>();
+                result.put("meterSerial", meterSerial);
+                result.put("token", tokenHex);
+                result.put("status", "failed");
+                result.put("dlmsStatus", response.getStatus());
+                result.put("message", response.getMessage());
+
+                return result;
+            }
+
+            if (response.getRawResponse() == null || response.getRawResponse().isBlank()) {
+                throw new IllegalStateException("Meter returned an empty DLMS response.");
+            }
 
             byte[] rawBytes = GXCommon.hexToBytes(response.getRawResponse().replace(" ", ""));
 
