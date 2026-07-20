@@ -5,6 +5,7 @@ import com.memmcol.hes.application.port.out.TxRxService;
 import com.memmcol.hes.exception.AssociationLostException;
 import com.memmcol.hes.infrastructure.dlms.DlmsReaderUtils;
 import com.memmcol.hes.model.DlmsResponse;
+import com.memmcol.hes.model.DlmsResponseStatus;
 import com.memmcol.hes.model.TokenWriteResult;
 import com.memmcol.hes.nettyUtils.SessionManagerMultiVendor;
 import gurux.dlms.GXDLMSClient;
@@ -38,7 +39,7 @@ public class TokenService {
     public static final int CREDIT_BALANCE_CLASS_ID = 3;
 
 
-    public Map<String, Object> writeToken(String meterSerial, String creditToken) throws Exception {
+    public Map<String, Object> writeToken(String meterSerial, String tokenHex) throws Exception {
         return meterLockPort.withExclusive(meterSerial, () -> {
             GXDLMSClient client = sessionManager.getOrCreateClient(meterSerial);
             if (client == null) {
@@ -50,10 +51,10 @@ public class TokenService {
             // 2. Define the Token Object
             GXDLMSData tokenObject = new GXDLMSData(TOKEN_OBIS);
 
-            log.info("Step 1: Writing credit token to meter {}", meterSerial);
-            log.debug("Token hex bytes: {}", GXCommon.hexToBytes(creditToken));
+            log.info("Step 1: Writing token to meter {}", meterSerial);
+            log.debug("Token hex bytes: {}", GXCommon.hexToBytes(tokenHex));
 
-            byte[] tokenBytes = GXCommon.hexToBytes(creditToken);
+            byte[] tokenBytes = GXCommon.hexToBytes(tokenHex);
 
             // 4. SET THE VALUE INSIDE THE OBJECT FIRST
             tokenObject.setValue(tokenBytes);
@@ -64,13 +65,29 @@ public class TokenService {
 
             DlmsResponse response = dlmsReaderUtils.executeMethod(client,meterSerial,writeRequest);
 
+            if (response.getStatus() != DlmsResponseStatus.SUCCESS) {
+
+                Map<String, Object> result = new LinkedHashMap<>();
+                result.put("meterSerial", meterSerial);
+                result.put("token", tokenHex);
+                result.put("status", "failed");
+                result.put("dlmsStatus", response.getStatus());
+                result.put("message", response.getMessage());
+
+                return result;
+            }
+
+            if (response.getRawResponse() == null || response.getRawResponse().isBlank()) {
+                throw new IllegalStateException("Meter returned an empty DLMS response.");
+            }
+
             byte[] rawBytes = GXCommon.hexToBytes(response.getRawResponse().replace(" ", ""));
 
             TokenWriteResult tokenResult = dlmsReaderUtils.parseTokenResponse(rawBytes);
 
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("meterSerial", meterSerial);
-            result.put("creditToken", creditToken);
+            result.put("token", tokenHex);
             result.put("status", tokenResult.isSuccess() ? "success" : "failed");
             result.put("dlmsStatus", response.getStatus());
             result.put("message", response.getMessage());
