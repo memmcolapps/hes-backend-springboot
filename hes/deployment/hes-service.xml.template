@@ -1,0 +1,58 @@
+<service>
+
+  <id>hes-service</id>
+
+  <name>Hes Service</name>
+
+  <description>Spring Boot Hes</description>
+
+  <executable>java</executable>
+
+  <arguments>
+    -Xms512m
+    -Xmx2g
+    -XX:+UseG1GC
+    -Xlog:gc*:file=%BASE%\logs\gc.log:time
+
+    -Dspring.profiles.active=window
+
+    -XX:ErrorFile=%BASE%\logs\hs_err_pid%p.log
+
+    -jar "%BASE%\hes-service.jar"
+  </arguments>
+
+  <workingdirectory>%BASE%</workingdirectory>
+
+  <env name="EUREKA_ADDRESS" value="${EUREKA_ADDRESS}"/>
+  <env name="EUREKA_PORT" value="${EUREKA_PORT}"/>
+  <env name="WIN_LOCATION" value="${WIN_LOCATION}"/>
+  <env name="PROD_DB_HOST" value="${PROD_DB_HOST}"/>
+  <env name="PROD_DB_PORT" value="${PROD_DB_PORT}"/>
+  <env name="PROD_DB_NAME" value="${PROD_DB_NAME}"/>
+  <env name="PROD_DB_USERNAME" value="${PROD_DB_USERNAME}"/>
+  <env name="PROD_DB_PASSWORD" value="${PROD_DB_PASSWORD}"/>
+  <env name="PROD_MONGO_HOST" value="${PROD_MONGO_HOST}"/>
+  <env name="PROD_MONGO_PORT" value="${PROD_MONGO_PORT}"/>
+  <env name="PROD_MONGO_DB" value="${PROD_MONGO_DB}"/>
+  <env name="PROD_MONGO_USERNAME" value="${PROD_MONGO_USERNAME}"/>
+  <env name="PROD_MONGO_PASSWORD" value="${PROD_MONGO_PASSWORD}"/>
+
+  <env name="T_ISSUER" value="${T_ISSUER}"/>
+  <env name="T_ACCESS" value="${T_ACCESS}"/>
+  <env name="T_REFRESH" value="${T_REFRESH}"/>
+  <env name="T_SECRET" value="${T_SECRET}"/>
+  <env name="SPRING_SECURITY_USER" value="${SPRING_SECURITY_USER}"/>
+  <env name="SPRING_SECURITY_PASSWORD" value="${SPRING_SECURITY_PASSWORD}"/>
+  <env name="T_REFRESH" value="${T_REFRESH}"/>
+  <env name="T_SECRET" value="${T_SECRET}"/>
+
+  <log mode="roll-by-size">
+    <sizeThreshold>10240</sizeThreshold>
+    <keepFiles>5</keepFiles>
+  </log>
+
+  <onfailure action="restart" delay="10 sec"/>
+  <onfailure action="restart" delay="30 sec"/>
+  <onfailure action="restart" delay="60 sec"/>
+
+</service>
