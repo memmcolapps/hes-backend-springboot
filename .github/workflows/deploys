@@ -5,10 +5,12 @@ on:
     branches:
       - staging
       - main
+      - window
 
 
 jobs:
-  deploy:
+  deploy-linux:
+    if: github.ref == 'refs/heads/staging' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
 
     steps:
@@ -111,231 +113,439 @@ jobs:
                 /opt/java-webservices/hes-app.jar \
                 > /opt/java-webservices/hes-prod.log 2>&1 &
           EOF
+  deploy-windows:
+    if: github.ref == 'refs/heads/window'
 
+    runs-on: ubuntu-latest
 
-#name: Deploy Spring Boot to Server
-#
-#on:
-#  push:
-#    branches:
-#      - staging
-#      - main
-#
-#jobs:
-#  deploy:
-#    runs-on: ubuntu-latest
-#
-#    steps:
-#      # =====================
-#      # Checkout source code
-#      # =====================
-#      - name: Checkout code
-#        uses: actions/checkout@v3
-#
-#      # =====================
-#      # Setup Java
-#      # =====================
-#      - name: Set up JDK 17
-#        uses: actions/setup-java@v4
-#        with:
-#          distribution: temurin
-#          java-version: "17"
-#
-#      # =====================
-#      # Build application
-#      # =====================
-#      - name: Build with Maven
-#        run: |
-#          chmod +x ./mvnw
-#          ./mvnw clean package -DskipTests
-#
-#      # =====================================================
-#      # STAGING DEPLOYMENT
-#      # =====================================================
-#      - name: Deploy to Staging
-#        if: github.ref == 'refs/heads/staging'
-#        uses: appleboy/ssh-action@v0.1.7
-#        with:
-#          host: ${{ secrets.STAGING_SERVER_HOST }}
-#          username: ${{ secrets.STAGING_SERVER_USER }}
-#          key: ${{ secrets.STAGING_SSH_PRIVATE_KEY }}
-#          script: |
-#            set -e
-#
-#            echo "Deploying to STAGING..."
-#
-#            mkdir -p /opt/java-webservices
-#            pkill -f hes-service.jar || true
-#
-#      - name: Copy JAR to Staging
-#        if: github.ref == 'refs/heads/staging'
-#        uses: appleboy/scp-action@v0.1.7
-#        with:
-#          host: ${{ secrets.STAGING_SERVER_HOST }}
-#          username: ${{ secrets.STAGING_SERVER_USER }}
-#          key: ${{ secrets.STAGING_SSH_PRIVATE_KEY }}
-#          source: "target/*.jar"
-#          target: "/opt/java-webservices/app.jar"
-#
-#      - name: Start Staging App (secure env loading)
-#        if: github.ref == 'refs/heads/staging'
-#        uses: appleboy/ssh-action@v0.1.7
-#        with:
-#          host: ${{ secrets.STAGING_SERVER_HOST }}
-#          username: ${{ secrets.STAGING_SERVER_USER }}
-#          key: ${{ secrets.STAGING_SSH_PRIVATE_KEY }}
-#          script: |
-#            set -e
-#
-#            echo "Loading staging environment..."
-#            source /etc/gridflex-staging.env
-#
-#            echo "Starting staging application..."
-#            nohup java -jar /opt/java-webservices/app.jar \
-#              --spring.profiles.active=staging \
-#              > /opt/java-webservices/staging.log 2>&1 &
-#
-#            echo "Staging deployed successfully."
-#
-#      # =====================================================
-#      # PRODUCTION DEPLOYMENT
-#      # =====================================================
-#      - name: Deploy to Production
-#        if: github.ref == 'refs/heads/main'
-#        uses: appleboy/ssh-action@v0.1.7
-#        with:
-#          host: ${{ secrets.PROD_SERVER_HOST }}
-#          username: ${{ secrets.PROD_SERVER_USER }}
-#          key: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
-#          script: |
-#            set -e
-#
-#            echo "Deploying to PRODUCTION..."
-#
-#            mkdir -p /opt/java-webservices
-#            pkill -f gridflex-backend-service.jar || true
-#
-#      - name: Copy JAR to Production
-#        if: github.ref == 'refs/heads/main'
-#        uses: appleboy/scp-action@v0.1.7
-#        with:
-#          host: ${{ secrets.PROD_SERVER_HOST }}
-#          username: ${{ secrets.PROD_SERVER_USER }}
-#          key: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
-#          source: "target/*.jar"
-#          target: "/opt/java-webservices/hes-service.jar"
-#
-#      - name: Start Production App (secure env loading)
-#        if: github.ref == 'refs/heads/main'
-#        uses: appleboy/ssh-action@v0.1.7
-#        with:
-#          host: ${{ secrets.PROD_SERVER_HOST }}
-#          username: ${{ secrets.PROD_SERVER_USER }}
-#          key: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
-#          script: |
-#            set -e
-#
-#            echo "Loading production environment..."
-#            source /etc/credentials.env
-#
-#            echo "Starting production application..."
-#            nohup java -jar /opt/java-webservices/hes-service.jar \
-#              --spring.profiles.active=prod \
-#              > /opt/java-webservices/hes.log 2>&1 &
-#
-#            echo "Production deployed successfully."
+    env:
+      APP_NAME: portal-onboard-service
+      SERVICE_NAME: portal-onboard-service
+      DEPLOY_DIR: 'C:\${{ secrets.WIN_LOCATION }}'
+      JAR_NAME: portal-onboard-service.jar
 
-#
-#name: HES CI/CD Pipeline
-#
-#on:
-#  push:
-#    branches: ["main"]
-#
-#jobs:
-#  build:
-#    runs-on: ubuntu-latest
-#
-#    steps:
-#      - name: Checkout repository
-#        uses: actions/checkout@v4
-#
-#      - name: Set up JDK 21
-#        uses: actions/setup-java@v4
-#        with:
-#          java-version: '21'
-#          distribution: 'temurin'
-#
-#      - name: Cache Maven dependencies
-#        uses: actions/cache@v4
-#        with:
-#          path: ~/.m2
-#          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
-#          restore-keys: |
-#            ${{ runner.os }}-maven-
-#      - name: Make mvnw executable
-#        run: chmod +x hes/mvnw
-#
-#      - name: Build with Maven
-#        run: ./mvnw clean package -Dmaven.test.skip=true
-#        working-directory: hes
-#
-#
-#      - name: Upload artifact
-#        uses: actions/upload-artifact@v4
-#        with:
-#          name: hes-app
-#          path: hes/target/*.jar
-#
-#  deploy:
-#    runs-on: ubuntu-latest
-#    needs: build
-#
-#    steps:
-#      - name: Download artifact
-#        uses: actions/download-artifact@v4
-#        with:
-#          name: hes-app
-#
-#      - name: Deploy to Factory Server
-#        uses: appleboy/scp-action@v0.1.7
-#        with:
-#          host: ${{ secrets.SERVER_HOST }}
-#          username: ${{ secrets.SERVER_USER }}
-#          key: ${{ secrets.SERVER_SSH_KEY }}
-#          source: "*.jar"
-#          target: "/home/${{ secrets.SERVER_USER }}/hes-app/"
-#
-#      - name: Restart HES Application
-#        uses: appleboy/ssh-action@v0.1.7
-#        with:
-#          host: ${{ secrets.SERVER_HOST }}
-#          username: ${{ secrets.SERVER_USER }}
-#          key: ${{ secrets.SERVER_SSH_KEY }}
-#          script: |
-#            echo "Navigating to app directory..."
-#            cd /home/${{ secrets.SERVER_USER }}/hes-app || { echo "Directory not found"; exit 1; }
-#            jar_file=$(ls *.jar)
-#
-#             echo "Stopping process on port 9061..."
-#             lsof -ti tcp:9061 | xargs -r kill -9
-#             sleep 5
-#
-#            if [[ ! -f hes-0.0.1-SNAPSHOT.jar ]]; then
-#                echo "JAR file not found!"
-#            exit 1
-#            fi
-#
-#            echo "Starting new process with 'prod' profile..."
-#
-#            # Export environment variables for Spring Boot
-#            export SPRING_PROFILES_ACTIVE=prod
-#            export SPRING_DATASOURCE_USERNAME=${{ secrets.DB_USERNAME }}
-#            export SPRING_DATASOURCE_PASSWORD=${{ secrets.DB_PASSWORD }}
-#            export SPRING_SECURITY_USER=${{ secrets.SPRING_SECURITY_USER }}
-#            export SPRING_SECURITY_PASSWORD=${{ secrets.SPRING_SECURITY_PASSWORD }}
-#
-#            nohup java -jar "$jar_file" --spring.profiles.active=prod > app.log 2>&1 &
-#
-#
-#            echo "Application started."
+    steps:
+      #######################################################
+      # Checkout Repository
+      #######################################################
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      #######################################################
+      # Setup Java
+      #######################################################
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      # ==========================
+      # Build
+      # ==========================
+      - name: Build Application
+        run: mvn clean package -DskipTests
+
+      #######################################################
+      # Locate JAR
+      #######################################################
+      - name: Locate Executable JAR
+        shell: bash
+        run: |
+
+          JAR=$(find . \
+            -type f \
+            -path "*/target/*.jar" \
+            ! -name "*sources.jar" \
+            ! -name "*javadoc.jar" \
+            ! -name "*original*.jar" \
+            | head -n1)
+
+          if [ -z "$JAR" ]; then
+            echo "Executable jar not found."
+            exit 1
+          fi
+
+          echo "Found: $JAR"
+
+          cp "$JAR" app.jar
+
+      #######################################################
+      # Generate WinSW XML
+      #######################################################
+      - name: Generate WinSW XML
+        shell: bash
+        run: |
+          cp deployment/portal-onboard-service.xml.template portal-onboard-service.xml
+          
+          PROD_DB_PASSWORD_XML=$(printf '%s' "${{ secrets.PROD_DB_PASSWORD }}" \
+            | sed -e 's/&/\&amp;/g' \
+            -e 's/</\&lt;/g' \
+            -e 's/>/\&gt;/g' \
+            -e "s/'/\&apos;/g" \
+            -e 's/"/\&quot;/g')
+
+          PROD_DB_PASSWORD_XML=$(printf '%s' "$PROD_DB_PASSWORD_XML" | sed 's/&/\\&/g')
+          
+          sed -i "s|\${EUREKA_ADDRESS}|${{ secrets.EUREKA_ADDRESS }}|g" portal-onboard-service.xml
+          sed -i "s|\${EUREKA_PORT}|${{ secrets.EUREKA_PORT }}|g" portal-onboard-service.xml
+          sed -i "s|\${WIN_LOCATION}|C:/${{secrets.WIN_LOCATION}}|g" portal-onboard-service.xml
+          sed -i "s|\${PROD_DB_HOST}|${{ secrets.PROD_DB_HOST }}|g" portal-onboard-service.xml
+          sed -i "s|\${PROD_DB_PORT}|${{ secrets.PROD_DB_PORT }}|g" portal-onboard-service.xml
+          sed -i "s|\${PROD_DB_NAME}|${{ secrets.PROD_DB_NAME }}|g" portal-onboard-service.xml
+          
+          sed -i "s|\${PROD_DB_USERNAME}|${{ secrets.PROD_DB_USERNAME }}|g" portal-onboard-service.xml
+          sed -i "s|\${PROD_DB_PASSWORD}|${PROD_DB_PASSWORD_XML}|g" portal-onboard-service.xml
+          sed -i "s|\${PROD_MONGO_HOST}|${{ secrets.PROD_MONGO_HOST }}|g" portal-onboard-service.xml
+          
+          sed -i "s|\${PROD_MONGO_PORT}|${{ secrets.PROD_MONGO_PORT }}|g" portal-onboard-service.xml
+          sed -i "s|\${PROD_MONGO_DB}|${{ secrets.PROD_MONGO_DB }}|g" portal-onboard-service.xml
+          sed -i "s|\${PROD_MONGO_USERNAME}|${{ secrets.PROD_MONGO_USERNAME }}|g" portal-onboard-service.xml
+          sed -i "s|\${PROD_MONGO_PASSWORD}|${{ secrets.PROD_MONGO_PASSWORD }}|g" portal-onboard-service.xml
+          
+          echo "Generated WinSW XML:"
+          
+          cat portal-onboard-service.xml
+
+      #######################################################
+      # Configure SSH
+      #######################################################
+      - name: Configure SSH
+        shell: bash
+        run: |
+
+          mkdir -p ~/.ssh
+
+          echo "${{ secrets.WINDOW_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+
+          chmod 600 ~/.ssh/id_rsa
+
+          ssh-keyscan ${{ secrets.WINDOW_SERVER_HOST }} >> ~/.ssh/known_hosts
+
+      #######################################################
+      # Create Deployment Directory
+      #######################################################
+      - name: Create Deployment Directory
+        run: |
+          ssh \
+          -i ~/.ssh/id_rsa \
+          -o StrictHostKeyChecking=no \
+          -o ServerAliveInterval=30 \
+          -o ServerAliveCountMax=10 \
+          ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} \
+          "powershell -NoProfile -NonInteractive -" <<'EOF'
+          
+          $ErrorActionPreference = 'Stop'
+          
+          New-Item `
+          -ItemType Directory `
+          -Force `
+          -Path 'C:/${{ secrets.WIN_LOCATION }}' | Out-Null
+          
+          New-Item `
+          -ItemType Directory `
+          -Force `
+          -Path 'C:/${{ secrets.WIN_LOCATION }}/logs' | Out-Null
+          
+          Write-Host "Deployment directory ready."
+          
+          EOF
+
+      #######################################################
+      # Stop WinSW Service
+      #######################################################
+      - name: Stop Windows Service
+        run: |
+          ssh \
+            -i ~/.ssh/id_rsa \
+            -o StrictHostKeyChecking=no \
+            -o ServerAliveInterval=30 \
+            -o ServerAliveCountMax=10 \
+            ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} \
+            "powershell -NoProfile -NonInteractive -" <<'EOF'
+
+          $ErrorActionPreference = 'Stop'
+
+          $service = Get-Service -Name 'portal-onboard-service' -ErrorAction Stop
+
+          Write-Host "Current Status: $($service.Status)"
+
+          if ($service.Status -eq 'Running') {
+
+              Write-Host "Stopping service..."
+
+              Stop-Service -Name 'portal-onboard-service'
+
+              $service.WaitForStatus(
+                  'Stopped',
+                  '00:00:30'
+              )
+
+          }
+
+          $service = Get-Service -Name 'portal-onboard-service'
+
+          if ($service.Status -ne 'Stopped') {
+
+              throw "Failed to stop service."
+
+          }
+
+          Write-Host "Service stopped successfully."
+
+          EOF
+
+      #######################################################
+      # Backup Existing JAR
+      #######################################################
+      - name: Backup Existing JAR
+        run: |
+          ssh \
+            -i ~/.ssh/id_rsa \
+            -o StrictHostKeyChecking=no \
+            -o ServerAliveInterval=30 \
+            -o ServerAliveCountMax=10 \
+            ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} \
+            "powershell -NoProfile -NonInteractive -" <<'EOF'
+
+          $ErrorActionPreference='Stop'
+
+          $jar="C:/${{ secrets.WIN_LOCATION }}/portal-onboard-service.jar"
+
+          $backup="C:/${{ secrets.WIN_LOCATION }}/portal-onboard-service.jar.bak"
+
+          if(Test-Path $jar){
+
+              Copy-Item `
+                  $jar `
+                  $backup `
+                  -Force
+
+              Write-Host "Backup completed."
+
+          }
+          else{
+
+              Write-Host "No existing JAR. Backup skipped."
+
+          }
+
+          EOF
+
+      #######################################################
+      # Upload New JAR
+      #######################################################
+      - name: Upload Application
+        run: |
+
+          scp \
+            -i ~/.ssh/id_rsa \
+            -o StrictHostKeyChecking=no \
+            -o ServerAliveInterval=30 \
+            -o ServerAliveCountMax=10 \
+            app.jar \
+            "${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}:/C:/${{secrets.WIN_LOCATION}}/portal-onboard-service.jar"
+
+      #######################################################
+      # Upload WinSW XML
+      #######################################################
+      - name: Upload WinSW XML
+        run: |
+          scp \
+            -i ~/.ssh/id_rsa \
+            -o StrictHostKeyChecking=no \
+            -o ServerAliveInterval=30 \
+            -o ServerAliveCountMax=10 \
+            portal-onboard-service.xml \
+            "${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}:/C:/${{secrets.WIN_LOCATION}}/portal-onboard-service.xml"
+
+      #######################################################
+      # Verify Uploaded Files
+      #######################################################
+      - name: Verify Upload
+        run: |
+          ssh \
+            -i ~/.ssh/id_rsa \
+            -o StrictHostKeyChecking=no \
+            -o ServerAliveInterval=30 \
+            -o ServerAliveCountMax=10 \
+            ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} \
+            "powershell -NoProfile -NonInteractive -" <<'EOF'
+
+              $files = @(
+                  'C:/${{ secrets.WIN_LOCATION }}/portal-onboard-service.exe',
+                  'C:/${{ secrets.WIN_LOCATION }}/portal-onboard-service.jar',
+                  'C:/${{ secrets.WIN_LOCATION }}/portal-onboard-service.xml'
+              )
+          
+              foreach($file in $files){
+          
+                  if(!(Test-Path $file)){
+                      throw "Missing: $file"
+                  }
+          
+                  Write-Host "Verified: $file"
+          
+              }
+          
+              Get-ChildItem C:\${{ secrets.WIN_LOCATION }}
+
+            END
+
+      #######################################################
+      # Start Windows Service
+      #######################################################
+      - name: Start Windows Service
+        run: |
+          ssh \
+            -i ~/.ssh/id_rsa \
+            -o StrictHostKeyChecking=no \
+            -o ServerAliveInterval=30 \
+            -o ServerAliveCountMax=10 \
+            ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} \
+            "powershell -NoProfile -NonInteractive -" <<'EOF'
+
+          $ErrorActionPreference='Stop'
+
+          Write-Host "Starting portal-onboard-service..."
+
+          Start-Service -Name "portal-onboard-service"
+
+          Start-Sleep -Seconds 5
+
+          $service = Get-Service -Name "portal-onboard-service"
+
+          $service.WaitForStatus(
+              "Running",
+              "00:00:30"
+          )
+
+          $service = Get-Service -Name "portal-onboard-service"
+
+          if($service.Status -ne "Running"){
+
+              throw "Service failed to start."
+
+          }
+
+          Write-Host "Service started successfully."
+
+          EOF
+
+      #######################################################
+      # Verify Java Process
+      #######################################################
+      - name: Verify Java Process
+        run: |
+          ssh \
+            -i ~/.ssh/id_rsa \
+            -o StrictHostKeyChecking=no \
+            -o ServerAliveInterval=30 \
+            -o ServerAliveCountMax=10 \
+            ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} \
+            "powershell -NoProfile -NonInteractive -" <<'EOF'
+
+          $ErrorActionPreference='Stop'
+
+          $java = Get-CimInstance Win32_Process |
+          Where-Object {
+
+              $_.Name -eq "java.exe" -and
+              $_.CommandLine -like "*portal-onboard-service.jar*"
+
+          }
+
+          if(!$java){
+
+              throw "Java process not running."
+
+          }
+
+          Write-Host "Java PID: $($java.ProcessId)"
+
+          EOF
+
+      #######################################################
+      # Verify Deployment
+      #######################################################
+      - name: Verify Deployment
+        run: |
+          ssh \
+            -i ~/.ssh/id_rsa \
+            -o StrictHostKeyChecking=no \
+            -o ServerAliveInterval=30 \
+            -o ServerAliveCountMax=10 \
+            ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} \
+            powershell -Command "
+
+            Write-Host ''
+
+            Write-Host '========== SERVICE =========='
+
+            Get-Service portal-onboard-service
+
+            Write-Host ''
+
+            Write-Host '========== FILES =========='
+
+            Get-ChildItem C:/${{ secrets.WIN_LOCATION}}
+
+            Write-Host ''
+
+            Write-Host '========== LOGS =========='
+
+            Get-ChildItem C:/${{ secrets.WIN_LOCATION }}/logs -ErrorAction SilentlyContinue
+
+            "
+      #######################################################
+      # Display Logs On Failure
+      #######################################################
+      - name: Display Logs
+        if: failure()
+        run: |
+          ssh \
+            -i ~/.ssh/id_rsa \
+            -o StrictHostKeyChecking=no \
+            -o ServerAliveInterval=30 \
+            -o ServerAliveCountMax=10 \
+            ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} \
+            powershell -Command "
+
+            Write-Host ''
+            Write-Host '========== WinSW OUT =========='
+
+            if(Test-Path 'C:/${{ secrets.WIN_LOCATION }}/portal-onboard-service.out.log'){
+                Get-Content 'C:/${{ secrets.WIN_LOCATION }}/portal-onboard-service.out.log' -Tail 100
+            }
+
+            Write-Host ''
+            Write-Host '========== WinSW ERR =========='
+
+            if(Test-Path 'C:/${{ secrets.WIN_LOCATION }}/portal-onboard-service.err.log'){
+                Get-Content 'C:/${{ secrets.WIN_LOCATION }}/portal-onboard-service.err.log' -Tail 100
+            }
+
+            Write-Host ''
+            Write-Host '========== WRAPPER LOG =========='
+
+            if(Test-Path 'C:/${{ secrets.WIN_LOCATION }}/wrapper.log'){
+                Get-Content 'C:/${{ secrets.WIN_LOCATION }}/wrapper.log' -Tail 100
+            }
+
+            Write-Host ''
+            Write-Host '========== SPRING LOG =========='
+
+            if(Test-Path 'C:/${{ secrets.WIN_LOCATION }}/logs/portal.log'){
+                Get-Content 'C:/${{ secrets.WIN_LOCATION }}/logs/portal.log' -Tail 100
+            }
+
+            Write-Host ''
+            Write-Host '========== GC LOG =========='
+
+            if(Test-Path 'C:/${{ secrets.WIN_LOCATION }}/logs/gc.log'){
+                Get-Content 'C:/${{ secrets.WIN_LOCATION }}/logs/gc.log' -Tail 100
+            }
+
+            "
+
