@@ -524,19 +524,30 @@ jobs:
 #          EOF
 
       #######################################################
-      # Upload New JAR
+      # Upload Application
       #######################################################
       - name: Upload Application
         working-directory: hes
         run: |
+          rsync -avzP \
+          -e "ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no" \
+          app.jar \
+          "${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}:/C:/${{ secrets.WIN_LOCATION }}/hes-service.new.jar"
+#      #######################################################
+#      # Upload New JAR
+#      #######################################################
+#      - name: Upload Application
+#        working-directory: hes
+#        run: |
+#
+#          scp \
+#            -i ~/.ssh/id_rsa \
+#            -o StrictHostKeyChecking=no \
+#            -o ServerAliveInterval=30 \
+#            -o ServerAliveCountMax=10 \
+#            app.jar \
+#            "${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}:/C:/${{secrets.WIN_LOCATION}}/hes-service.new.jar"
 
-          scp \
-            -i ~/.ssh/id_rsa \
-            -o StrictHostKeyChecking=no \
-            -o ServerAliveInterval=30 \
-            -o ServerAliveCountMax=10 \
-            app.jar \
-            "${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}:/C:/${{secrets.WIN_LOCATION}}/hes-service.new.jar"
 
       #######################################################
       # Upload WinSW XML
