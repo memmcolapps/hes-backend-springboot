@@ -33,7 +33,7 @@ jobs:
       # Build
       # =====================
       - name: Build with Maven
-        working-directory: hes-service
+        working-directory: hes
         run: |
           chmod +x ./mvnw
           ./mvnw package -DskipTests
@@ -42,7 +42,7 @@ jobs:
       # Resolve JAR
       # =====================
       - name: Resolve JAR
-        working-directory: hes-service
+        working-directory: hes
         run: |
           JAR_FILE=$(find target -name "*.jar" ! -name "*original*.jar" | head -n 1)
 
