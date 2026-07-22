@@ -436,92 +436,109 @@ jobs:
           EOF
 
       #######################################################
-  # Stop WinSW Service
-  #######################################################
+      # Stop WinSW Service
+      #######################################################
       - name: Stop Windows Service
         run: |
           ssh \
-          -i ~/.ssh/id_rsa \
-          -o StrictHostKeyChecking=no \
-          -o ServerAliveInterval=30 \
-          -o ServerAliveCountMax=10 \
-          ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} \
-          "powershell -NoProfile -NonInteractive -" <<'EOF'
-          
-          $ErrorActionPreference='Stop'
-          
-          $service = Get-Service hes-service -ErrorAction Stop
-          
-          if($service.Status -eq "Running"){
-          
-           Write-Host "Stopping service..."
-          
-           Stop-Service hes-service -Force
-          
-           $service.WaitForStatus(
-               "Stopped",
-               "00:00:30"
-           )
-          
+            -i ~/.ssh/id_rsa \
+            -o StrictHostKeyChecking=no \
+            -o ServerAliveInterval=30 \
+            -o ServerAliveCountMax=10 \
+            ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} \
+            "powershell -NoProfile -NonInteractive -" <<'EOF'
+
+          $ErrorActionPreference = 'Stop'
+
+          $service = Get-Service -Name 'hes-service' -ErrorAction Stop
+
+          Write-Host "Current Status: $($service.Status)"
+
+          if ($service.Status -eq 'Running') {
+
+              Write-Host "Stopping service..."
+
+              Stop-Service -Name 'hes-service'
+
+              $service.WaitForStatus(
+                  'Stopped',
+                  '00:00:30'
+              )
+
           }
-          
-          Write-Host "Checking Java..."
-          
-          $java = Get-CimInstance Win32_Process |
-           Where-Object {
-               $_.CommandLine -like "*hes-service.jar*"
-           }
-          
-          if($java){
-          
-           Write-Host "Killing Java PID $($java.ProcessId)"
-          
-           Stop-Process -Id $java.ProcessId -Force
-          
-           Start-Sleep 3
-          
+
+          $service = Get-Service -Name 'hes-service'
+
+          if ($service.Status -ne 'Stopped') {
+
+              throw "Failed to stop service."
+
           }
+
+          Write-Host "Service stopped successfully."
+
+          EOF
+
+      #######################################################
+      # Verify File Lock
+      #######################################################
+      - name: Check File Lock
+        run: |
+          ssh \
+            -i ~/.ssh/id_rsa \
+            -o StrictHostKeyChecking=no \
+            ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} \
+            "powershell -NoProfile -NonInteractive -" <<'EOF'
           
-          Write-Host "Service stopped."
+          Write-Host "===== Service ====="
+          Get-Service hes-service
+          
+          Write-Host "===== Java ====="
+          
+          Get-CimInstance Win32_Process |
+            Where-Object {
+              $_.Name -eq 'java.exe'
+            } |
+            Select-Object ProcessId, CommandLine
           
           EOF
 
-#      #######################################################
-#      # Backup Existing JAR
-#      #######################################################
-#      - name: Backup Existing JAR
-#        run: |
-#          ssh \
-#            -i ~/.ssh/id_rsa \
-#            -o StrictHostKeyChecking=no \
-#            -o ServerAliveInterval=30 \
-#            -o ServerAliveCountMax=10 \
-#            ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} \
-#            "powershell -NoProfile -NonInteractive -" <<'EOF'
-#
-#          $ErrorActionPreference='Stop'
-#
-#          $jar="C:/${{ secrets.WIN_LOCATION }}/hes-service.jar"
-#
-#          $backup="C:/${{ secrets.WIN_LOCATION }}/hes-service.jar.bak"
-#
-#          if(Test-Path $jar){
-#
-#              Copy-Item `
-#                  $jar `
-#                  $backup `
-#                  -Force
-#
-#              Write-Host "Backup completed."
-#
-#          }
-#          else{
-#
-#              Write-Host "No existing JAR. Backup skipped."
-#
-#          }
-#
-#          EOF
+      #######################################################
+      # Backup Existing JAR
+      #######################################################
+      - name: Backup Existing JAR
+        run: |
+          ssh \
+            -i ~/.ssh/id_rsa \
+            -o StrictHostKeyChecking=no \
+            -o ServerAliveInterval=30 \
+            -o ServerAliveCountMax=10 \
+            ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} \
+            "powershell -NoProfile -NonInteractive -" <<'EOF'
+
+          $ErrorActionPreference='Stop'
+
+          $jar="C:/${{ secrets.WIN_LOCATION }}/hes-service.jar"
+
+          $backup="C:/${{ secrets.WIN_LOCATION }}/hes-service.jar.bak"
+
+          if(Test-Path $jar){
+
+              Copy-Item `
+                  $jar `
+                  $backup `
+                  -Force
+
+              Write-Host "Backup completed."
+
+          }
+          else{
+
+              Write-Host "No existing JAR. Backup skipped."
+
+          }
+
+          EOF
 
       #######################################################
       # Upload New JAR
@@ -536,7 +553,7 @@ jobs:
             -o ServerAliveInterval=30 \
             -o ServerAliveCountMax=10 \
             app.jar \
-            "${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}:/C:/${{secrets.WIN_LOCATION}}/hes-service.new.jar"
+            "${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}:/C:/${{secrets.WIN_LOCATION}}/hes-service.jar"
 
       #######################################################
       # Upload WinSW XML
@@ -552,275 +569,78 @@ jobs:
             hes-service.xml \
             "${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}:/C:/${{secrets.WIN_LOCATION}}/hes-service.xml"
 
-
       #######################################################
-      # Verify Upload
+      # Verify Uploaded Files
       #######################################################
       - name: Verify Upload
         run: |
           ssh \
-          -i ~/.ssh/id_rsa \
-          -o StrictHostKeyChecking=no \
-          ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} \
-          "powershell -NoProfile -NonInteractive -" <<'EOF'
-          
-          $files = @(
-           'C:/${{ secrets.WIN_LOCATION }}/hes-service.exe',
-           'C:/${{ secrets.WIN_LOCATION }}/hes-service.new.jar',
-           'C:/${{ secrets.WIN_LOCATION }}/hes-service.xml'
-          )
-          
-          foreach($file in $files){
-          
-           if(!(Test-Path $file)){
-               throw "Missing: $file"
-           }
-          
-           Write-Host "Verified: $file"
-          
-          }
-          
-          EOF
-#      #######################################################
-#      # Verify Uploaded Files
-#      #######################################################
-#      - name: Verify Upload
-#        run: |
-#          ssh \
-#            -i ~/.ssh/id_rsa \
-#            -o StrictHostKeyChecking=no \
-#            -o ServerAliveInterval=30 \
-#            -o ServerAliveCountMax=10 \
-#            ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} \
-#            "powershell -NoProfile -NonInteractive -" <<'EOF'
-#
-#              $files = @(
-#                  'C:/${{ secrets.WIN_LOCATION }}/hes-service.exe',
-#                  'C:/${{ secrets.WIN_LOCATION }}/hes-service.jar',
-#                  'C:/${{ secrets.WIN_LOCATION }}/hes-service.xml'
-#              )
-#
-#              foreach($file in $files){
-#
-#                  if(!(Test-Path $file)){
-#                      throw "Missing: $file"
-#                  }
-#
-#                  Write-Host "Verified: $file"
-#
-#              }
-#
-#              Get-ChildItem C:\${{ secrets.WIN_LOCATION }}
-#
-#            END
-
-      #######################################################
-      # Replace Application
-      #######################################################
-      - name: Replace Application
-        run: |
-          ssh \
             -i ~/.ssh/id_rsa \
             -o StrictHostKeyChecking=no \
+            -o ServerAliveInterval=30 \
+            -o ServerAliveCountMax=10 \
             ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} \
             "powershell -NoProfile -NonInteractive -" <<'EOF'
 
-          $ErrorActionPreference='Stop'
-
-          $dir = "C:\${{ secrets.WIN_LOCATION }}"
-
-          $newJar = Join-Path $dir "hes-service.new.jar"
-          $jar    = Join-Path $dir "hes-service.jar"
-
-          if(!(Test-Path $newJar)){
-              throw "Uploaded jar missing."
-          }
-
-          Write-Host "Waiting for SFTP..."
-
-          Start-Sleep 5
-
-          if(Test-Path $jar){
-
-              $timeout=30
-
-              while($timeout -gt 0){
-
-                  try{
-
-                      Remove-Item $jar -Force -ErrorAction Stop
-
-                      break
-
+              $files = @(
+                  'C:/${{ secrets.WIN_LOCATION }}/hes-service.exe',
+                  'C:/${{ secrets.WIN_LOCATION }}/hes-service.jar',
+                  'C:/${{ secrets.WIN_LOCATION }}/hes-service.xml'
+              )
+          
+              foreach($file in $files){
+          
+                  if(!(Test-Path $file)){
+                      throw "Missing: $file"
                   }
-                  catch{
-
-                      Write-Host "Jar locked. Waiting..."
-
-                      Start-Sleep 2
-
-                      $timeout--
-
-                  }
-
+          
+                  Write-Host "Verified: $file"
+          
               }
+          
+              Get-ChildItem C:\${{ secrets.WIN_LOCATION }}
 
-              if(Test-Path $jar){
-
-                  throw "Unable to delete old jar."
-
-              }
-
-          }
-
-          Move-Item `
-              $newJar `
-              $jar `
-              -Force
-
-          Write-Host "Jar replaced."
-
-          EOF
-#      #######################################################
-#      # Replace Application
-#      #######################################################
-#      - name: Replace Application
-#        run: |
-#          ssh \
-#            -i ~/.ssh/id_rsa \
-#            -o StrictHostKeyChecking=no \
-#            ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} \
-#            "powershell -NoProfile -NonInteractive -" <<'EOF'
-#
-#          $ErrorActionPreference='Stop'
-#
-#          $dir="C:\${{ secrets.WIN_LOCATION }}"
-#
-#          $newJar=Join-Path $dir "hes-service.new.jar"
-#          $jar=Join-Path $dir "hes-service.jar"
-#
-#          Write-Host "Waiting for SFTP to release uploaded file..."
-#
-#          $timeout=60
-#
-#          while($timeout -gt 0){
-#
-#              try{
-#
-#                  $stream=[System.IO.File]::Open(
-#                      $newJar,
-#                      [System.IO.FileMode]::Open,
-#                      [System.IO.FileAccess]::ReadWrite,
-#                      [System.IO.FileShare]::None
-#                  )
-#
-#                  $stream.Close()
-#
-#                  break
-#
-#              }
-#              catch{
-#
-#                  Start-Sleep 1
-#
-#                  $timeout--
-#              }
-#          }
-#
-#          if($timeout -eq 0){
-#
-#              throw "Timed out waiting for uploaded file."
-#
-#          }
-#
-#          if(Test-Path $jar){
-#
-#              Remove-Item $jar -Force
-#
-#          }
-#
-#          Move-Item `
-#              $newJar `
-#              $jar `
-#              -Force
-#
-#          Write-Host "Jar replaced successfully."
-#
-#          EOF
-
+            END
 
       #######################################################
-      # Start Service
+      # Start Windows Service
       #######################################################
       - name: Start Windows Service
         run: |
           ssh \
             -i ~/.ssh/id_rsa \
             -o StrictHostKeyChecking=no \
+            -o ServerAliveInterval=30 \
+            -o ServerAliveCountMax=10 \
             ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} \
             "powershell -NoProfile -NonInteractive -" <<'EOF'
 
           $ErrorActionPreference='Stop'
 
-          Start-Service hes-service
+          Write-Host "Starting hes-service..."
 
-          $service = Get-Service hes-service
+          Start-Service -Name "hes-service"
+
+          Start-Sleep -Seconds 5
+
+          $service = Get-Service -Name "hes-service"
 
           $service.WaitForStatus(
               "Running",
-              "00:01:00"
+              "00:00:30"
           )
 
-          $service = Get-Service hes-service
+          $service = Get-Service -Name "hes-service"
 
           if($service.Status -ne "Running"){
 
-              throw "Service failed."
+              throw "Service failed to start."
 
           }
 
-          Write-Host "Service started."
+          Write-Host "Service started successfully."
 
           EOF
-#      #######################################################
-#      # Start Windows Service
-#      #######################################################
-#      - name: Start Windows Service
-#        run: |
-#          ssh \
-#            -i ~/.ssh/id_rsa \
-#            -o StrictHostKeyChecking=no \
-#            -o ServerAliveInterval=30 \
-#            -o ServerAliveCountMax=10 \
-#            ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} \
-#            "powershell -NoProfile -NonInteractive -" <<'EOF'
-#
-#          $ErrorActionPreference='Stop'
-#
-#          Write-Host "Starting hes-service..."
-#
-#          Start-Service -Name "hes-service"
-#
-#          Start-Sleep -Seconds 5
-#
-#          $service = Get-Service -Name "hes-service"
-#
-#          $service.WaitForStatus(
-#              "Running",
-#              "00:00:30"
-#          )
-#
-#          $service = Get-Service -Name "hes-service"
-#
-#          if($service.Status -ne "Running"){
-#
-#              throw "Service failed to start."
-#
-#          }
-#
-#          Write-Host "Service started successfully."
-#
-#          EOF
 
       #######################################################
       # Verify Java Process
