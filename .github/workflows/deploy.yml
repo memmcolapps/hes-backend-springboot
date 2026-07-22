@@ -436,30 +436,6 @@ jobs:
           EOF
 
       #######################################################
-      # Verify File Lock
-      #######################################################
-      - name: Check File Lock
-        run: |
-          ssh \
-            -i ~/.ssh/id_rsa \
-            -o StrictHostKeyChecking=no \
-            ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} \
-            "powershell -NoProfile -NonInteractive -" <<'EOF'
-      
-          Write-Host "===== Service ====="
-          Get-Service hes-service
-      
-          Write-Host "===== Java ====="
-      
-          Get-CimInstance Win32_Process |
-            Where-Object {
-              $_.Name -eq 'java.exe'
-            } |
-            Select-Object ProcessId, CommandLine
-      
-          EOF
-
-      #######################################################
       # Stop WinSW Service
       #######################################################
       - name: Stop Windows Service
@@ -501,6 +477,30 @@ jobs:
 
           Write-Host "Service stopped successfully."
 
+          EOF
+
+      #######################################################
+      # Verify File Lock
+      #######################################################
+      - name: Check File Lock
+        run: |
+          ssh \
+            -i ~/.ssh/id_rsa \
+            -o StrictHostKeyChecking=no \
+            ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} \
+            "powershell -NoProfile -NonInteractive -" <<'EOF'
+          
+          Write-Host "===== Service ====="
+          Get-Service hes-service
+          
+          Write-Host "===== Java ====="
+          
+          Get-CimInstance Win32_Process |
+            Where-Object {
+              $_.Name -eq 'java.exe'
+            } |
+            Select-Object ProcessId, CommandLine
+          
           EOF
 
       #######################################################
