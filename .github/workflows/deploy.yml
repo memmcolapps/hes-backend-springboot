@@ -243,13 +243,14 @@ jobs:
       # Build
       # ==========================
       - name: Build Application
-        working-directory: hes-service
+        working-directory: hes
         run: mvn clean package -DskipTests
 
       #######################################################
       # Locate JAR
       #######################################################
       - name: Locate Executable JAR
+        working-directory: hes
         shell: bash
         run: |
 
