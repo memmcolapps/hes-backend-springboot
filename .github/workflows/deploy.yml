@@ -449,6 +449,7 @@ jobs:
       # Upload New JAR
       #######################################################
       - name: Upload Application
+        working-directory: hes
         run: |
 
           scp \
@@ -463,6 +464,7 @@ jobs:
       # Upload WinSW XML
       #######################################################
       - name: Upload WinSW XML
+        working-directory: hes
         run: |
           scp \
             -i ~/.ssh/id_rsa \
