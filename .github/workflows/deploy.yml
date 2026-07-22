@@ -51,7 +51,7 @@ jobs:
             exit 1
           fi
 
-          echo "JAR_FILE=hes-service/$JAR_FILE" >> $GITHUB_ENV
+          echo "JAR_FILE=hes/$JAR_FILE" >> $GITHUB_ENV
           echo "Found JAR: $JAR_FILE"
 
       # =====================================================
