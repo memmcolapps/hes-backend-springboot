@@ -81,7 +81,7 @@ jobs:
             $SERVER:$REMOTE_PATH
 
           echo "Writing env file..."
-          ssh -o StrictHostKeyChecking=no $SERVER "cat > /${{secrets.LOCATION}}/hes-service-staging.env" << EOF
+          ssh -o StrictHostKeyChecking=no $SERVER "cat > /${{secrets.LOCATION}}/.env.hes" << EOF
           DB_HOST="${{ secrets.STAGING_DB_HOST }}"
           DB_PORT="${{ secrets.STAGING_DB_PORT }}"
           DB_NAME="${{ secrets.STAGING_DB_NAME }}"
@@ -101,7 +101,7 @@ jobs:
           LOCATION="${{ secrets.LOCATION }}"
           EOF
           
-          ssh -o StrictHostKeyChecking=no $SERVER "chmod 600 /${{secrets.LOCATION}}/hes-service-staging.env"
+          ssh -o StrictHostKeyChecking=no $SERVER "chmod 600 /${{secrets.LOCATION}}/.env.hes"
 
 
 
@@ -124,12 +124,12 @@ jobs:
             echo "Starting app..."
 
             set -a
-            source /${{secrets.LOCATION}}/hes-service-staging.env
+            source /${{secrets.LOCATION}}/.env.hes
             set +a
 
             nohup java -Dspring.profiles.active=staging \
               -jar /${{secrets.LOCATION}}/hes-service-app.jar \
-              > /${{secrets.LOCATION}}/hes-service-staging.log 2>&1 &
+              >/dev/null 2>&1 < /dev/null &
 
             echo "Deployment complete"
           EOF
@@ -161,7 +161,7 @@ jobs:
             $SERVER:$REMOTE_PATH
 
           echo "Writing env file..."
-          ssh -o StrictHostKeyChecking=no $SERVER "cat > /${{secrets.LOCATION}}/hes-service-prod.env" << EOF
+          ssh -o StrictHostKeyChecking=no $SERVER "cat > /${{secrets.LOCATION}}/.env.hes" << EOF
           DB_HOST="${{ secrets.PROD_DB_HOST }}"
           DB_PORT="${{ secrets.PROD_DB_PORT }}"
           DB_NAME="${{ secrets.PROD_DB_NAME }}"
@@ -181,7 +181,7 @@ jobs:
           LOCATION="${{ secrets.LOCATION }}"
           EOF
           
-          ssh -o StrictHostKeyChecking=no $SERVER "chmod 600 /${{secrets.LOCATION}}/hes-service-prod.env"
+          ssh -o StrictHostKeyChecking=no $SERVER "chmod 600 /${{secrets.LOCATION}}/.env.hes"
 
           echo "Deploying (safe SSH execution)..."
           ssh -o StrictHostKeyChecking=no $SERVER 'bash -s' << 'EOF'
@@ -202,12 +202,12 @@ jobs:
             echo "Starting app..."
 
             set -a
-            source /${{ secrets.LOCATION }}/hes-service-prod.env
+            source /${{ secrets.LOCATION }}/.env.hes
             set +a
 
             nohup java -Dspring.profiles.active=prod \
               -jar /${{secrets.LOCATION}}/hes-service-app.jar \
-              > /${{secrets.LOCATION}}/hes-service-prod.log 2>&1 &
+              >/dev/null 2>&1 < /dev/null &
 
             echo "Deployment complete"
           EOF
