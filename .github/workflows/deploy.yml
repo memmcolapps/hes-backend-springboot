@@ -275,9 +275,10 @@ jobs:
       # Generate WinSW XML
       #######################################################
       - name: Generate WinSW XML
+        working-directory: hes
         shell: bash
         run: |
-          cp hes-backend-springboot/hes/deployment/hes-service.xml.template hes-service.xml
+          cp deployment/hes-service.xml.template hes-service.xml
           
           PROD_DB_PASSWORD_XML=$(printf '%s' "${{ secrets.PROD_DB_PASSWORD }}" \
             | sed -e 's/&/\&amp;/g' \
