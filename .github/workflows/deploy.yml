@@ -379,15 +379,13 @@ jobs:
           sed -i "s|\${PROD_MONGO_USERNAME}|${{ secrets.MONGO_DB_USERNAME }}|g" hes-service.xml
           sed -i "s|\${PROD_MONGO_PASSWORD}|${{ secrets.MONGO_DB_PASSWORD }}|g" hes-service.xml
           
-          sed -i "s|\${T_ISSUER}|${{ secrets.T_ISSUER }}|g" hes-service.xml
-          sed -i "s|\${T_ACCESS}|${{ secrets.T_ACCESS }}|g" hes-service.xml
-          sed -i "s|\${T_REFRESH}|${{ secrets.T_REFRESH }}|g" hes-service.xml
-          sed -i "s|\${T_SECRET}|${{ secrets.T_SECRET }}|g" hes-service.xml
+          sed -i "s|\${TOKEN_ISSUER}|${{ secrets.T_ISSUER }}|g" hes-service.xml
+          sed -i "s|\${TOKEN_ACCESS}|${{ secrets.T_ACCESS }}|g" hes-service.xml
+          sed -i "s|\${TOKEN_REFRESH}|${{ secrets.T_REFRESH }}|g" hes-service.xml
+          sed -i "s|\${TOKEN_SECRET}|${{ secrets.T_SECRET }}|g" hes-service.xml
           
           sed -i "s|\${SPRING_SECURITY_USER}|${{ secrets.SPRING_SECURITY_USER }}|g" hes-service.xml
           sed -i "s|\${SPRING_SECURITY_PASSWORD}|${{ secrets.SPRING_SECURITY_PASSWORD }}|g" hes-service.xml
-          sed -i "s|\${T_REFRESH}|${{ secrets.T_REFRESH }}|g" hes-service.xml
-          sed -i "s|\${T_SECRET}|${{ secrets.T_SECRET }}|g" hes-service.xml
           
           
           echo "Generated WinSW XML:"

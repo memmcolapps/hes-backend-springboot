@@ -20,7 +20,7 @@ public class JwtUtil {
         this.secretKey = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
     }
 
-    @Value("$hes.token.issuer}")
+    @Value("${hes.token.issuer}")
     private String issuer;
 
     @Value("${hes.token.access.validity}")
