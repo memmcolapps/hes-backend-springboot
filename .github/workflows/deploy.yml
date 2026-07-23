@@ -294,6 +294,7 @@ jobs:
       SERVICE_NAME: hes-service
       DEPLOY_DIR: 'C:\${{ secrets.WIN_LOCATION }}'
       JAR_NAME: hes-service.jar
+      DELETE_JARS: ${{ secrets.DELETE_JARS }}
 
     steps:
       #######################################################
@@ -486,7 +487,7 @@ jobs:
       # Optional: Delete Existing JAR and Backup
       #######################################################
       - name: Delete Existing JAR and Backup
-        if: ${{ secrets.DELETE_JARS == 'true' }}
+        if: env.DELETE_JARS == 'true'
         run: |
           ssh \
             -i ~/.ssh/id_rsa \
