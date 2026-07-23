@@ -43,8 +43,6 @@
   <env name="T_SECRET" value="${T_SECRET}"/>
   <env name="SPRING_SECURITY_USER" value="${SPRING_SECURITY_USER}"/>
   <env name="SPRING_SECURITY_PASSWORD" value="${SPRING_SECURITY_PASSWORD}"/>
-  <env name="T_REFRESH" value="${T_REFRESH}"/>
-  <env name="T_SECRET" value="${T_SECRET}"/>
 
   <log mode="roll-by-size">
     <sizeThreshold>10240</sizeThreshold>
