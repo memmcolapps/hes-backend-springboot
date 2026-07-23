@@ -613,7 +613,7 @@ jobs:
           
               Get-ChildItem C:\${{ secrets.WIN_LOCATION }}
 
-            EOF
+            END
 
       #######################################################
       # Start Windows Service
