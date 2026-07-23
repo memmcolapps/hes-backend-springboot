@@ -483,6 +483,39 @@ jobs:
           EOF
 
       #######################################################
+      # Optional: Delete Existing JAR and Backup
+      #######################################################
+      - name: Delete Existing JAR and Backup
+        if: ${{ secrets.DELETE_JARS == 'true' }}
+        run: |
+          ssh \
+            -i ~/.ssh/id_rsa \
+            -o StrictHostKeyChecking=no \
+            -o ServerAliveInterval=30 \
+            -o ServerAliveCountMax=10 \
+            ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} \
+            "powershell -NoProfile -NonInteractive -" <<'EOF'
+          
+          $ErrorActionPreference = 'Stop'
+          
+          $files = @(
+              "C:/${{ secrets.WIN_LOCATION }}/hes-service.jar",
+              "C:/${{ secrets.WIN_LOCATION }}/hes-service.jar.bak"
+          )
+          
+          foreach ($file in $files) {
+              if (Test-Path $file) {
+                  Remove-Item $file -Force
+                  Write-Host "Deleted: $file"
+              }
+              else {
+                  Write-Host "Not found: $file"
+              }
+          }
+          
+          EOF`
+
+      #######################################################
       # Backup Existing JAR
       #######################################################
       - name: Backup Existing JAR
@@ -579,7 +612,7 @@ jobs:
           
               Get-ChildItem C:\${{ secrets.WIN_LOCATION }}
 
-            END
+            EOF
 
       #######################################################
       # Start Windows Service
@@ -665,7 +698,7 @@ jobs:
             -o ServerAliveInterval=30 \
             -o ServerAliveCountMax=10 \
             ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} \
-            powershell -Command "
+            "powershell -NoProfile -NonInteractive -" <<'EOF'
 
             Write-Host ''
 
@@ -685,7 +718,7 @@ jobs:
 
             Get-ChildItem C:/${{ secrets.WIN_LOCATION }}/logs -ErrorAction SilentlyContinue
 
-            "
+            EOF
       #######################################################
       # Display Logs On Failure
       #######################################################
@@ -698,8 +731,8 @@ jobs:
             -o ServerAliveInterval=30 \
             -o ServerAliveCountMax=10 \
             ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} \
-            powershell -Command "
-
+            "powershell -NoProfile -NonInteractive -" <<'EOF'
+    
             Write-Host ''
             Write-Host '========== WinSW OUT =========='
 
@@ -735,5 +768,5 @@ jobs:
                 Get-Content 'C:/${{ secrets.WIN_LOCATION }}/logs/gc.log' -Tail 100
             }
 
-            "
+            EOF
 
