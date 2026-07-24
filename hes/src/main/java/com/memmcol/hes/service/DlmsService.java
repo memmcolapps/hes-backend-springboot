@@ -475,6 +475,15 @@ public Map<String, Object> setToken(String serial, String token) throws Exceptio
             response.put("obisCode", obisCode);
             response.put("attributeIndex", attributeIndex);
             response.put("dataIndex", dataIndex);
+            
+            if (obisCode != null && (obisCode.contains("140.129.0.255") || obisCode.contains("1.0.140.129.0.255"))) {
+                if (result instanceof Number) {
+                    result = BigDecimal.valueOf(((Number) result).doubleValue())
+                            .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP)
+                            .doubleValue();
+                }
+            }
+            
             response.put("value", result);
             response.put("scaler", scaler);
 

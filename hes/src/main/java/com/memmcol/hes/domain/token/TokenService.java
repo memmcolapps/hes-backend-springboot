@@ -162,9 +162,9 @@ public class TokenService {
 
             if (value instanceof Number) {
                 creditBalance = ((Number) value).doubleValue();
-            } else if (value != null) {
+            } else             if (value != null) {
                 try {
-                    creditBalance = Double.parseDouble(value.toString());
+                    creditBalance = Double.parseDouble(value.toString()) / 100.0;
                 } catch (NumberFormatException e) {
                     log.warn("Could not parse credit balance: {}", value);
                 }
