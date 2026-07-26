@@ -6,7 +6,7 @@
 
   <description>Spring Boot Hes</description>
 
-  <executable>java</executable>
+  <executable>C:\Program Files\Java\jdk-21.0.11\bin\java.exe</executable>
 
   <arguments>
     -Xms512m
@@ -37,14 +37,12 @@
   <env name="PROD_MONGO_USERNAME" value="${PROD_MONGO_USERNAME}"/>
   <env name="PROD_MONGO_PASSWORD" value="${PROD_MONGO_PASSWORD}"/>
 
-  <env name="T_ISSUER" value="${T_ISSUER}"/>
-  <env name="T_ACCESS" value="${T_ACCESS}"/>
-  <env name="T_REFRESH" value="${T_REFRESH}"/>
-  <env name="T_SECRET" value="${T_SECRET}"/>
+  <env name="TOKEN_ISSUER" value="${TOKEN_ISSUER}"/>
+  <env name="TOKEN_ACCESS" value="${TOKEN_ACCESS}"/>
+  <env name="TOKEN_REFRESH" value="${TOKEN_REFRESH}"/>
+  <env name="TOKEN_SECRET" value="${TOKEN_SECRET}"/>
   <env name="SPRING_SECURITY_USER" value="${SPRING_SECURITY_USER}"/>
   <env name="SPRING_SECURITY_PASSWORD" value="${SPRING_SECURITY_PASSWORD}"/>
-  <env name="T_REFRESH" value="${T_REFRESH}"/>
-  <env name="T_SECRET" value="${T_SECRET}"/>
 
   <log mode="roll-by-size">
     <sizeThreshold>10240</sizeThreshold>

@@ -241,6 +241,8 @@ jobs:
           MONGO_HOST="${{ secrets.PROD_MONGO_HOST }}"
           MONGO_PORT="${{ secrets.PROD_MONGO_PORT }}"
           MONGO_DB="${{ secrets.PROD_MONGO_DB }}"
+          MONGO_DB_USERNAME="${{ secrets.MONGO_DB_USERNAME }}"
+          MONGO_DB_PASSWORD="${{ secrets.MONGO_DB_PASSWORD }}"
           EUREKA_ADDRESS="${{ secrets.EUREKA_ADDRESS }}"
           EUREKA_PORT="${{ secrets.EUREKA_PORT }}"
           TOKEN_ISSUER="${{ secrets.T_ISSUER }}"
@@ -292,6 +294,7 @@ jobs:
       SERVICE_NAME: hes-service
       DEPLOY_DIR: 'C:\${{ secrets.WIN_LOCATION }}'
       JAR_NAME: hes-service.jar
+      DELETE_JARS: ${{ secrets.DELETE_JARS }}
 
     steps:
       #######################################################
@@ -373,18 +376,16 @@ jobs:
           
           sed -i "s|\${PROD_MONGO_PORT}|${{ secrets.PROD_MONGO_PORT }}|g" hes-service.xml
           sed -i "s|\${PROD_MONGO_DB}|${{ secrets.PROD_MONGO_DB }}|g" hes-service.xml
-          sed -i "s|\${PROD_MONGO_USERNAME}|${{ secrets.PROD_MONGO_USERNAME }}|g" hes-service.xml
-          sed -i "s|\${PROD_MONGO_PASSWORD}|${{ secrets.PROD_MONGO_PASSWORD }}|g" hes-service.xml
+          sed -i "s|\${PROD_MONGO_USERNAME}|${{ secrets.MONGO_DB_USERNAME }}|g" hes-service.xml
+          sed -i "s|\${PROD_MONGO_PASSWORD}|${{ secrets.MONGO_DB_PASSWORD }}|g" hes-service.xml
           
-          sed -i "s|\${T_ISSUER}|${{ secrets.T_ISSUER }}|g" hes-service.xml
-          sed -i "s|\${T_ACCESS}|${{ secrets.T_ACCESS }}|g" hes-service.xml
-          sed -i "s|\${T_REFRESH}|${{ secrets.T_REFRESH }}|g" hes-service.xml
-          sed -i "s|\${T_SECRET}|${{ secrets.T_SECRET }}|g" hes-service.xml
+          sed -i "s|\${TOKEN_ISSUER}|${{ secrets.T_ISSUER }}|g" hes-service.xml
+          sed -i "s|\${TOKEN_ACCESS}|${{ secrets.T_ACCESS }}|g" hes-service.xml
+          sed -i "s|\${TOKEN_REFRESH}|${{ secrets.T_REFRESH }}|g" hes-service.xml
+          sed -i "s|\${TOKEN_SECRET}|${{ secrets.T_SECRET }}|g" hes-service.xml
           
           sed -i "s|\${SPRING_SECURITY_USER}|${{ secrets.SPRING_SECURITY_USER }}|g" hes-service.xml
           sed -i "s|\${SPRING_SECURITY_PASSWORD}|${{ secrets.SPRING_SECURITY_PASSWORD }}|g" hes-service.xml
-          sed -i "s|\${T_REFRESH}|${{ secrets.T_REFRESH }}|g" hes-service.xml
-          sed -i "s|\${T_SECRET}|${{ secrets.T_SECRET }}|g" hes-service.xml
           
           
           echo "Generated WinSW XML:"
@@ -435,6 +436,7 @@ jobs:
           
           EOF
 
+
       #######################################################
       # Stop WinSW Service
       #######################################################
@@ -478,6 +480,39 @@ jobs:
           Write-Host "Service stopped successfully."
 
           EOF
+
+      #######################################################
+      # Optional: Delete Existing JAR and Backup
+      #######################################################
+      - name: Delete Existing JAR and Backup
+        if: env.DELETE_JARS == 'true'
+        run: |
+          ssh \
+            -i ~/.ssh/id_rsa \
+            -o StrictHostKeyChecking=no \
+            -o ServerAliveInterval=30 \
+            -o ServerAliveCountMax=10 \
+            ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} \
+            "powershell -NoProfile -NonInteractive -" <<'EOF'
+          
+          $ErrorActionPreference = 'Stop'
+          
+          $files = @(
+              "C:/${{ secrets.WIN_LOCATION }}/hes-service.jar",
+              "C:/${{ secrets.WIN_LOCATION }}/hes-service.jar.bak"
+          )
+          
+          foreach ($file in $files) {
+              if (Test-Path $file) {
+                  Remove-Item $file -Force
+                  Write-Host "Deleted: $file"
+              }
+              else {
+                  Write-Host "Not found: $file"
+              }
+          }
+          
+          EOF`
 
       #######################################################
       # Backup Existing JAR
@@ -662,7 +697,7 @@ jobs:
             -o ServerAliveInterval=30 \
             -o ServerAliveCountMax=10 \
             ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} \
-            powershell -Command "
+            "powershell -NoProfile -NonInteractive -" <<'EOF'
 
             Write-Host ''
 
@@ -682,7 +717,7 @@ jobs:
 
             Get-ChildItem C:/${{ secrets.WIN_LOCATION }}/logs -ErrorAction SilentlyContinue
 
-            "
+            EOF
       #######################################################
       # Display Logs On Failure
       #######################################################
@@ -695,8 +730,8 @@ jobs:
             -o ServerAliveInterval=30 \
             -o ServerAliveCountMax=10 \
             ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} \
-            powershell -Command "
-
+            "powershell -NoProfile -NonInteractive -" <<'EOF'
+    
             Write-Host ''
             Write-Host '========== WinSW OUT =========='
 
@@ -732,233 +767,5 @@ jobs:
                 Get-Content 'C:/${{ secrets.WIN_LOCATION }}/logs/gc.log' -Tail 100
             }
 
-            "
+            EOF
 
-
-
-#name: Deploy Spring Boot to Server
-#
-#on:
-#  push:
-#    branches-service:
-#      - staging
-#      - main
-#
-#jobs:
-#  deploy:
-#    runs-on: ubuntu-latest
-#
-#    steps:
-#      # =====================
-#      # Checkout source code
-#      # =====================
-#      - name: Checkout code
-#        uses: actions/checkout@v3
-#
-#      # =====================
-#      # Setup Java
-#      # =====================
-#      - name: Set up JDK 17
-#        uses: actions/setup-java@v4
-#        with:
-#          distribution: temurin
-#          java-version: "17"
-#
-#      # =====================
-#      # Build application
-#      # =====================
-#      - name: Build with Maven
-#        run: |
-#          chmod +x ./mvnw
-#          ./mvnw clean package -DskipTests
-#
-#      # =====================================================
-#      # STAGING DEPLOYMENT
-#      # =====================================================
-#      - name: Deploy to Staging
-#        if: github.ref == 'refs/heads/staging'
-#        uses: appleboy/ssh-action@v0.1.7
-#        with:
-#          host: ${{ secrets.STAGING_SERVER_HOST }}
-#          username: ${{ secrets.STAGING_SERVER_USER }}
-#          key: ${{ secrets.STAGING_SSH_PRIVATE_KEY }}
-#          script: |
-#            set -e
-#
-#            echo "Deploying to STAGING..."
-#
-#            mkdir -p /opt/java-webservices
-#            pkill -f hes-service-service.jar || true
-#
-#      - name: Copy JAR to Staging
-#        if: github.ref == 'refs/heads/staging'
-#        uses: appleboy/scp-action@v0.1.7
-#        with:
-#          host: ${{ secrets.STAGING_SERVER_HOST }}
-#          username: ${{ secrets.STAGING_SERVER_USER }}
-#          key: ${{ secrets.STAGING_SSH_PRIVATE_KEY }}
-#          source: "target/*.jar"
-#          target: "/opt/java-webservices/app.jar"
-#
-#      - name: Start Staging App (secure env loading)
-#        if: github.ref == 'refs/heads/staging'
-#        uses: appleboy/ssh-action@v0.1.7
-#        with:
-#          host: ${{ secrets.STAGING_SERVER_HOST }}
-#          username: ${{ secrets.STAGING_SERVER_USER }}
-#          key: ${{ secrets.STAGING_SSH_PRIVATE_KEY }}
-#          script: |
-#            set -e
-#
-#            echo "Loading staging environment..."
-#            source /etc/gridflex-staging.env
-#
-#            echo "Starting staging application..."
-#            nohup java -jar /opt/java-webservices/app.jar \
-#              --spring.profiles.active=staging \
-#              > /opt/java-webservices/staging.log 2>&1 &
-#
-#            echo "Staging deployed successfully."
-#
-#      # =====================================================
-#      # PRODUCTION DEPLOYMENT
-#      # =====================================================
-#      - name: Deploy to Production
-#        if: github.ref == 'refs/heads/main'
-#        uses: appleboy/ssh-action@v0.1.7
-#        with:
-#          host: ${{ secrets.PROD_SERVER_HOST }}
-#          username: ${{ secrets.PROD_SERVER_USER }}
-#          key: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
-#          script: |
-#            set -e
-#
-#            echo "Deploying to PRODUCTION..."
-#
-#            mkdir -p /opt/java-webservices
-#            pkill -f gridflex-backend-service.jar || true
-#
-#      - name: Copy JAR to Production
-#        if: github.ref == 'refs/heads/main'
-#        uses: appleboy/scp-action@v0.1.7
-#        with:
-#          host: ${{ secrets.PROD_SERVER_HOST }}
-#          username: ${{ secrets.PROD_SERVER_USER }}
-#          key: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
-#          source: "target/*.jar"
-#          target: "/opt/java-webservices/hes-service-service.jar"
-#
-#      - name: Start Production App (secure env loading)
-#        if: github.ref == 'refs/heads/main'
-#        uses: appleboy/ssh-action@v0.1.7
-#        with:
-#          host: ${{ secrets.PROD_SERVER_HOST }}
-#          username: ${{ secrets.PROD_SERVER_USER }}
-#          key: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
-#          script: |
-#            set -e
-#
-#            echo "Loading production environment..."
-#            source /etc/credentials.env
-#
-#            echo "Starting production application..."
-#            nohup java -jar /opt/java-webservices/hes-service-service.jar \
-#              --spring.profiles.active=prod \
-#              > /opt/java-webservices/hes-service.log 2>&1 &
-#
-#            echo "Production deployed successfully."
-
-#
-#name: hes-service CI/CD Pipeline
-#
-#on:
-#  push:
-#    branches-service: ["main"]
-#
-#jobs:
-#  build:
-#    runs-on: ubuntu-latest
-#
-#    steps:
-#      - name: Checkout repository
-#        uses: actions/checkout@v4
-#
-#      - name: Set up JDK 21
-#        uses: actions/setup-java@v4
-#        with:
-#          java-version: '21'
-#          distribution: 'temurin'
-#
-#      - name: Cache Maven dependencies
-#        uses: actions/cache@v4
-#        with:
-#          path: ~/.m2
-#          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
-#          restore-keys: |
-#            ${{ runner.os }}-maven-
-#      - name: Make mvnw executable
-#        run: chmod +x hes-service/mvnw
-#
-#      - name: Build with Maven
-#        run: ./mvnw clean package -Dmaven.test.skip=true
-#        working-directory: hes-service
-#
-#
-#      - name: Upload artifact
-#        uses: actions/upload-artifact@v4
-#        with:
-#          name: hes-service-app
-#          path: hes-service/target/*.jar
-#
-#  deploy:
-#    runs-on: ubuntu-latest
-#    needs: build
-#
-#    steps:
-#      - name: Download artifact
-#        uses: actions/download-artifact@v4
-#        with:
-#          name: hes-service-app
-#
-#      - name: Deploy to Factory Server
-#        uses: appleboy/scp-action@v0.1.7
-#        with:
-#          host: ${{ secrets.SERVER_HOST }}
-#          username: ${{ secrets.SERVER_USER }}
-#          key: ${{ secrets.SERVER_SSH_KEY }}
-#          source: "*.jar"
-#          target: "/home/${{ secrets.SERVER_USER }}/hes-service-app/"
-#
-#      - name: Restart hes-service Application
-#        uses: appleboy/ssh-action@v0.1.7
-#        with:
-#          host: ${{ secrets.SERVER_HOST }}
-#          username: ${{ secrets.SERVER_USER }}
-#          key: ${{ secrets.SERVER_SSH_KEY }}
-#          script: |
-#            echo "Navigating to app directory..."
-#            cd /home/${{ secrets.SERVER_USER }}/hes-service-app || { echo "Directory not found"; exit 1; }
-#            jar_file=$(ls *.jar)
-#
-#             echo "Stopping process on port 9061..."
-#             lsof -ti tcp:9061 | xargs -r kill -9
-#             sleep 5
-#
-#            if [[ ! -f hes-service-0.0.1-SNAPSHOT.jar ]]; then
-#                echo "JAR file not found!"
-#            exit 1
-#            fi
-#
-#            echo "Starting new process with 'prod' profile..."
-#
-#            # Export environment variables for Spring Boot
-#            export SPRING_PROFILES_ACTIVE=prod
-#            export SPRING_DATASOURCE_USERNAME=${{ secrets.DB_USERNAME }}
-#            export SPRING_DATASOURCE_PASSWORD=${{ secrets.DB_PASSWORD }}
-#            export SPRING_SECURITY_USER=${{ secrets.SPRING_SECURITY_USER }}
-#            export SPRING_SECURITY_PASSWORD=${{ secrets.SPRING_SECURITY_PASSWORD }}
-#
-#            nohup java -jar "$jar_file" --spring.profiles.active=prod > app.log 2>&1 &
-#
-#
-#            echo "Application started."
