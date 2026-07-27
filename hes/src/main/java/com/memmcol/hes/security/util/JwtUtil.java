@@ -20,7 +20,7 @@ public class JwtUtil {
         this.secretKey = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
     }
 
-    @Value("$hes.token.issuer}")
+    @Value("${hes.token.issuer}")
     private String issuer;
 
     @Value("${hes.token.access.validity}")
@@ -34,7 +34,7 @@ public class JwtUtil {
                 .setSubject(clientId)
                 .setIssuer(issuer)
                 .setIssuedAt(new Date())
-                .setExpiration(new Date(System.currentTimeMillis() + accessTokenValidity))
+//                .setExpiration(new Date(System.currentTimeMillis() + accessTokenValidity))
                 .signWith(secretKey)
                 .compact();
     }
@@ -44,7 +44,7 @@ public class JwtUtil {
                 .setSubject(clientId)
                 .setIssuer(issuer)
                 .setIssuedAt(new Date())
-                .setExpiration(new Date(System.currentTimeMillis() + refreshTokenValidity))
+//                .setExpiration(new Date(System.currentTimeMillis() + refreshTokenValidity))
                 .signWith(secretKey)
                 .compact();
     }
