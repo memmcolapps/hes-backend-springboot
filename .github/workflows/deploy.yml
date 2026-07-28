@@ -512,7 +512,7 @@ jobs:
               }
           }
           
-          EOF`
+          EOF
 
       #######################################################
       # Backup Existing JAR
@@ -697,7 +697,7 @@ jobs:
             -o ServerAliveInterval=30 \
             -o ServerAliveCountMax=10 \
             ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} \
-            "powershell -NoProfile -NonInteractive -" <<'EOF'
+            powershell -Command "
 
             Write-Host ''
 
@@ -717,7 +717,7 @@ jobs:
 
             Get-ChildItem C:/${{ secrets.WIN_LOCATION }}/logs -ErrorAction SilentlyContinue
 
-            EOF
+            "
       #######################################################
       # Display Logs On Failure
       #######################################################
@@ -730,7 +730,7 @@ jobs:
             -o ServerAliveInterval=30 \
             -o ServerAliveCountMax=10 \
             ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} \
-            "powershell -NoProfile -NonInteractive -" <<'EOF'
+            powershell -Command "
     
             Write-Host ''
             Write-Host '========== WinSW OUT =========='
@@ -767,5 +767,5 @@ jobs:
                 Get-Content 'C:/${{ secrets.WIN_LOCATION }}/logs/gc.log' -Tail 100
             }
 
-            EOF
+            "
 
