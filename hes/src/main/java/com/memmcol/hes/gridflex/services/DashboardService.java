@@ -2,20 +2,16 @@ package com.memmcol.hes.gridflex.services;
 
 import com.memmcol.hes.gridflex.records.DashboardSummaryResponse;
 import com.memmcol.hes.model.MetersConnectionEvent;
-import com.memmcol.hes.netty.NettyServerHolder;
-import com.memmcol.hes.repository.*;
+import com.memmcol.hes.repository.MeterRepository;
+import com.memmcol.hes.repository.MetersConnectionEventRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.cache.annotation.Cacheable;
-import org.springframework.scheduling.annotation.Async;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
-import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -23,6 +19,7 @@ import java.util.stream.Collectors;
 public class DashboardService {
     private final DashboardAsyncService asyncService;
 
+    private final MetersConnectionEventRepository metersConnectionEventRepository;
     // ======================
     // Main method to call from controller
     // ======================
@@ -52,6 +49,14 @@ public class DashboardService {
         );
     }
 
+
+    public MetersConnectionEvent getMeterConnection(String serial) {
+        return metersConnectionEventRepository.findByMeterNo(serial)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "Meter connection not found"
+                ));
+    }
 
 }
 
