@@ -2,30 +2,40 @@ package com.memmcol.hes.api.gridFlex;
 
 import com.memmcol.hes.gridflex.records.DashboardSummaryResponse;
 import com.memmcol.hes.gridflex.services.DashboardService;
+import com.memmcol.hes.model.MetersConnectionEvent;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cache.CacheManager;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.util.Objects;
 
 @RestController
 @RequiredArgsConstructor
-@RequestMapping("/api/dashboard")
+@RequestMapping("/api")
 @Tag(name = "Dashboard", description = "API for Gridflex dashboard overview")
 public class DashboardController {
     private final DashboardService dashboardService;
     private final CacheManager cacheManager;
 
-    @GetMapping("/summary")
+    @GetMapping("/dashboard/summary")
     @Operation(summary = "Get HES dashboard overview on load")
     public ResponseEntity<DashboardSummaryResponse> getDashboardSummary() {
         DashboardSummaryResponse response = dashboardService.getDashboardSummary();
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/meter-connection")
+    @Operation(summary = "Get meter connection event")
+    public ResponseEntity<?> getMeterConnection(@RequestParam String serial) {
+        MetersConnectionEvent response = dashboardService.getMeterConnection(serial);
+        if (response == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body("Meter connection not found");
+        }
         return ResponseEntity.ok(response);
     }
 
