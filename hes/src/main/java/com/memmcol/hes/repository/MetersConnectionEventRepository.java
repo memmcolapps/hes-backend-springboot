@@ -52,4 +52,5 @@ public interface MetersConnectionEventRepository extends JpaRepository<MetersCon
                                @Param("connectionTime") LocalDateTime connectionTime);
 
 
+    Optional<MetersConnectionEvent> findByMeterNo(String serial);
 }

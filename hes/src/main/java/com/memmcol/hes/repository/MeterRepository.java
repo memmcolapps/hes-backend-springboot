@@ -1,6 +1,7 @@
 package com.memmcol.hes.repository;
 
 import com.memmcol.hes.dto.MeterDTO;
+import com.memmcol.hes.model.MetersConnectionEvent;
 import com.memmcol.hes.model.MetersEntity;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -52,4 +53,5 @@ public interface MeterRepository extends JpaRepository<MetersEntity, UUID> {
         JOIN SmartMeterInfo s ON m.id = s.meter.id
     """)
     List<Object[]> findAllMeterModels();
+
 }
