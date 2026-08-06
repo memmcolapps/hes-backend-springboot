@@ -5,7 +5,7 @@ on:
     branches-service:
       - staging
       - main
-      - window
+      - alfuttaim
 
 jobs:
   deploy-linux:
@@ -285,7 +285,7 @@ jobs:
             echo "Deployment complete"
           EOF
   deploy-windows:
-    if: github.ref == 'refs/heads/window'
+    if: github.ref == 'refs/heads/alfuttaim'
 
     runs-on: ubuntu-latest
 
