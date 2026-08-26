@@ -34,7 +34,8 @@ public class SecurityConfig {
                                 "/swagger-ui.html",
                                 "/v3/api-docs/**",
                                 "/api/realtime/stream",
-                                "/api/realtime/meter-status/stream"
+                                "/api/realtime/meter-status/stream",
+                                "/api/actuator/prometheus"
                         ).permitAll()
                         .anyRequest().authenticated()
                 )
