@@ -35,7 +35,7 @@ public class SecurityConfig {
                                 "/v3/api-docs/**",
                                 "/api/realtime/stream",
                                 "/api/realtime/meter-status/stream",
-                                "/api/actuator/prometheus"
+                                "/actuator/prometheus"
                         ).permitAll()
                         .anyRequest().authenticated()
                 )
