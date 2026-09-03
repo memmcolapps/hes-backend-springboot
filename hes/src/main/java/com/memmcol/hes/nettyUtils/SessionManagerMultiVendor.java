@@ -59,6 +59,7 @@ public class SessionManagerMultiVendor {
         if (serial.startsWith("202006")) return "MOMAS";
         if (serial.startsWith("62122")) return "MOMAS";
         if (serial.startsWith("62222")) return "MOMAS";
+        if (serial.startsWith("62226")) return "MOMAS";
         if (serial.startsWith("62124")) return "LONGDIAN";
         if (serial.startsWith("62224")) return "LONGDIAN";
         if (serial.startsWith("62525")) return "MOMAS";
