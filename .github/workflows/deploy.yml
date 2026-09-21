@@ -348,6 +348,59 @@ jobs:
 
 
       #######################################################
+      # Upload WinSW Wrapper
+      #######################################################
+      - name: Upload WinSW Wrapper
+        run: |
+          
+          ssh \
+          -i ~/.ssh/id_rsa \
+          -o StrictHostKeyChecking=no \
+          -o ServerAliveInterval=30 \
+          -o ServerAliveCountMax=10 \
+          ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} \
+          "powershell -NoProfile -NonInteractive -" <<'EOF'
+          
+          if (Test-Path 'C:/${{ secrets.WIN_LOCATION }}/hes-service.exe') {
+          
+           Write-Host "WinSW wrapper already exists."
+           Write-Host "Skipping wrapper upload."
+          
+           exit 0
+          }
+          
+          Write-Host "WinSW wrapper does not exist."
+          Write-Host "Wrapper will be uploaded."
+          
+          EOF
+          
+          WRAPPER_EXISTS=$(ssh \
+          -i ~/.ssh/id_rsa \
+          -o StrictHostKeyChecking=no \
+          ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} \
+          "powershell -NoProfile -NonInteractive -Command \"if (Test-Path 'C:/${{ secrets.WIN_LOCATION }}/hes-service.exe') { exit 0 } else { exit 1 }\"" \
+          >/dev/null 2>&1 && echo "yes" || echo "no")
+          
+          if [ "$WRAPPER_EXISTS" = "no" ]; then
+
+          echo "Uploading hes-service.exe..."
+
+          scp \
+           -i ~/.ssh/id_rsa \
+           -o StrictHostKeyChecking=no \
+           -o ServerAliveInterval=30 \
+           -o ServerAliveCountMax=10 \
+           deployment/hes-service.exe \
+           "${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}:/C:/${{ secrets.WIN_LOCATION }}/hes-service.exe"
+          
+          else
+
+          echo "hes-service.exe already exists. Upload skipped."
+          
+          fi
+
+
+      #######################################################
       # Stop WinSW Service
       #######################################################
       - name: Stop Windows Service
@@ -363,6 +416,14 @@ jobs:
           $ErrorActionPreference = 'Stop'
 
           $service = Get-Service -Name 'hes-service' -ErrorAction Stop
+          
+          if ($null -eq $service) {
+
+            Write-Host "hes-service does not exist yet."
+            Write-Host "Skipping stop. Service will be installed later."
+
+            exit 0
+          }
 
           Write-Host "Current Status: $($service.Status)"
 
@@ -489,7 +550,82 @@ jobs:
             -o ServerAliveCountMax=10 \
             hes-service.xml \
             "${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }}:/C:/${{secrets.WIN_LOCATION}}/hes-service.xml"
-
+          
+      #######################################################
+      # Install WinSW Service If Missing
+      #######################################################
+      - name: Install WinSW Service If Missing
+        run: |
+          ssh \
+            -i ~/.ssh/id_rsa \
+            -o StrictHostKeyChecking=no \
+            -o ServerAliveInterval=30 \
+            -o ServerAliveCountMax=10 \
+            ${{ secrets.WINDOW_SERVER_USER }}@${{ secrets.WINDOW_SERVER_HOST }} \
+            "powershell -NoProfile -NonInteractive -" <<'EOF'
+          
+          $ErrorActionPreference = 'Stop'
+          
+          $serviceName = 'hes-service'
+          
+          $base = 'C:/${{ secrets.WIN_LOCATION }}'
+          
+          $wrapper = "$base/hes-service.exe"
+          
+          $config = "$base/hes-service.xml"
+          
+          $service = Get-Service `
+            -Name $serviceName `
+            -ErrorAction SilentlyContinue
+          
+          if ($null -eq $service) {
+          
+              Write-Host ""
+              Write-Host "============================================"
+              Write-Host "Installing WinSW Service"
+              Write-Host "============================================"
+          
+              if (!(Test-Path -LiteralPath $wrapper -PathType Leaf)) {
+                  throw "WinSW wrapper not found: $wrapper"
+              }
+          
+              if (!(Test-Path -LiteralPath $config -PathType Leaf)) {
+                  throw "WinSW configuration not found: $config"
+              }
+          
+              Write-Host "Wrapper: $wrapper"
+              Write-Host "Config:  $config"
+          
+              Push-Location $base
+          
+              try {
+          
+                  & $wrapper install
+          
+                  if ($LASTEXITCODE -ne 0) {
+                      throw "WinSW service installation failed."
+                  }
+          
+              }
+              finally {
+          
+                  Pop-Location
+              }
+          
+              Write-Host "WinSW service installed successfully."
+          
+          }
+          else {
+          
+              Write-Host ""
+              Write-Host "hes-service already exists."
+              Write-Host "Skipping WinSW installation."
+          
+          }
+          
+          EOF
+      
+      
       #######################################################
       # Verify Uploaded Files
       #######################################################
