@@ -351,6 +351,7 @@ jobs:
       # Upload WinSW Wrapper
       #######################################################
       - name: Upload WinSW Wrapper
+        working-directory: hes
         run: |
           
           ssh \
