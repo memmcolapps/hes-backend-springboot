@@ -62,7 +62,7 @@ public class SessionManagerMultiVendor {
         if (serial.startsWith("62226")) return "LONGDIAN";
         if (serial.startsWith("62124")) return "LONGDIAN";
         if (serial.startsWith("62224")) return "LONGDIAN";
-        if (serial.startsWith("62525")) return "MOMAS";
+        if (serial.startsWith("62525")) return "LONGDIAN";
         if (serial.startsWith("62526")) return "LONGDIAN";
         return "MOMAS";
     }
