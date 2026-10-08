@@ -3,81 +3,207 @@
 
     <property name="LOG_DIR" value="logs"/>
     <property name="SERVER_TIMEZONE" value="${server.timezone:-}"/>
-    <property name="LOG_PATTERN" value="%d{yyyy-MM-dd HH:mm:ss.SSS, ${SERVER_TIMEZONE}} %-5level [%thread] [%X{hes.quartz.fireInstanceId:-}] %logger - %msg%n" />
+    <property name="LOG_PATTERN"
+              value="%d{yyyy-MM-dd HH:mm:ss.SSS, ${SERVER_TIMEZONE}} %-5level [%thread] [%X{hes.quartz.fireInstanceId:-}] %logger - %msg%n"/>
 
-    <!-- ==== 1. Console Appender (Restores IntelliJ Logs) ==== -->
-    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+
+    <!-- ========================================================= -->
+    <!-- 1. Console Appender                                       -->
+    <!-- ========================================================= -->
+
+    <appender name="STDOUT"
+              class="ch.qos.logback.core.ConsoleAppender">
+
         <encoder>
             <pattern>${LOG_PATTERN}</pattern>
         </encoder>
+
     </appender>
 
-    <!-- ==== 2. Main Appender (logs/app-main.log) ==== -->
-    <appender name="MAIN_DATED_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+
+    <!-- ========================================================= -->
+    <!-- 2. Main Appender                                         -->
+    <!--    logs/app-main.log                                     -->
+    <!--    Rotate at 20 MB                                       -->
+    <!--    Keep 7 days                                           -->
+    <!-- ========================================================= -->
+
+    <appender name="MAIN_DATED_FILE"
+              class="ch.qos.logback.core.rolling.RollingFileAppender">
+
         <file>${LOG_DIR}/app-main.log</file>
-        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
-            <fileNamePattern>${LOG_DIR}/app-main-%d{yyyy-MM-dd}.log</fileNamePattern>
+
+        <rollingPolicy
+                class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+
+            <fileNamePattern>
+                ${LOG_DIR}/app-main-%d{yyyy-MM-dd}.%i.log
+            </fileNamePattern>
+
+            <!-- Maximum size of each log file -->
+            <maxFileSize>20MB</maxFileSize>
+
+            <!-- Keep logs for 7 days -->
             <maxHistory>7</maxHistory>
+
+            <!-- Delete old history when application starts -->
             <cleanHistoryOnStart>true</cleanHistoryOnStart>
+
+            <!-- Optional overall storage limit -->
+            <totalSizeCap>1GB</totalSizeCap>
+
         </rollingPolicy>
-        <encoder><pattern>${LOG_PATTERN}</pattern></encoder>
+
+        <encoder>
+            <pattern>${LOG_PATTERN}</pattern>
+        </encoder>
+
     </appender>
 
-    <!-- ==== 3. Application Appender (applications/application.log) ==== -->
-    <appender name="APP_FOLDER_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+
+    <!-- ========================================================= -->
+    <!-- 3. Application Appender                                   -->
+    <!--    applications/application.log                           -->
+    <!--    Rotate at 20 MB                                       -->
+    <!--    Keep 2 days                                           -->
+    <!-- ========================================================= -->
+
+    <appender name="APP_FOLDER_FILE"
+              class="ch.qos.logback.core.rolling.RollingFileAppender">
+
         <file>${LOG_DIR}/applications/application.log</file>
-        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
-            <fileNamePattern>${LOG_DIR}/applications/application-%d{yyyy-MM-dd}.log</fileNamePattern>
+
+        <rollingPolicy
+                class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+
+            <fileNamePattern>
+                ${LOG_DIR}/applications/application-%d{yyyy-MM-dd}.%i.log
+            </fileNamePattern>
+
+            <!-- Maximum size of each log file -->
+            <maxFileSize>20MB</maxFileSize>
+
+            <!-- Keep logs for 2 days -->
             <maxHistory>2</maxHistory>
+
+            <!-- Optional overall storage limit -->
+            <totalSizeCap>500MB</totalSizeCap>
+
         </rollingPolicy>
-        <encoder><pattern>${LOG_PATTERN}</pattern></encoder>
+
+        <encoder>
+            <pattern>${LOG_PATTERN}</pattern>
+        </encoder>
+
     </appender>
 
-    <!-- ==== 4. DLMS Meter Appender (Restores meters/ folder) ==== -->
-    <appender name="DLMS_APPENDER" class="ch.qos.logback.classic.sift.SiftingAppender">
+
+    <!-- ========================================================= -->
+    <!-- 4. DLMS Meter Appender                                   -->
+    <!--    meters/<meter>-dlms-txrx.log                          -->
+    <!--    Rotate at 20 MB                                       -->
+    <!--    Keep 1 day                                            -->
+    <!-- ========================================================= -->
+
+    <appender name="DLMS_APPENDER"
+              class="ch.qos.logback.classic.sift.SiftingAppender">
+
         <discriminator>
             <key>meter</key>
             <defaultValue>general</defaultValue>
         </discriminator>
+
         <sift>
-            <appender name="METER_FILE_APPENDER" class="ch.qos.logback.core.rolling.RollingFileAppender">
-                <file>${LOG_DIR}/meters/${meter}-dlms-txrx.log</file>
-                <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
-                    <fileNamePattern>${LOG_DIR}/meters/${meter}-dlms-txrx-%d{yyyy-MM-dd}.log</fileNamePattern>
+
+            <appender name="METER_FILE_APPENDER"
+                      class="ch.qos.logback.core.rolling.RollingFileAppender">
+
+                <file>
+                    ${LOG_DIR}/meters/${meter}-dlms-txrx.log
+                </file>
+
+                <rollingPolicy
+                        class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+
+                    <fileNamePattern>
+                        ${LOG_DIR}/meters/${meter}-dlms-txrx-%d{yyyy-MM-dd}.%i.log
+                    </fileNamePattern>
+
+                    <!-- Maximum size of each meter log -->
+                    <maxFileSize>20MB</maxFileSize>
+
+                    <!-- Keep 1 day -->
                     <maxHistory>1</maxHistory>
+
+                    <!-- Optional overall storage limit -->
+                    <totalSizeCap>500MB</totalSizeCap>
+
                 </rollingPolicy>
+
                 <encoder>
-                    <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS, ${SERVER_TIMEZONE}} %-5level %msg%n</pattern>
+                    <pattern>
+                        %d{yyyy-MM-dd HH:mm:ss.SSS, ${SERVER_TIMEZONE}} %-5level %msg%n
+                    </pattern>
                 </encoder>
+
             </appender>
+
         </sift>
+
     </appender>
 
-    <!-- ==== Async Wrappers ==== -->
-    <appender name="ASYNC_MAIN" class="ch.qos.logback.classic.AsyncAppender">
+
+    <!-- ========================================================= -->
+    <!-- Async Wrappers                                            -->
+    <!-- ========================================================= -->
+
+    <appender name="ASYNC_MAIN"
+              class="ch.qos.logback.classic.AsyncAppender">
+
         <appender-ref ref="MAIN_DATED_FILE"/>
+
     </appender>
 
-    <appender name="ASYNC_APP" class="ch.qos.logback.classic.AsyncAppender">
+
+    <appender name="ASYNC_APP"
+              class="ch.qos.logback.classic.AsyncAppender">
+
         <appender-ref ref="APP_FOLDER_FILE"/>
+
     </appender>
 
-    <appender name="ASYNC_DLMS" class="ch.qos.logback.classic.AsyncAppender">
+
+    <appender name="ASYNC_DLMS"
+              class="ch.qos.logback.classic.AsyncAppender">
+
         <appender-ref ref="DLMS_APPENDER"/>
+
     </appender>
 
-    <!-- ==== Loggers (The missing links) ==== -->
 
-    <!-- Restore Meter Logging -->
-    <logger name="DLMS-TXRX" level="INFO" additivity="false">
+    <!-- ========================================================= -->
+    <!-- Loggers                                                   -->
+    <!-- ========================================================= -->
+
+    <!-- DLMS Meter Logging -->
+
+    <logger name="DLMS-TXRX"
+            level="INFO"
+            additivity="false">
+
         <appender-ref ref="ASYNC_DLMS"/>
+
     </logger>
 
-    <!-- Restore Root Logging (Console + Both Main Files) -->
+
+    <!-- Root Logging -->
+
     <root level="INFO">
+
         <appender-ref ref="STDOUT"/>
         <appender-ref ref="ASYNC_MAIN"/>
         <appender-ref ref="ASYNC_APP"/>
+
     </root>
 
 </configuration>
