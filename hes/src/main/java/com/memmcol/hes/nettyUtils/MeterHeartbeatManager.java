@@ -22,6 +22,8 @@ public class MeterHeartbeatManager {
     private static final int OFFLINE_CHECK_INTERVAL_SECONDS = 10;
     private static final int OFFLINE_THRESHOLD_MINUTES = 2;
     private static final int BUFFER_FLUSH_THRESHOLD = 1000;
+    private static final int SWEEP_FLUSH_MAX = 10000;
+    private static final int STATE_RETENTION_MINUTES = 30;
 
     // --- State tracking ---
     private final ConcurrentHashMap<String, MeterState> stateMap = new ConcurrentHashMap<>();
@@ -120,20 +122,17 @@ public class MeterHeartbeatManager {
      */
     private void detectOfflineMeters() {
 
+        flushBufferBeforeSweep();
+
         long now = System.currentTimeMillis();
         long thresholdMillis = TimeUnit.MINUTES.toMillis(OFFLINE_THRESHOLD_MINUTES);
         LocalDateTime offlineTime = LocalDateTime.now();
-        Set<String> recentlySeenMeters = new HashSet<>();
 
         for (Map.Entry<String, MeterState> entry : stateMap.entrySet()) {
 
             String meterId = entry.getKey();
             MeterState state = entry.getValue();
             long millisSinceLastSeen = now - state.lastSeenEpoch;
-
-            if (millisSinceLastSeen <= thresholdMillis) {
-                recentlySeenMeters.add(meterId);
-            }
 
             if ("ONLINE".equals(state.status) &&
                     millisSinceLastSeen > thresholdMillis) {
@@ -151,14 +150,42 @@ public class MeterHeartbeatManager {
             }
         }
 
+        long retentionMillis = TimeUnit.MINUTES.toMillis(STATE_RETENTION_MINUTES);
+        stateMap.entrySet().removeIf(entry -> {
+            MeterState state = entry.getValue();
+            return !"ONLINE".equals(state.status) && (now - state.lastSeenEpoch) > retentionMillis;
+        });
+
         try {
             LocalDateTime staleBefore = offlineTime.minusMinutes(OFFLINE_THRESHOLD_MINUTES);
-            int staleRows = batchRepository.markStaleOnlineMetersOffline(staleBefore, offlineTime, recentlySeenMeters);
+            int staleRows = batchRepository.markStaleOnlineMetersOffline(staleBefore, offlineTime);
             if (staleRows > 0) {
                 log.info("🔻 Marked {} stale ONLINE meter rows OFFLINE (timeout)", staleRows);
             }
         } catch (Exception e) {
             log.error("❌ Failed to mark stale ONLINE meter rows OFFLINE", e);
+        }
+    }
+
+    private void flushBufferBeforeSweep() {
+        if (writeBuffer.isEmpty()) return;
+
+        Map<String, MeterUpdateDTO> snapshot = new HashMap<>();
+
+        for (Map.Entry<String, MeterUpdateDTO> entry : writeBuffer.entrySet()) {
+            if (snapshot.size() >= SWEEP_FLUSH_MAX) break;
+            if (writeBuffer.remove(entry.getKey(), entry.getValue())) {
+                snapshot.put(entry.getKey(), entry.getValue());
+            }
+        }
+
+        if (snapshot.isEmpty()) return;
+
+        try {
+            batchRepository.batchUpsert(new ArrayList<>(snapshot.values()));
+        } catch (Exception e) {
+            log.error("❌ Pre-sweep flush failed. Re-queueing {}", snapshot.size(), e);
+            writeBuffer.putAll(snapshot);
         }
     }
 

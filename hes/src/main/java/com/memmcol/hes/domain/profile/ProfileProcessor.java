@@ -14,7 +14,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @Slf4j
@@ -39,7 +41,7 @@ public class ProfileProcessor {
         this.deduplicationTimestamp = deduplicationTimestamp;
     }
 
-    public void processProfiles() throws Exception {
+    public void processProfiless() throws Exception {
         ProfileMetadataResult metadataResult = metadataProvider.resolve(meterSerial, profileObis, model);
         List<ProfileRowGeneric> rawRows = dlmsReaderUtils.readRange(model, meterSerial, profileObis, metadataResult, from, to, mdMeter);
 
@@ -66,5 +68,69 @@ public class ProfileProcessor {
         if (!filtered.isEmpty()) {
             profileDTOs = filtered;
         }
+    }
+
+    public Map<String, List<ProfileChannel2ReadingDTO>> processProfiles(
+            ProfileProcessRequest request) throws Exception {
+
+        if (request.getMeterSerial() == null
+                || request.getMeterSerial().isEmpty()) {
+            throw new IllegalArgumentException(
+                    "At least one meter serial is required.");
+        }
+
+        Map<String, List<ProfileChannel2ReadingDTO>> results =
+                new LinkedHashMap<>();
+
+        for (String serial : request.getMeterSerial()) {
+
+            if (serial == null || serial.isBlank()) {
+                throw new IllegalArgumentException(
+                        "Meter serial must not be blank.");
+            }
+
+            log.info("Processing profile for meter {}", serial);
+
+            ProfileMetadataResult metadataResult =
+                    metadataProvider.resolve(
+                            serial,
+                            request.getProfileObis(),
+                            request.getModel());
+
+            List<ProfileRowGeneric> rawRows =
+                    dlmsReaderUtils.readRange(
+                            request.getModel(),
+                            serial,
+                            request.getProfileObis(),
+                            metadataResult,
+                            request.getFrom(),
+                            request.getTo(),
+                            request.isMdMeter());
+
+            List<ProfileChannel2ReadingDTO> profileDTOs =
+                    channelTwoMapper.toDTO(
+                            rawRows,
+                            serial,
+                            request.getModel(),
+                            request.isMdMeter(),
+                            metadataResult);
+
+            List<ProfileChannel2ReadingDTO> newReadings =
+                    profileDTOs.isEmpty()
+                            ? List.of()
+                            : deduplicationTimestamp.deduplicate(
+                            profileDTOs, serial);
+
+            results.put(serial, newReadings);
+
+            log.info(
+                    "Finished meter {}. Raw rows: {}, mapped readings: {}, new readings: {}",
+                    serial,
+                    rawRows.size(),
+                    profileDTOs.size(),
+                    newReadings.size());
+        }
+
+        return results;
     }
 }
