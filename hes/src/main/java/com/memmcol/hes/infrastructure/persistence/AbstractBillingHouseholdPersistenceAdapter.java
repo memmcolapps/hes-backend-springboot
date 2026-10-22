@@ -84,6 +84,9 @@ public abstract class AbstractBillingHouseholdPersistenceAdapter<TDto, TEntity, 
 
         months.forEach(month -> {
             String partitionName = partitionPrefix() + "_" + month;
+            if (PartitionCreationMemo.isConfirmed(partitionName)) {
+                return;
+            }
             String startDate = month + "01";
             String endDate = YearMonth.parse(month, DateTimeFormatter.ofPattern("yyyyMM"))
                     .plusMonths(1)
@@ -98,8 +101,12 @@ public abstract class AbstractBillingHouseholdPersistenceAdapter<TDto, TEntity, 
             session.doWork(connection -> {
                 try (Statement stmt = connection.createStatement()) {
                     stmt.execute(sql);
+                    PartitionCreationMemo.confirm(partitionName);
                     log.info("🆕 Partition {} created.", partitionName);
                 } catch (Exception e) {
+                    if (e.getMessage() != null && e.getMessage().contains("exists")) {
+                        PartitionCreationMemo.confirm(partitionName);
+                    }
                     log.error("Error creating partition {}: {}", partitionName, e.getMessage());
                 }
             });
