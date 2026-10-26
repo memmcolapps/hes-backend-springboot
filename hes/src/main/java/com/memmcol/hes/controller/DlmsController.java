@@ -5,6 +5,7 @@ import com.memmcol.hes.domain.profile.ProfileProcessor;
 import com.memmcol.hes.domain.profile.ProfileTimestampPortImpl;
 import com.memmcol.hes.dto.ApiResponse;
 import com.memmcol.hes.infrastructure.dlms.CapturePeriodAdapter;
+import com.memmcol.hes.model.ProfileChannel2ReadingDTO;
 import com.memmcol.hes.model.ProfileRowDTO;
 import com.memmcol.hes.model.TimestampRequest;
 import com.memmcol.hes.service.DlmsService;
@@ -416,26 +417,49 @@ public class DlmsController {
     }
 
     @PostMapping("/profiles/process")
-    public ResponseEntity<String> processProfiles(@RequestBody ProfileProcessRequest request) {
+    public ResponseEntity<?> processProfiles(
+            @RequestBody ProfileProcessRequest request) {
+
         try {
-            // Pass values from request to service
-            profileProcessor.setModel(request.getModel());
-            profileProcessor.setMeterSerial(request.getMeterSerial());
-            profileProcessor.setProfileObis(request.getProfileObis());
-            profileProcessor.setFrom(request.getFrom());
-            profileProcessor.setTo(request.getTo());
-            profileProcessor.setMdMeter(request.isMdMeter());
+            Map<String, List<ProfileChannel2ReadingDTO>> results =
+                    profileProcessor.processProfiles(request);
 
-            // Call the service
-            profileProcessor.processProfiles();
+            return ResponseEntity.ok(results);
 
-            return ResponseEntity.ok("Profile processing completed successfully.");
         } catch (Exception e) {
             log.error("Error processing profiles", e);
+
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Error: " + e.getMessage());
+                    .body(Map.of(
+                            "message", "Error processing profiles",
+                            "error", e.getMessage() == null
+                                    ? "Unexpected error"
+                                    : e.getMessage()));
         }
     }
+
+
+//    @PostMapping("/profiles/process")
+//    public ResponseEntity<String> processProfiles(@RequestBody ProfileProcessRequest request) {
+//        try {
+//            // Pass values from request to service
+//            profileProcessor.setModel(request.getModel());
+//            profileProcessor.setMeterSerial(request.getMeterSerial());
+//            profileProcessor.setProfileObis(request.getProfileObis());
+//            profileProcessor.setFrom(request.getFrom());
+//            profileProcessor.setTo(request.getTo());
+//            profileProcessor.setMdMeter(request.isMdMeter());
+//
+//            // Call the service
+//            profileProcessor.processProfiles();
+//
+//            return ResponseEntity.ok("Profile processing completed successfully.");
+//        } catch (Exception e) {
+//            log.error("Error processing profiles", e);
+//            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+//                    .body("Error: " + e.getMessage());
+//        }
+//    }
 
      /**
      * Resolve the last timestamp for a given meter and OBIS profile.

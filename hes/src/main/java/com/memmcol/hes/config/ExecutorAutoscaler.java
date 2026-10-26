@@ -13,29 +13,36 @@ import java.util.concurrent.ThreadPoolExecutor;
 public class ExecutorAutoscaler {
 
     private final ThreadPoolExecutor executor;
+    private final int minPoolSize;
+    private final int maxPoolSize;
 
     public ExecutorAutoscaler(@Qualifier("meterReadAdaptiveExecutor") ThreadPoolExecutor executor) {
         this.executor = executor;
+        this.minPoolSize = Math.max(2, Runtime.getRuntime().availableProcessors() * 2);
+        this.maxPoolSize = executor.getMaximumPoolSize();
     }
 
-    @Scheduled(fixedRate = 5000*3600) // check every 5s
+    @Scheduled(fixedRate = 5000) // check every 5s
     public void adjustPoolSize() {
         double load = ManagementFactory.getOperatingSystemMXBean().getSystemLoadAverage();
-        long freeMem = Runtime.getRuntime().freeMemory();
+        Runtime rt = Runtime.getRuntime();
+        long freeMem = rt.freeMemory() + (rt.maxMemory() - rt.totalMemory());
         int queueSize = executor.getQueue().size();
+        int currentCore = executor.getCorePoolSize();
 
         int newSize;
 
         if (queueSize > 500) {
-            newSize = executor.getMaximumPoolSize();
-        } else if (load < 0.7 && freeMem > (200 * 1024 * 1024)) { // CPU < 70%, free mem > 200MB
-            newSize = Math.min(executor.getPoolSize() + 5, executor.getMaximumPoolSize());
+            newSize = maxPoolSize;
+        } else if (freeMem < (200 * 1024 * 1024)) {
+            newSize = Math.max(currentCore - 5, minPoolSize);
+        } else if (load < 0.7) {
+            newSize = Math.min(currentCore + 5, maxPoolSize);
         } else {
-            newSize = Math.max(executor.getPoolSize() - 5, executor.getCorePoolSize());
+            newSize = currentCore;
         }
 
         executor.setCorePoolSize(newSize);
-        executor.setMaximumPoolSize(newSize);
 
         log.info("⚖️ Adjusted meterReadExecutor pool size to {}", newSize);
     }

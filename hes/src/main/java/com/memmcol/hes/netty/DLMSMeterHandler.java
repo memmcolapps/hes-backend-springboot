@@ -5,6 +5,8 @@ import com.memmcol.hes.infrastructure.dlms.DlmsReaderUtils;
 import com.memmcol.hes.nettyUtils.DlmsRequestContext;
 import com.memmcol.hes.nettyUtils.EventNotificationHandler;
 import com.memmcol.hes.nettyUtils.MeterHeartbeatManager;
+import com.memmcol.hes.nettyUtils.SessionManager;
+import com.memmcol.hes.nettyUtils.SessionManagerMultiVendor;
 import com.memmcol.hes.service.*;
 import io.netty.channel.*;
 import io.netty.handler.timeout.ReadTimeoutException;
@@ -34,6 +36,8 @@ public class DLMSMeterHandler extends SimpleChannelInboundHandler<byte[]> {
     private final ScheduledExecutorService dlmsScheduledExecutor;
     private final EventNotificationHandler handler;
     private final MeterHeartbeatService heartbeatService;
+    private final SessionManagerMultiVendor sessionManagerMultiVendor;
+    private final SessionManager sessionManager;
 
     @Override
     public void channelActive(ChannelHandlerContext ctx) {
@@ -48,6 +52,8 @@ public class DLMSMeterHandler extends SimpleChannelInboundHandler<byte[]> {
             // heartbeat/communication timeout, not by an individual TCP close.
             log.info("ℹ️ Channel {} for meter {} disconnected; offline status will be decided by communication timeout",
                     ctx.channel().remoteAddress(), serial);
+            sessionManagerMultiVendor.removeSession(serial);
+            sessionManager.removeSession(serial);
         } else {
             log.info("❌ Disconnected unknown channel (no meter serial bound) {}", ctx.channel().remoteAddress());
         }

@@ -8,18 +8,18 @@ import com.memmcol.hes.domain.profile.ProfileTimestamp;
 import com.memmcol.hes.dto.ProfileChannelOneHouseholdDTO;
 import com.memmcol.hes.entities.ProfileChannelOneHousehold;
 import com.memmcol.hes.entities.ProfileChannelOneHouseholdToEntity;
-import com.memmcol.hes.entities.ProfileChannelOneId;
 import com.memmcol.hes.infrastructure.observability.FactTablePersistenceLogging;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
-import jakarta.persistence.TypedQuery;
 import lombok.extern.slf4j.Slf4j;
 import org.hibernate.Session;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.sql.PreparedStatement;
 import java.sql.Statement;
+import java.sql.Types;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
@@ -39,22 +39,6 @@ public class ProfileChannelOneHouseholdPersistAdapter {
 
     public ProfileChannelOneHouseholdPersistAdapter(ProfileStatePort statePort) {
         this.statePort = statePort;
-    }
-
-    public List<LocalDateTime> findExistingTimestamps(String serial, List<LocalDateTime> timestamps) {
-        if (timestamps == null || timestamps.isEmpty()) {
-            return List.of();
-        }
-        TypedQuery<LocalDateTime> query = entityManager.createQuery(
-                "SELECT r.entryTimestamp " +
-                        "FROM ProfileChannelOneHousehold r " +
-                        "WHERE r.meterSerial = :serial " +
-                        "AND r.entryTimestamp IN :timestamps",
-                LocalDateTime.class
-        );
-        query.setParameter("serial", serial);
-        query.setParameter("timestamps", timestamps);
-        return query.getResultList();
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -78,8 +62,7 @@ public class ProfileChannelOneHouseholdPersistAdapter {
 
             String meterModel = FactTablePersistenceLogging.firstModel(readings, ProfileChannelOneHouseholdDTO::getModelNumber);
             int total = readings.size();
-            List<ProfileChannelOneHouseholdDTO> filteredRows = deduplicate(meterSerial, readings);
-            int inserted = persistReadingsByMonth(filteredRows);
+            int inserted = persistReadingsByMonth(readings);
             int duplicate = total - inserted;
 
             LocalDateTime incomingMax = readings.stream()
@@ -110,45 +93,74 @@ public class ProfileChannelOneHouseholdPersistAdapter {
         }
     }
 
-    private List<ProfileChannelOneHouseholdDTO> deduplicate(String meterSerial, List<ProfileChannelOneHouseholdDTO> readings) {
-        if (readings == null || readings.isEmpty()) {
-            return List.of();
-        }
-        List<LocalDateTime> incomingTimestamps = readings.stream()
-                .map(ProfileChannelOneHouseholdDTO::getEntryTimestamp)
-                .collect(Collectors.toList());
-        List<LocalDateTime> existingTimestamps = findExistingTimestamps(meterSerial, incomingTimestamps);
-        return readings.stream()
-                .filter(dto -> dto.getEntryTimestamp() != null && !existingTimestamps.contains(dto.getEntryTimestamp()))
-                .collect(Collectors.toList());
-    }
-
+    /**
+     * Batched insert with ON CONFLICT DO NOTHING (idempotent at DB level, no pre-SELECT).
+     */
     public int persistReadingsByMonth(List<ProfileChannelOneHouseholdDTO> filteredRows) {
+        if (filteredRows == null || filteredRows.isEmpty()) {
+            return 0;
+        }
+
         Session session = entityManager.unwrap(Session.class);
         final AtomicInteger saved = new AtomicInteger();
 
-        filteredRows.stream()
-                .filter(dto -> dto.getEntryTimestamp() != null)
-                .forEach(dto -> {
-            ProfileChannelOneHousehold entity = ProfileChannelOneHouseholdToEntity.toEntity(dto);
-            ProfileChannelOneId id = new ProfileChannelOneId(entity.getMeterSerial(), entity.getEntryTimestamp());
-            ProfileChannelOneHousehold existing = session.get(ProfileChannelOneHousehold.class, id);
+        session.doWork(connection -> {
+            String sql = """
+                    INSERT INTO profile_channel_one_hh (
+                        meter_serial, model_number, entry_timestamp,
+                        active_energy_import,
+                        active_energy_import_ongrid, active_energy_import_offgrid,
+                        active_energy_export,
+                        active_energy_export_ongrid, active_energy_export_offgrid
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT DO NOTHING
+                    """;
 
-            if (existing == null) {
-                session.persist(entity);
-            } else {
-                session.merge(entity);
-            }
+            try (PreparedStatement ps = connection.prepareStatement(sql)) {
+                int pending = 0;
 
-            if (saved.incrementAndGet() % FLUSH_BATCH == 0) {
-                session.flush();
-                session.clear();
+                for (ProfileChannelOneHouseholdDTO dto : filteredRows) {
+                    if (dto.getEntryTimestamp() == null) {
+                        continue;
+                    }
+                    ProfileChannelOneHousehold e = ProfileChannelOneHouseholdToEntity.toEntity(dto);
+                    int i = 1;
+                    ps.setString(i++, e.getMeterSerial());
+                    ps.setString(i++, e.getModelNumber());
+                    ps.setObject(i++, e.getEntryTimestamp());
+                    ps.setObject(i++, e.getActiveEnergyImport(), Types.DOUBLE);
+                    ps.setObject(i++, e.getActiveEnergyImportOnGrid(), Types.DOUBLE);
+                    ps.setObject(i++, e.getActiveEnergyImportOffGrid(), Types.DOUBLE);
+                    ps.setObject(i++, e.getActiveEnergyExport(), Types.DOUBLE);
+                    ps.setObject(i++, e.getActiveEnergyExportOnGrid(), Types.DOUBLE);
+                    ps.setObject(i++, e.getActiveEnergyExportOffGrid(), Types.DOUBLE);
+                    ps.addBatch();
+
+                    if (++pending % FLUSH_BATCH == 0) {
+                        saved.addAndGet(sumBatch(ps.executeBatch()));
+                        ps.clearBatch();
+                    }
+                }
+
+                if (pending % FLUSH_BATCH != 0) {
+                    saved.addAndGet(sumBatch(ps.executeBatch()));
+                }
             }
         });
 
-        session.flush();
-        session.clear();
         return saved.get();
+    }
+
+    private static int sumBatch(int[] counts) {
+        int sum = 0;
+        for (int c : counts) {
+            if (c > 0) {
+                sum += c;
+            } else if (c == Statement.SUCCESS_NO_INFO) {
+                sum += 1;
+            }
+        }
+        return sum;
     }
 
     public void createPartitionsIfMissing(List<ProfileChannelOneHouseholdDTO> filteredRows) {
@@ -162,6 +174,9 @@ public class ProfileChannelOneHouseholdPersistAdapter {
 
         months.forEach(month -> {
             String partitionName = "profile_channel_one_hh_" + month;
+            if (PartitionCreationMemo.isConfirmed(partitionName)) {
+                return;
+            }
             String startDate = month + "01";
             String endDate = YearMonth.parse(month, DateTimeFormatter.ofPattern("yyyyMM"))
                     .plusMonths(1)
@@ -177,9 +192,11 @@ public class ProfileChannelOneHouseholdPersistAdapter {
             session.doWork(connection -> {
                 try (Statement stmt = connection.createStatement()) {
                     stmt.execute(sql);
+                    PartitionCreationMemo.confirm(partitionName);
                     log.info("🆕 Partition {} created.", partitionName);
                 } catch (Exception e) {
                     if (e.getMessage() != null && e.getMessage().contains("exists")) {
+                        PartitionCreationMemo.confirm(partitionName);
                         log.debug("Partition {} already exists, skipping.", partitionName);
                     } else {
                         log.error("Error creating partition {}: {}", partitionName, e.getMessage());
