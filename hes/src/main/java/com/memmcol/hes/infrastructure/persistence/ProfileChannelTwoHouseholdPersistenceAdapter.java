@@ -19,6 +19,7 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.sql.PreparedStatement;
+import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Types;
 import java.time.LocalDateTime;
@@ -165,14 +166,14 @@ public class ProfileChannelTwoHouseholdPersistenceAdapter {
                     ps.setString(i++, e.getMeterSerial());
                     ps.setString(i++, e.getModelNumber());
                     ps.setObject(i++, e.getEntryTimestamp());
-                    ps.setObject(i++, e.getVoltageL1(), Types.DOUBLE);
-                    ps.setObject(i++, e.getVoltageL2(), Types.DOUBLE);
-                    ps.setObject(i++, e.getVoltageL3(), Types.DOUBLE);
-                    ps.setObject(i++, e.getCurrentL1(), Types.DOUBLE);
-                    ps.setObject(i++, e.getCurrentL2(), Types.DOUBLE);
-                    ps.setObject(i++, e.getCurrentL3(), Types.DOUBLE);
-                    ps.setObject(i++, e.getVoltAngleL1L2(), Types.DOUBLE);
-                    ps.setObject(i++, e.getVoltAngleL1L3(), Types.DOUBLE);
+                    setDoubleOrNull(ps, i++, e.getVoltageL1());
+                    setDoubleOrNull(ps, i++, e.getVoltageL2());
+                    setDoubleOrNull(ps, i++, e.getVoltageL3());
+                    setDoubleOrNull(ps, i++, e.getCurrentL1());
+                    setDoubleOrNull(ps, i++, e.getCurrentL2());
+                    setDoubleOrNull(ps, i++, e.getCurrentL3());
+                    setDoubleOrNull(ps, i++, e.getVoltAngleL1L2());
+                    setDoubleOrNull(ps, i++, e.getVoltAngleL1L3());
                     ps.addBatch();
 
                     if (++pending % FLUSH_BATCH == 0) {
@@ -188,6 +189,14 @@ public class ProfileChannelTwoHouseholdPersistenceAdapter {
         });
 
         return saved.get();
+    }
+
+    private static void setDoubleOrNull(PreparedStatement ps, int index, Double value) throws SQLException {
+        if (value != null) {
+            ps.setDouble(index, value);
+        } else {
+            ps.setNull(index, Types.DOUBLE);
+        }
     }
 
     private static int sumBatch(int[] counts) {
