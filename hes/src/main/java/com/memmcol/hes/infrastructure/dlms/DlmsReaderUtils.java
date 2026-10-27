@@ -143,11 +143,18 @@ public class DlmsReaderUtils {
         client.updateValue(obj, index, reply.getValue());
     }
 
-    public DlmsResponse writeAttribute(GXDLMSClient client,
+    public DlmsResponse2 writeAttribute(GXDLMSClient client,
                                        String serial,
                                        GXDLMSObject obj,
                                        int index,
                                        Object value) throws Exception {
+        //newly added
+        LocalDateTime startedAt = LocalDateTime.now();
+        long startNanos = System.nanoTime();
+
+        //newly added
+        List<String> requestFrames = new ArrayList<>();
+        List<String> responseFrames = new ArrayList<>();
 
         try {
             if (obj instanceof GXDLMSClock clock && value instanceof GXDateTime dt) {
@@ -168,16 +175,27 @@ public class DlmsReaderUtils {
             for (int i = 0; i < requests.length; i++) {
                 byte[] requestFrame = requests[i];
 
+                requestFrames.add(toHex(requestFrame));
+
                 log.debug("📤 DLMS TX [{} / {}] → meter={}, bytes={}",
                         i + 1, requests.length, serial, toHex(requestFrame));
 
                 byte[] response = txRxService.sendReceiveWithContext(serial, requestFrame, 20000);
+
+                //newly added
+                if (response == null || response.length == 0) {
+                    throw new IllegalStateException(
+                            "Empty response received from meter " + serial);
+                }
+
+                responseFrames.add(toHex(response));
+
                 if (sessionManager.isAssociationLost(response)) {
                     sessionManager.removeSession(serial);
                     throw new AssociationLostException("Association lost during write → meter=" + serial);
                 }
 
-                processReply(client, serial, response, reply);
+                processReply(client, serial, response, reply,  requestFrames, responseFrames);
             }
 
             if (!reply.isComplete()) {
@@ -188,24 +206,147 @@ public class DlmsReaderUtils {
             log.info("✅ DLMS write completed → meter={}, duration={}ms", serial, duration);
 
             DlmsResponseStatus status = responseDecoder.decodeStatus(reply);
-            return DlmsResponse.builder()
-                    .status(status)
-                    .message(reply.getErrorMessage())
-                    .meterSerial(serial)
-                    .build();
+//            return DlmsResponse.builder()
+//                    .status(status)
+//                    .message(reply.getErrorMessage())
+//                    .meterSerial(serial)
+//                    .build();
+
+            return buildAuditedResponse(
+                    serial,
+                    status,
+                    reply.getErrorMessage(),
+                    startedAt,
+                    startNanos,
+                    requestFrames,
+                    responseFrames
+            );
         } catch (java.net.SocketTimeoutException | java.util.concurrent.TimeoutException te) {
-            return DlmsResponse.builder()
-                    .status(DlmsResponseStatus.TIMEOUT)
-                    .message("Connection timeout: " + te.getMessage())
-                    .meterSerial(serial)
-                    .build();
+//            return DlmsResponse.builder()
+//                    .status(DlmsResponseStatus.TIMEOUT)
+//                    .message("Connection timeout: " + te.getMessage())
+//                    .meterSerial(serial)
+//                    .build();
+            return buildAuditedResponse(
+                    serial,
+                    DlmsResponseStatus.TIMEOUT,
+                    "Connection timeout: " + te.getMessage(),
+                    startedAt,
+                    startNanos,
+                    requestFrames,
+                    responseFrames
+            );
         } catch (Exception e) {
-            return DlmsResponse.builder()
-                    .status(DlmsResponseStatus.COMMUNICATION_ERROR)
-                    .message("Communication error: " + e.getMessage())
-                    .meterSerial(serial)
-                    .build();
+//            return DlmsResponse.builder()
+//                    .status(DlmsResponseStatus.COMMUNICATION_ERROR)
+//                    .message("Communication error: " + e.getMessage())
+//                    .meterSerial(serial)
+//                    .build();
+            log.error(
+                    "DLMS write communication error for meter {}",
+                    serial,
+                    e
+            );
+
+            return buildAuditedResponse(
+                    serial,
+                    DlmsResponseStatus.COMMUNICATION_ERROR,
+                    e.getClass().getSimpleName() + ": " + e.getMessage(),
+                    startedAt,
+                    startNanos,
+                    requestFrames,
+                    responseFrames
+            );
         }
+    }
+
+//    private void processReply(GXDLMSClient client, String serial, byte[] response, GXReplyData reply) throws Exception {
+//        client.getData(response, reply);
+//        while (reply.isMoreData()) {
+//            byte[] rr = client.receiverReady(reply);
+//            response = txRxService.sendReceiveWithContext(serial, rr, 20000);
+//            client.getData(response, reply);
+//        }
+//    }
+
+    private void processReply(
+            GXDLMSClient client,
+            String serial,
+            byte[] response,
+            GXReplyData reply,
+            List<String> requestFrames,
+            List<String> responseFrames) throws Exception {
+
+        client.getData(response, reply);
+
+        while (reply.isMoreData()) {
+            byte[] receiverReady = client.receiverReady(reply);
+
+            requestFrames.add(toHex(receiverReady));
+
+            log.debug(
+                    "DLMS TX receiver-ready meter={}, bytes={}",
+                    serial,
+                    toHex(receiverReady)
+            );
+
+            response = txRxService.sendReceiveWithContext(
+                    serial, receiverReady, 20000);
+
+            if (response == null || response.length == 0) {
+                throw new IllegalStateException(
+                        "Empty continuation response from meter " + serial);
+            }
+
+            responseFrames.add(toHex(response));
+
+            if (sessionManager.isAssociationLost(response)) {
+                sessionManager.removeSession(serial);
+
+                throw new AssociationLostException(
+                        "Association lost while receiving write response for meter "
+                                + serial);
+            }
+
+            client.getData(response, reply);
+        }
+    }
+
+    private DlmsResponse2 buildAuditedResponse(
+            String serial,
+            DlmsResponseStatus status,
+            String message,
+            LocalDateTime startedAt,
+            long startNanos,
+            List<String> requestFrames,
+            List<String> responseFrames) {
+
+        long durationMs =
+                java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(
+                        System.nanoTime() - startNanos);
+
+        LocalDateTime completedAt = LocalDateTime.now();
+
+        log.info(
+                "DLMS write audit: meter={}, status={}, durationMs={}, "
+                        + "requestFrameCount={}, responseFrameCount={}",
+                serial,
+                status,
+                durationMs,
+                requestFrames.size(),
+                responseFrames.size()
+        );
+
+        return DlmsResponse2.builder()
+                .meterSerial(serial)
+                .status(status)
+                .message(message)
+                .startedAt(startedAt)
+                .completedAt(completedAt)
+                .durationMs(durationMs)
+                .requestFrames(new ArrayList<>(requestFrames))
+                .responseFrames(new ArrayList<>(responseFrames))
+                .build();
     }
 
     public DlmsResponse writeAttribute(GXDLMSClient client,
@@ -706,6 +847,7 @@ public class DlmsReaderUtils {
     }
 
     private void processReply(GXDLMSClient client, String serial, byte[] response, GXReplyData reply) throws Exception {
+//        responseFrames.add(toHex(response));
         client.getData(response, reply);
         while (reply.isMoreData()) {
             byte[] rr = client.receiverReady(reply);
