@@ -11,8 +11,9 @@ import com.memmcol.hes.infrastructure.dlms.ProfileMetadataProvider;
 import com.memmcol.hes.infrastructure.persistence.EventLogPersistenceAdapter;
 import com.memmcol.hes.nettyUtils.RequestResponseService;
 import com.memmcol.hes.repository.MeterRepository;
-import lombok.AllArgsConstructor;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,7 +21,7 @@ import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.List;
 
-@AllArgsConstructor
+@RequiredArgsConstructor
 @Slf4j
 @Service
 public class EventLogService {
@@ -33,6 +34,13 @@ public class EventLogService {
     private final EventLogPersistenceAdapter eventLogPersistenceAdapter;
     private final EventLogMapper eventLogMapper;
     private final MeterRepository meterRepository;
+
+    private int maxRangesPerRun = 7;
+
+    @Value("${hes.profile.catchup.max-ranges-per-run:7}")
+    public void setMaxRangesPerRun(int value) {
+        this.maxRangesPerRun = Math.max(1, value);
+    }
 
     public void readProfileAndSave(String model, String meterSerial, String profileObis, boolean isMD) {
         try {
@@ -73,7 +81,9 @@ public class EventLogService {
 
             LocalDateTime now = LocalDateTime.now();
 
-            while (cursor.value().isBefore(now)) {
+            int rangesProcessed = 0;
+            while (cursor.value().isBefore(now) && rangesProcessed < maxRangesPerRun) {
+                rangesProcessed++;
                 LocalDateTime from = cursor.value();
                 LocalDateTime to = from.plusDays(1);
 
@@ -139,6 +149,11 @@ public class EventLogService {
                     log.warn("cp.seconds() <= 0 : {}", cp);
                     return;
                 }
+            }
+
+            if (cursor.value().isBefore(now)) {
+                log.info("Catch-up capped at {} range(s) this run. meter={} profile={} resumeFrom={}",
+                        maxRangesPerRun, meterSerial, profileObis, cursor.value());
             }
 
         } catch (Exception ex) {

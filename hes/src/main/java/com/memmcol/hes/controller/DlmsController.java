@@ -1,10 +1,14 @@
 package com.memmcol.hes.controller;
 
+import com.memmcol.hes.domain.clock.BulkClockSyncService;
 import com.memmcol.hes.domain.profile.ProfileProcessRequest;
 import com.memmcol.hes.domain.profile.ProfileProcessor;
 import com.memmcol.hes.domain.profile.ProfileTimestampPortImpl;
 import com.memmcol.hes.dto.ApiResponse;
+import com.memmcol.hes.dto.ClockSyncRequest;
+import com.memmcol.hes.entities.ClockSyncMeter;
 import com.memmcol.hes.infrastructure.dlms.CapturePeriodAdapter;
+import com.memmcol.hes.model.ProfileChannel2ReadingDTO;
 import com.memmcol.hes.model.ProfileRowDTO;
 import com.memmcol.hes.model.TimestampRequest;
 import com.memmcol.hes.service.DlmsService;
@@ -15,7 +19,12 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import io.swagger.v3.oas.annotations.tags.Tags;
 import jakarta.validation.constraints.NotNull;
+import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -41,6 +50,7 @@ import java.util.Map;
 @RestController
 @Slf4j
 @RequestMapping("/api/dlms")
+@AllArgsConstructor
 public class DlmsController {
 
     private final DlmsService dlmsService;
@@ -48,18 +58,27 @@ public class DlmsController {
     private final ProfileProcessor profileProcessor;
     private final ProfileTimestampPortImpl timestampPort;
     private final CapturePeriodAdapter capturePeriodAdapter;
+    private final BulkClockSyncService clockSyncService;
 
-    public DlmsController(DlmsService dlmsService, ProfileMetadataService profileMetadataService, ProfileProcessor profileProcessor, ProfileTimestampPortImpl timestampPort, CapturePeriodAdapter capturePeriodAdapter) {
-        this.dlmsService = dlmsService;
-        this.profileMetadataService = profileMetadataService;
-        this.profileProcessor = profileProcessor;
-        this.timestampPort = timestampPort;
-        this.capturePeriodAdapter = capturePeriodAdapter;
-    }
+//    public DlmsController(DlmsService dlmsService, ProfileMetadataService profileMetadataService, ProfileProcessor profileProcessor, ProfileTimestampPortImpl timestampPort, CapturePeriodAdapter capturePeriodAdapter) {
+//        this.dlmsService = dlmsService;
+//        this.profileMetadataService = profileMetadataService;
+//        this.profileProcessor = profileProcessor;
+//        this.timestampPort = timestampPort;
+//        this.capturePeriodAdapter = capturePeriodAdapter;
+//    }
 
     @GetMapping("/readClock")
     @Tag(name = "Clock", description = "Read clock by providing only the meter number.")
-    public String readClock(@RequestParam String serial) throws InvalidAlgorithmParameterException, NoSuchPaddingException, IllegalBlockSizeException, NoSuchAlgorithmException, BadPaddingException, SignatureException, InvalidKeyException {
+    public String readClock(
+            @RequestParam String serial)
+            throws InvalidAlgorithmParameterException,
+            NoSuchPaddingException,
+            IllegalBlockSizeException,
+            NoSuchAlgorithmException,
+            BadPaddingException,
+            SignatureException,
+            InvalidKeyException {
         return dlmsService.readClock(serial);
     }
 
@@ -415,6 +434,29 @@ public class DlmsController {
         }
     }
 
+//    @PostMapping("/profiles/process")
+//    public ResponseEntity<?> processProfiles(
+//            @RequestBody ProfileProcessRequest request) {
+//
+//        try {
+//            Map<String, List<ProfileChannel2ReadingDTO>> results =
+//                    profileProcessor.processProfiless(request);
+//
+//            return ResponseEntity.ok(results);
+//
+//        } catch (Exception e) {
+//            log.error("Error processing profiles", e);
+//
+//            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+//                    .body(Map.of(
+//                            "message", "Error processing profiles",
+//                            "error", e.getMessage() == null
+//                                    ? "Unexpected error"
+//                                    : e.getMessage()));
+//        }
+//    }
+
+
     @PostMapping("/profiles/process")
     public ResponseEntity<String> processProfiles(@RequestBody ProfileProcessRequest request) {
         try {
@@ -479,5 +521,75 @@ public class DlmsController {
         return ResponseEntity.ok(ts);
     }
 
+//    @PostMapping("/clock-sync")
+//    public ResponseEntity<Map<String, Object>> synchronizeNow() {
+//
+//        return ResponseEntity.ok(
+//                dlmsService.synchronizeClocks()
+//        );
+//    }
+//
+//    @GetMapping("/synchronize-all/{jobId}")
+//    public ResponseEntity<Map<String, Object>> getStatus(
+//            @PathVariable String jobId) {
+//        return ResponseEntity.ok(
+//                dlmsService.getJobStatus(jobId)
+//        );
+//    }
+
+
+//    @PostMapping("/clock-sync")
+//    public ResponseEntity<Map<String, Object>> synchronizeNow() {
+//        return ResponseEntity.accepted()
+//                .body(dlmsService.startSynchronization());
+//    }
+
+
+    @PostMapping("/synchronize/clock")
+    public ResponseEntity<Map<String, Object>> synchronizeNow(
+            @RequestBody(required = false) ClockSyncRequest request) {
+
+        List<String> meterNumbers =
+                request == null ? null : request.meterNumbers();
+
+        return ResponseEntity.accepted()
+                .body(clockSyncService.startSynchronization(meterNumbers));
+    }
+
+
+    @GetMapping("/synchronize/clock")
+    public ResponseEntity<Map<String, Object>> getStatus(
+            @RequestParam(required = false) Long jobId) {
+        return ResponseEntity.ok(
+                clockSyncService.getJobStatus(jobId));
+    }
+
+
+    @GetMapping("/synchronize/clock/meters")
+    public ResponseEntity<Map<String, Object>> getMeterLogs(
+            @RequestParam Long jobId,
+            @RequestParam(required = false) String status,
+            @PageableDefault(
+                    size = 100,
+                    sort = "id",
+                    direction = Sort.Direction.ASC
+            ) Pageable pageable) {
+
+        Page<ClockSyncMeter> logs =
+                clockSyncService.getMeterLogs(jobId, status, pageable);
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("content", logs.getContent());
+        response.put("page", logs.getNumber());
+        response.put("size", logs.getSize());
+        response.put("totalElements", logs.getTotalElements());
+        response.put("totalPages", logs.getTotalPages());
+        response.put("first", logs.isFirst());
+        response.put("last", logs.isLast());
+        response.put("numberOfElements", logs.getNumberOfElements());
+        response.put("empty", logs.isEmpty());
+
+        return ResponseEntity.ok(response);
+    }
 
 }

@@ -21,6 +21,10 @@ public class PartitionService {
     public void ensureMonthlyPartition(YearMonth yearMonth) {
         String partitionName = "monthly_consumption_" + yearMonth.format(DateTimeFormatter.ofPattern("yyyyMM"));
 
+        if (PartitionCreationMemo.isConfirmed(partitionName)) {
+            return;
+        }
+
         // Validate partition name
         if (!partitionName.matches("[a-zA-Z0-9_]+")) {
             throw new IllegalArgumentException("Invalid partition name: " + partitionName);
@@ -42,5 +46,7 @@ public class PartitionService {
             );
             em.createNativeQuery(createSql).executeUpdate();
         }
+
+        PartitionCreationMemo.confirm(partitionName);
     }
 }

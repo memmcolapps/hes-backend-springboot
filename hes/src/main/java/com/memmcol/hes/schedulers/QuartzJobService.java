@@ -197,7 +197,7 @@ public class QuartzJobService {
                     .usingJobData(jobDetail.getJobDataMap())
                     .withSchedule(CronScheduleBuilder.cronSchedule(jobInfo.getCronExpression())
                             .inTimeZone(cronTimeZone)
-                            .withMisfireHandlingInstructionFireAndProceed())
+                            .withMisfireHandlingInstructionDoNothing())
                     .build()
                     : TriggerBuilder.newTrigger()
                     .forJob(jobDetail)
@@ -380,7 +380,7 @@ public class QuartzJobService {
                     .withIdentity(jobInfo.getJobName(), jobInfo.getJobGroup())
                     .withSchedule(CronScheduleBuilder.cronSchedule(jobInfo.getCronExpression())
                             .inTimeZone(cronTimeZone)
-                            .withMisfireHandlingInstructionFireAndProceed())
+                            .withMisfireHandlingInstructionDoNothing())
                     .build();
         } else {
             long intervalMs = calculateIntervalMs(jobInfo);
