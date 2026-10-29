@@ -177,6 +177,40 @@ class BulkJobExecutionServiceTest {
     }
 
     @Test
+    void controllerTriggerBulkRead_Success() {
+        SchedulerJobInfo jobInfo = new SchedulerJobInfo();
+        jobInfo.setJobName("Channel1Job");
+        jobInfo.setJobGroup("profile");
+        jobInfo.setJobClass("com.memmcol.hes.jobs.Channel1Job");
+
+        when(schedulerRepository.findByJobNameAndJobGroup("Channel1Job", "profile"))
+                .thenReturn(Optional.of(jobInfo));
+
+        BulkJobExecution execution = new BulkJobExecution();
+        execution.setId(101L);
+        execution.setJobName("Channel1Job");
+        execution.setJobGroup("profile");
+        execution.setStatus("RUNNING");
+        execution.setIntervalType("HOURLY");
+
+        when(bulkJobExecutionRepository.saveAndFlush(any(BulkJobExecution.class)))
+                .thenReturn(execution);
+
+        BulkTriggerRequest request = BulkTriggerRequest.builder()
+                .meterSerials(List.of("625250000001"))
+                .build();
+
+        ResponseEntity<?> response = controller.triggerBulkRead("Channel1Job", "profile", request);
+
+        assertEquals(200, response.getStatusCode().value());
+        assertTrue(response.getBody() instanceof Map);
+        Map<?, ?> map = (Map<?, ?>) response.getBody();
+        assertEquals(101L, map.get("jobExecutionId"));
+
+        verifyNoInteractions(quartzJobService);
+    }
+
+    @Test
     void controllerTriggerNow_BulkTrigger_DelegatesToService() {
         SchedulerJobInfo jobInfo = new SchedulerJobInfo();
         jobInfo.setJobName("Channel1Job");

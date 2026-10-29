@@ -117,19 +117,27 @@ public class QuartzJobController {
                 : ResponseEntity.badRequest().body("❌ Failed to resume job.");
     }
 
+    @PostMapping("/bulk-read/{jobGroup}/{jobName}")
+    public ResponseEntity<?> triggerBulkRead(
+            @PathVariable String jobName,
+            @PathVariable String jobGroup,
+            @RequestBody BulkTriggerRequest request) {
+        try {
+            Map<String, Object> result = bulkJobExecutionService.executeBulkJob(jobGroup, jobName, request);
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            log.error("❌ Error executing bulk job for {}/{}", jobGroup, jobName, e);
+            return ResponseEntity.badRequest().body("❌ Failed to execute bulk job: " + e.getMessage());
+        }
+    }
+
     @PostMapping("/trigger/{jobGroup}/{jobName}")
     public ResponseEntity<?> triggerNow(
             @PathVariable String jobName,
             @PathVariable String jobGroup,
             @RequestBody(required = false) BulkTriggerRequest request) {
         if (request != null && ((request.getMeterSerials() != null && !request.getMeterSerials().isEmpty()) || request.getDateRange() != null)) {
-            try {
-                Map<String, Object> result = bulkJobExecutionService.executeBulkJob(jobGroup, jobName, request);
-                return ResponseEntity.ok(result);
-            } catch (Exception e) {
-                log.error("❌ Error executing bulk job for {}/{}", jobGroup, jobName, e);
-                return ResponseEntity.badRequest().body("❌ Failed to execute bulk job: " + e.getMessage());
-            }
+            return triggerBulkRead(jobName, jobGroup, request);
         }
         boolean triggered = quartzJobService.triggerNow(jobName, jobGroup);
         return triggered ? ResponseEntity.ok("⚡ Job triggered now.")
