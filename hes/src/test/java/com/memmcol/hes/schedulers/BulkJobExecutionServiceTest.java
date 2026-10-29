@@ -49,10 +49,44 @@ class BulkJobExecutionServiceTest {
     private BulkJobExecutionService bulkJobExecutionService;
 
     private QuartzJobController controller;
+    private com.memmcol.hes.controller.BatchJobController batchController;
 
     @BeforeEach
     void setUp() {
         controller = new QuartzJobController(quartzJobService, bulkJobExecutionService);
+        batchController = new com.memmcol.hes.controller.BatchJobController(bulkJobExecutionService);
+    }
+
+    @Test
+    void batchController_readBatch_Success() {
+        SchedulerJobInfo jobInfo = new SchedulerJobInfo();
+        jobInfo.setJobName("Channel1Job");
+        jobInfo.setJobGroup("profile");
+        jobInfo.setJobClass("com.memmcol.hes.jobs.Channel1Job");
+
+        when(schedulerRepository.findByJobNameAndJobGroup("Channel1Job", "profile"))
+                .thenReturn(Optional.of(jobInfo));
+
+        BulkJobExecution execution = new BulkJobExecution();
+        execution.setId(102L);
+        execution.setJobName("Channel1Job");
+        execution.setJobGroup("profile");
+        execution.setStatus("RUNNING");
+        execution.setIntervalType("HOURLY");
+
+        when(bulkJobExecutionRepository.saveAndFlush(any(BulkJobExecution.class)))
+                .thenReturn(execution);
+
+        BulkTriggerRequest request = BulkTriggerRequest.builder()
+                .meterSerials(List.of("625250000001"))
+                .build();
+
+        ResponseEntity<?> response = batchController.readBatch("Channel1Job", "profile", request);
+
+        assertEquals(200, response.getStatusCode().value());
+        assertTrue(response.getBody() instanceof Map);
+        Map<?, ?> map = (Map<?, ?>) response.getBody();
+        assertEquals(102L, map.get("jobExecutionId"));
     }
 
     @Test
