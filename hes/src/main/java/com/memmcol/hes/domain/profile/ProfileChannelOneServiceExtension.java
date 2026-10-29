@@ -39,6 +39,10 @@ public class ProfileChannelOneServiceExtension {
     }
 
        public void readProfileAndSave(String model, String meterSerial, String profileObis, boolean isMD) {
+           readProfileAndSave(model, meterSerial, profileObis, isMD, null, null);
+       }
+
+       public void readProfileAndSave(String model, String meterSerial, String profileObis, boolean isMD, LocalDateTime rangeFrom, LocalDateTime rangeTo) {
         try {
             final String safeObis = (profileObis == null || profileObis.isBlank()) ? "unknown" : profileObis;
             if (profileObis == null || profileObis.isBlank()) {
@@ -47,22 +51,21 @@ public class ProfileChannelOneServiceExtension {
                 return;
             }
 
-            // Step 1: Seed initial range start using DB-first priority:
-            // 1) meter_profile_state.last_timestamp (if any record exists)
-            // 2) meters.created_at
-            // 3) now - 1 day
-            LocalDateTime seedFrom = null;
-            ProfileState st = statePort.loadState(meterSerial, profileObis);
-            if (st != null && st.lastTimestamp() != null) {
-                seedFrom = st.lastTimestamp().value();
-            }
+            // Step 1: Seed initial range start
+            LocalDateTime seedFrom = rangeFrom;
             if (seedFrom == null) {
-                seedFrom = meterRepository.findMeterDetailsByMeterNumber(meterSerial)
-                        .map(m -> m.getCreatedAt())
-                        .orElse(null);
-            }
-            if (seedFrom == null) {
-                seedFrom = LocalDateTime.now().minusDays(1);
+                ProfileState st = statePort.loadState(meterSerial, profileObis);
+                if (st != null && st.lastTimestamp() != null) {
+                    seedFrom = st.lastTimestamp().value();
+                }
+                if (seedFrom == null) {
+                    seedFrom = meterRepository.findMeterDetailsByMeterNumber(meterSerial)
+                            .map(m -> m.getCreatedAt())
+                            .orElse(null);
+                }
+                if (seedFrom == null) {
+                    seedFrom = LocalDateTime.now().minusDays(1);
+                }
             }
             ProfileTimestamp cursor = new ProfileTimestamp(seedFrom);
 
@@ -74,7 +77,7 @@ public class ProfileChannelOneServiceExtension {
                 cp = new CapturePeriod(900);
             }
 
-            LocalDateTime now = LocalDateTime.now();
+            LocalDateTime now = rangeTo != null ? rangeTo : LocalDateTime.now();
 
             int rangesProcessed = 0;
             while (cursor.value().isBefore(now) && rangesProcessed < maxRangesPerRun) {

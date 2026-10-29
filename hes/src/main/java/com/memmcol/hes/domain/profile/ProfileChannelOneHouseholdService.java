@@ -43,6 +43,15 @@ public class ProfileChannelOneHouseholdService {
                                    String meterSerial,
                                    String profileObis,
                                    boolean isMD) {
+        readProfileAndSave(model, meterSerial, profileObis, isMD, null, null);
+    }
+
+    public void readProfileAndSave(String model,
+                                   String meterSerial,
+                                   String profileObis,
+                                   boolean isMD,
+                                   LocalDateTime rangeFrom,
+                                   LocalDateTime rangeTo) {
 
         final String safeObis = (profileObis == null || profileObis.isBlank()) ? "unknown" : profileObis;
 
@@ -53,20 +62,22 @@ public class ProfileChannelOneHouseholdService {
                 return;
             }
 
-            LocalDateTime seedFrom = null;
-            ProfileState st = statePort.loadState(meterSerial, profileObis);
-            if (st != null && st.lastTimestamp() != null) {
-                seedFrom = st.lastTimestamp().value();
-            }
-
+            LocalDateTime seedFrom = rangeFrom;
             if (seedFrom == null) {
-                seedFrom = meterRepository.findMeterDetailsByMeterNumber(meterSerial)
-                        .map(MeterDTO::getCreatedAt)
-                        .orElse(null);
-            }
+                ProfileState st = statePort.loadState(meterSerial, profileObis);
+                if (st != null && st.lastTimestamp() != null) {
+                    seedFrom = st.lastTimestamp().value();
+                }
 
-            if (seedFrom == null) {
-                seedFrom = LocalDateTime.now().minusDays(1);
+                if (seedFrom == null) {
+                    seedFrom = meterRepository.findMeterDetailsByMeterNumber(meterSerial)
+                            .map(MeterDTO::getCreatedAt)
+                            .orElse(null);
+                }
+
+                if (seedFrom == null) {
+                    seedFrom = LocalDateTime.now().minusDays(1);
+                }
             }
 
             ProfileTimestamp cursor = new ProfileTimestamp(seedFrom);
@@ -80,7 +91,7 @@ public class ProfileChannelOneHouseholdService {
                 cp = new CapturePeriod(3600);
             }
 
-            final LocalDateTime now = LocalDateTime.now();
+            final LocalDateTime now = rangeTo != null ? rangeTo : LocalDateTime.now();
 
             int rangesProcessed = 0;
             while (cursor.value().isBefore(now) && rangesProcessed < maxRangesPerRun) {

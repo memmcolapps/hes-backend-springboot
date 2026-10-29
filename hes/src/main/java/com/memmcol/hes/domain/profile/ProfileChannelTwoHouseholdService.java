@@ -42,6 +42,15 @@ public class ProfileChannelTwoHouseholdService {
                                    String meterSerial,
                                    String profileObis,
                                    boolean isMD) {
+        readProfileAndSave(model, meterSerial, profileObis, isMD, null, null);
+    }
+
+    public void readProfileAndSave(String model,
+                                   String meterSerial,
+                                   String profileObis,
+                                   boolean isMD,
+                                   LocalDateTime rangeFrom,
+                                   LocalDateTime rangeTo) {
 
         final String safeObis =
                 (profileObis == null || profileObis.isBlank())
@@ -69,22 +78,23 @@ public class ProfileChannelTwoHouseholdService {
             // =====================================================
             // LOAD WATERMARK STATE (SOURCE OF TRUTH)
             // =====================================================
-            LocalDateTime seedFrom = null;
-
-            ProfileState st = statePort.loadState(meterSerial, profileObis);
-
-            if (st != null && st.lastTimestamp() != null) {
-                seedFrom = st.lastTimestamp().value();
-            }
-
+            LocalDateTime seedFrom = rangeFrom;
             if (seedFrom == null) {
-                seedFrom = meterRepository.findMeterDetailsByMeterNumber(meterSerial)
-                        .map(m -> m.getCreatedAt())
-                        .orElse(null);
-            }
+                ProfileState st = statePort.loadState(meterSerial, profileObis);
 
-            if (seedFrom == null) {
-                seedFrom = LocalDateTime.now().minusDays(1);
+                if (st != null && st.lastTimestamp() != null) {
+                    seedFrom = st.lastTimestamp().value();
+                }
+
+                if (seedFrom == null) {
+                    seedFrom = meterRepository.findMeterDetailsByMeterNumber(meterSerial)
+                            .map(m -> m.getCreatedAt())
+                            .orElse(null);
+                }
+
+                if (seedFrom == null) {
+                    seedFrom = LocalDateTime.now().minusDays(1);
+                }
             }
 
             // IMPORTANT: watermark cursor only (NO plus(cp))
@@ -111,7 +121,7 @@ public class ProfileChannelTwoHouseholdService {
                 cp = new CapturePeriod(3600);
             }
 
-            final LocalDateTime now = LocalDateTime.now();
+            final LocalDateTime now = rangeTo != null ? rangeTo : LocalDateTime.now();
 
             // =====================================================
             // REPLAY LOOP

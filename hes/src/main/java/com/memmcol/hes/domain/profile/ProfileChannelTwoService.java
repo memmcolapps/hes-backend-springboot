@@ -37,6 +37,10 @@ public class ProfileChannelTwoService {
     }
 
     public void readProfileAndSave(String model, String meterSerial, String profileObis, boolean isMD) {
+        readProfileAndSave(model, meterSerial, profileObis, isMD, null, null);
+    }
+
+    public void readProfileAndSave(String model, String meterSerial, String profileObis, boolean isMD, LocalDateTime rangeFrom, LocalDateTime rangeTo) {
 
         try {
             final String safeObis = (profileObis == null || profileObis.isBlank()) ? "unknown" : profileObis;
@@ -47,22 +51,23 @@ public class ProfileChannelTwoService {
                 return;
             }
 
-            // ✅ STEP 1: Seed cursor (same as Channel 1)
-            LocalDateTime seedFrom = null;
-
-            ProfileState st = statePort.loadState(meterSerial, profileObis);
-            if (st != null && st.lastTimestamp() != null) {
-                seedFrom = st.lastTimestamp().value();
-            }
-
+            // ✅ STEP 1: Seed cursor
+            LocalDateTime seedFrom = rangeFrom;
             if (seedFrom == null) {
-                seedFrom = meterRepository.findMeterDetailsByMeterNumber(meterSerial)
-                        .map(m -> m.getCreatedAt())
-                        .orElse(null);
-            }
+                ProfileState st = statePort.loadState(meterSerial, profileObis);
+                if (st != null && st.lastTimestamp() != null) {
+                    seedFrom = st.lastTimestamp().value();
+                }
 
-            if (seedFrom == null) {
-                seedFrom = LocalDateTime.now().minusDays(1);
+                if (seedFrom == null) {
+                    seedFrom = meterRepository.findMeterDetailsByMeterNumber(meterSerial)
+                            .map(m -> m.getCreatedAt())
+                            .orElse(null);
+                }
+
+                if (seedFrom == null) {
+                    seedFrom = LocalDateTime.now().minusDays(1);
+                }
             }
 
             ProfileTimestamp cursor = new ProfileTimestamp(seedFrom);
@@ -76,7 +81,7 @@ public class ProfileChannelTwoService {
                 cp = new CapturePeriod(900);
             }
 
-            LocalDateTime now = LocalDateTime.now();
+            LocalDateTime now = rangeTo != null ? rangeTo : LocalDateTime.now();
 
             // ✅ MAIN LOOP
             int rangesProcessed = 0;

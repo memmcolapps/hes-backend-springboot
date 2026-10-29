@@ -40,6 +40,10 @@ public class MonthlyBillingEnergyHouseholdService {
     }
 
     public void readProfileAndSave(String model, String meterSerial, String profileObis, boolean isMD) {
+        readProfileAndSave(model, meterSerial, profileObis, isMD, null, null);
+    }
+
+    public void readProfileAndSave(String model, String meterSerial, String profileObis, boolean isMD, LocalDateTime rangeFrom, LocalDateTime rangeTo) {
         try {
             final String safeObis = (profileObis == null || profileObis.isBlank()) ? "unknown" : profileObis;
 
@@ -48,17 +52,20 @@ public class MonthlyBillingEnergyHouseholdService {
                 return;
             }
 
-            LocalDateTime meterCreatedAt = meterRepository.findMeterDetailsByMeterNumber(meterSerial)
-                    .map(m -> m.getCreatedAt())
-                    .orElse(null);
+            LocalDateTime seedFrom = rangeFrom;
+            if (seedFrom == null) {
+                LocalDateTime meterCreatedAt = meterRepository.findMeterDetailsByMeterNumber(meterSerial)
+                        .map(m -> m.getCreatedAt())
+                        .orElse(null);
 
-            LocalDateTime seedFrom = BillingDeterminantsIngestionSupport.resolveSeedTimestamp(
-                    statePort, meterSerial, profileObis, meterCreatedAt);
-            seedFrom = BillingDeterminantsIngestionSupport.effectiveSeedFrom(seedFrom, gracePeriodPolicy);
+                seedFrom = BillingDeterminantsIngestionSupport.resolveSeedTimestamp(
+                        statePort, meterSerial, profileObis, meterCreatedAt);
+                seedFrom = BillingDeterminantsIngestionSupport.effectiveSeedFrom(seedFrom, gracePeriodPolicy);
+            }
 
             ProfileTimestamp cursor = new ProfileTimestamp(seedFrom);
             CapturePeriod cp = new CapturePeriod(1);
-            LocalDateTime now = LocalDateTime.now();
+            LocalDateTime now = rangeTo != null ? rangeTo : LocalDateTime.now();
             int readWindowDays = billingProperties.getReadWindowDays();
 
             int rangesProcessed = 0;
