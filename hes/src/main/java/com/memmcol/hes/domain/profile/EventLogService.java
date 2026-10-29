@@ -43,10 +43,6 @@ public class EventLogService {
     }
 
     public void readProfileAndSave(String model, String meterSerial, String profileObis, boolean isMD) {
-        readProfileAndSave(model, meterSerial, profileObis, isMD, null, null);
-    }
-
-    public void readProfileAndSave(String model, String meterSerial, String profileObis, boolean isMD, LocalDateTime rangeFrom, LocalDateTime rangeTo) {
         try {
             final String safeObis = (profileObis == null || profileObis.isBlank()) ? "unknown" : profileObis;
 
@@ -57,22 +53,25 @@ public class EventLogService {
                 return;
             }
 
-            LocalDateTime seedFrom = rangeFrom;
+            // Step 1: Seed cursor — 3-step priority chain
+            // 1) last_timestamp from profile state
+            // 2) created_at (date of capture) from meters table
+            // 3) fallback: now - 1 day (event log cadence)
+            LocalDateTime seedFrom = null;
+
+            ProfileState st = statePort.loadState(meterSerial, profileObis);
+            if (st != null && st.lastTimestamp() != null) {
+                seedFrom = st.lastTimestamp().value();
+            }
+
             if (seedFrom == null) {
-                ProfileState st = statePort.loadState(meterSerial, profileObis);
-                if (st != null && st.lastTimestamp() != null) {
-                    seedFrom = st.lastTimestamp().value();
-                }
+                seedFrom = meterRepository.findMeterDetailsByMeterNumber(meterSerial)
+                        .map(m -> m.getCreatedAt())
+                        .orElse(null);
+            }
 
-                if (seedFrom == null) {
-                    seedFrom = meterRepository.findMeterDetailsByMeterNumber(meterSerial)
-                            .map(m -> m.getCreatedAt())
-                            .orElse(null);
-                }
-
-                if (seedFrom == null) {
-                    seedFrom = LocalDateTime.now().minusDays(1);
-                }
+            if (seedFrom == null) {
+                seedFrom = LocalDateTime.now().minusDays(1); // ✅ event log cadence fallback
             }
 
             ProfileTimestamp cursor = new ProfileTimestamp(seedFrom);
@@ -80,7 +79,7 @@ public class EventLogService {
             // Step 2: Event log — capture period is 1 day in seconds
             CapturePeriod cp = new CapturePeriod(1);
 
-            LocalDateTime now = rangeTo != null ? rangeTo : LocalDateTime.now();
+            LocalDateTime now = LocalDateTime.now();
 
             int rangesProcessed = 0;
             while (cursor.value().isBefore(now) && rangesProcessed < maxRangesPerRun) {

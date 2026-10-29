@@ -47,24 +47,16 @@ public class HouseholdExtendedEventService {
     }
 
     public void readFraudProfileAndSave(String model, String meterSerial, String profileObis, boolean isMD) {
-        readProfileAndSave(model, meterSerial, profileObis, isMD, EventKind.FRAUD, null, null);
-    }
-
-    public void readFraudProfileAndSave(String model, String meterSerial, String profileObis, boolean isMD, LocalDateTime rangeFrom, LocalDateTime rangeTo) {
-        readProfileAndSave(model, meterSerial, profileObis, isMD, EventKind.FRAUD, rangeFrom, rangeTo);
+        readProfileAndSave(model, meterSerial, profileObis, isMD, EventKind.FRAUD);
     }
 
     public void readControlProfileAndSave(String model, String meterSerial, String profileObis, boolean isMD) {
-        readProfileAndSave(model, meterSerial, profileObis, isMD, EventKind.CONTROL, null, null);
-    }
-
-    public void readControlProfileAndSave(String model, String meterSerial, String profileObis, boolean isMD, LocalDateTime rangeFrom, LocalDateTime rangeTo) {
-        readProfileAndSave(model, meterSerial, profileObis, isMD, EventKind.CONTROL, rangeFrom, rangeTo);
+        readProfileAndSave(model, meterSerial, profileObis, isMD, EventKind.CONTROL);
     }
 
     private enum EventKind { FRAUD, CONTROL }
 
-    private void readProfileAndSave(String model, String meterSerial, String profileObis, boolean isMD, EventKind kind, LocalDateTime rangeFrom, LocalDateTime rangeTo) {
+    private void readProfileAndSave(String model, String meterSerial, String profileObis, boolean isMD, EventKind kind) {
         if (profileObis == null || profileObis.isBlank()) {
             log.error("Household extended event profile OBIS is blank; skipping meter={} model={} kind={}",
                     meterSerial, model, kind);
@@ -78,20 +70,17 @@ public class HouseholdExtendedEventService {
         }
 
         try {
-            LocalDateTime seedFrom = rangeFrom;
-            if (seedFrom == null) {
-                seedFrom = HouseholdDayWindowIngestionSupport.resolveSeedTimestamp(
-                        statePort,
-                        meterSerial,
-                        profileObis,
-                        meterRepository.findMeterDetailsByMeterNumber(meterSerial)
-                                .map(m -> m.getCreatedAt())
-                                .orElse(null)
-                );
-            }
+            LocalDateTime seedFrom = HouseholdDayWindowIngestionSupport.resolveSeedTimestamp(
+                    statePort,
+                    meterSerial,
+                    profileObis,
+                    meterRepository.findMeterDetailsByMeterNumber(meterSerial)
+                            .map(m -> m.getCreatedAt())
+                            .orElse(null)
+            );
             ProfileTimestamp cursor = new ProfileTimestamp(seedFrom);
             CapturePeriod cp = new CapturePeriod(1);
-            LocalDateTime now = rangeTo != null ? rangeTo : LocalDateTime.now();
+            LocalDateTime now = LocalDateTime.now();
 
             int rangesProcessed = 0;
             while (cursor.value().isBefore(now) && rangesProcessed < maxRangesPerRun) {

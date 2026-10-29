@@ -276,10 +276,6 @@ public class ProfileChannelThreeHouseholdService {
     }
 
     public void readProfileAndSave(String model, String meterSerial, String profileObis, boolean isMD) {
-        readProfileAndSave(model, meterSerial, profileObis, isMD, null, null);
-    }
-
-    public void readProfileAndSave(String model, String meterSerial, String profileObis, boolean isMD, LocalDateTime rangeFrom, LocalDateTime rangeTo) {
         try {
             final String safeObis = (profileObis == null || profileObis.isBlank()) ? "unknown" : profileObis;
 
@@ -289,20 +285,18 @@ public class ProfileChannelThreeHouseholdService {
                 return;
             }
 
-            LocalDateTime seedFrom = rangeFrom;
+            LocalDateTime seedFrom = null;
+            ProfileState st = statePort.loadState(meterSerial, profileObis);
+            if (st != null && st.lastTimestamp() != null) {
+                seedFrom = st.lastTimestamp().value();
+            }
             if (seedFrom == null) {
-                ProfileState st = statePort.loadState(meterSerial, profileObis);
-                if (st != null && st.lastTimestamp() != null) {
-                    seedFrom = st.lastTimestamp().value();
-                }
-                if (seedFrom == null) {
-                    seedFrom = meterRepository.findMeterDetailsByMeterNumber(meterSerial)
-                            .map(m -> m.getCreatedAt())
-                            .orElse(null);
-                }
-                if (seedFrom == null) {
-                    seedFrom = LocalDateTime.now().minusDays(1);
-                }
+                seedFrom = meterRepository.findMeterDetailsByMeterNumber(meterSerial)
+                        .map(m -> m.getCreatedAt())
+                        .orElse(null);
+            }
+            if (seedFrom == null) {
+                seedFrom = LocalDateTime.now().minusDays(1);
             }
             ProfileTimestamp cursor = new ProfileTimestamp(seedFrom);
 
@@ -311,7 +305,7 @@ public class ProfileChannelThreeHouseholdService {
                 cp = new CapturePeriod(3600);
             }
 
-            LocalDateTime now = rangeTo != null ? rangeTo : LocalDateTime.now();
+            LocalDateTime now = LocalDateTime.now();
 
             int rangesProcessed = 0;
             while (cursor.value().isBefore(now) && rangesProcessed < maxRangesPerRun) {

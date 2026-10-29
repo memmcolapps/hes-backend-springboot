@@ -29,14 +29,10 @@ public class MetersLockService {
     private final ProfileChannelThreeHouseholdService channelThreeHouseholdService;
 
     public void readChannelOneWithLock(String model, String meterSerial, String profileObis, boolean isMD) {
-        readChannelOneWithLock(model, meterSerial, profileObis, isMD, null, null);
-    }
-
-    public void readChannelOneWithLock(String model, String meterSerial, String profileObis, boolean isMD, java.time.LocalDateTime rangeFrom, java.time.LocalDateTime rangeTo) {
         try {
             assert lockPort != null;
             lockPort.withExclusive(meterSerial, () -> {
-                channelOneServiceExtension.readProfileAndSave(model, meterSerial, profileObis, isMD, rangeFrom, rangeTo);
+                channelOneServiceExtension.readProfileAndSave(model, meterSerial, profileObis, isMD);
                 log.info("Profile reading completed or aborted. meter={} profile={}", meterSerial, profileObis);
                 return null;
             });
@@ -52,14 +48,10 @@ public class MetersLockService {
     }
 
     public void readChannelOneHouseholdWithLock(String model, String meterSerial, String profileObis, boolean isMD) {
-        readChannelOneHouseholdWithLock(model, meterSerial, profileObis, isMD, null, null);
-    }
-
-    public void readChannelOneHouseholdWithLock(String model, String meterSerial, String profileObis, boolean isMD, java.time.LocalDateTime rangeFrom, java.time.LocalDateTime rangeTo) {
         try {
             assert lockPort != null;
             lockPort.withExclusive(meterSerial, () -> {
-                channelOneHouseholdService.readProfileAndSave(model, meterSerial, profileObis, isMD, rangeFrom, rangeTo);
+                channelOneHouseholdService.readProfileAndSave(model, meterSerial, profileObis, isMD);
                 log.info("Household profile reading completed or aborted. meter={} profile={}", meterSerial, profileObis);
                 return null;
             });
@@ -75,14 +67,10 @@ public class MetersLockService {
     }
 
     public void readChannelTwoWithLock(String model, String meterSerial, String profileObis, boolean isMD) {
-        readChannelTwoWithLock(model, meterSerial, profileObis, isMD, null, null);
-    }
-
-    public void readChannelTwoWithLock(String model, String meterSerial, String profileObis, boolean isMD, java.time.LocalDateTime rangeFrom, java.time.LocalDateTime rangeTo) {
         try {
             assert lockPort != null;
             lockPort.withExclusive(meterSerial, () -> {
-                profileChannelTwoService.readProfileAndSave(model, meterSerial, profileObis, isMD, rangeFrom, rangeTo);
+                profileChannelTwoService.readProfileAndSave(model, meterSerial, profileObis, isMD);
                 log.info("Profile reading completed or aborted. meter={} profile={}", meterSerial, profileObis);
                 return null;
             });
@@ -98,14 +86,10 @@ public class MetersLockService {
     }
 
     public void readChannelTwoHouseholdWithLock(String model, String meterSerial, String profileObis, boolean isMD) {
-        readChannelTwoHouseholdWithLock(model, meterSerial, profileObis, isMD, null, null);
-    }
-
-    public void readChannelTwoHouseholdWithLock(String model, String meterSerial, String profileObis, boolean isMD, java.time.LocalDateTime rangeFrom, java.time.LocalDateTime rangeTo) {
         try {
             assert lockPort != null;
             lockPort.withExclusive(meterSerial, () -> {
-                channelTwoHouseholdService.readProfileAndSave(model, meterSerial, profileObis, isMD, rangeFrom, rangeTo);
+                channelTwoHouseholdService.readProfileAndSave(model, meterSerial, profileObis, isMD);
                 log.info("Household profile reading completed or aborted. meter={} profile={}", meterSerial, profileObis);
                 return null;
             });
@@ -121,14 +105,10 @@ public class MetersLockService {
     }
 
     public void readChannelThreeHouseholdWithLock(String model, String meterSerial, String profileObis, boolean isMD) {
-        readChannelThreeHouseholdWithLock(model, meterSerial, profileObis, isMD, null, null);
-    }
-
-    public void readChannelThreeHouseholdWithLock(String model, String meterSerial, String profileObis, boolean isMD, java.time.LocalDateTime rangeFrom, java.time.LocalDateTime rangeTo) {
         try {
             assert lockPort != null;
             lockPort.withExclusive(meterSerial, () -> {
-                channelThreeHouseholdService.readProfileAndSave(model, meterSerial, profileObis, isMD, rangeFrom, rangeTo);
+                channelThreeHouseholdService.readProfileAndSave(model, meterSerial, profileObis, isMD);
                 log.info("Household profile reading completed or aborted. meter={} profile={}", meterSerial, profileObis);
                 return null;
             });
@@ -144,14 +124,10 @@ public class MetersLockService {
     }
 
     public void readMonthlyBillWithLock(String model, String meterSerial, String profileObis, boolean isMD) {
-        readMonthlyBillWithLock(model, meterSerial, profileObis, isMD, null, null);
-    }
-
-    public void readMonthlyBillWithLock(String model, String meterSerial, String profileObis, boolean isMD, java.time.LocalDateTime rangeFrom, java.time.LocalDateTime rangeTo) {
         try {
             assert lockPort != null;
             lockPort.withExclusive(meterSerial, () -> {
-                monthlyBillingService.readProfileAndSave(model, meterSerial, profileObis, isMD, rangeFrom, rangeTo);
+                monthlyBillingService.readProfileAndSave(model, meterSerial, profileObis, isMD);
                 log.info("Profile reading completed or aborted. meter={} profile={}", meterSerial, profileObis);
                 return null;
             });
@@ -167,14 +143,10 @@ public class MetersLockService {
     }
 
     public void readMonthlyBillingDataHouseholdWithLock(String model, String meterSerial, String profileObis, boolean isMD) {
-        readMonthlyBillingDataHouseholdWithLock(model, meterSerial, profileObis, isMD, null, null);
-    }
-
-    public void readMonthlyBillingDataHouseholdWithLock(String model, String meterSerial, String profileObis, boolean isMD, java.time.LocalDateTime rangeFrom, java.time.LocalDateTime rangeTo) {
         try {
             assert lockPort != null;
             lockPort.withExclusive(meterSerial, () -> {
-                monthlyBillingDataHouseholdService.readProfileAndSave(model, meterSerial, profileObis, isMD, rangeFrom, rangeTo);
+                monthlyBillingDataHouseholdService.readProfileAndSave(model, meterSerial, profileObis, isMD);
                 log.info("Household monthly billing data read completed or aborted. meter={} profile={}", meterSerial, profileObis);
                 return null;
             });
@@ -190,14 +162,10 @@ public class MetersLockService {
     }
 
     public void readMonthlyBillingEnergyHouseholdWithLock(String model, String meterSerial, String profileObis, boolean isMD) {
-        readMonthlyBillingEnergyHouseholdWithLock(model, meterSerial, profileObis, isMD, null, null);
-    }
-
-    public void readMonthlyBillingEnergyHouseholdWithLock(String model, String meterSerial, String profileObis, boolean isMD, java.time.LocalDateTime rangeFrom, java.time.LocalDateTime rangeTo) {
         try {
             assert lockPort != null;
             lockPort.withExclusive(meterSerial, () -> {
-                monthlyBillingEnergyHouseholdService.readProfileAndSave(model, meterSerial, profileObis, isMD, rangeFrom, rangeTo);
+                monthlyBillingEnergyHouseholdService.readProfileAndSave(model, meterSerial, profileObis, isMD);
                 log.info("Household monthly billing energy read completed or aborted. meter={} profile={}", meterSerial, profileObis);
                 return null;
             });
@@ -213,14 +181,10 @@ public class MetersLockService {
     }
 
     public void readDailyBillWithLock(String model, String meterSerial, String profileObis, boolean isMD) {
-        readDailyBillWithLock(model, meterSerial, profileObis, isMD, null, null);
-    }
-
-    public void readDailyBillWithLock(String model, String meterSerial, String profileObis, boolean isMD, java.time.LocalDateTime rangeFrom, java.time.LocalDateTime rangeTo) {
         try {
             assert lockPort != null;
             lockPort.withExclusive(meterSerial, () -> {
-                dailyBillingService.readProfileAndSave(model, meterSerial, profileObis, isMD, rangeFrom, rangeTo);
+                dailyBillingService.readProfileAndSave(model, meterSerial, profileObis, isMD);
                 log.info("Profile reading completed or aborted. meter={} profile={}", meterSerial, profileObis);
                 return null;
             });
@@ -236,15 +200,11 @@ public class MetersLockService {
     }
 
     public void readDailyBillingDataHouseholdWithLock(String model, String meterSerial, String profileObis, boolean isMD) {
-        readDailyBillingDataHouseholdWithLock(model, meterSerial, profileObis, isMD, null, null);
-    }
-
-    public void readDailyBillingDataHouseholdWithLock(String model, String meterSerial, String profileObis, boolean isMD, java.time.LocalDateTime rangeFrom, java.time.LocalDateTime rangeTo) {
         try {
 
             assert lockPort != null;
             lockPort.withExclusive(meterSerial, () -> {
-                dailyBillingDataHouseholdService.readProfileAndSave(model, meterSerial, profileObis, isMD, rangeFrom, rangeTo);
+                dailyBillingDataHouseholdService.readProfileAndSave(model, meterSerial, profileObis, isMD);
                 log.info("Household daily billing data read completed or aborted. meter={} profile={}", meterSerial, profileObis);
                 return null;
             });
@@ -260,14 +220,10 @@ public class MetersLockService {
     }
 
     public void readDailyBillingEnergyHouseholdWithLock(String model, String meterSerial, String profileObis, boolean isMD) {
-        readDailyBillingEnergyHouseholdWithLock(model, meterSerial, profileObis, isMD, null, null);
-    }
-
-    public void readDailyBillingEnergyHouseholdWithLock(String model, String meterSerial, String profileObis, boolean isMD, java.time.LocalDateTime rangeFrom, java.time.LocalDateTime rangeTo) {
         try {
             assert lockPort != null;
             lockPort.withExclusive(meterSerial, () -> {
-                dailyBillingEnergyHouseholdService.readProfileAndSave(model, meterSerial, profileObis, isMD, rangeFrom, rangeTo);
+                dailyBillingEnergyHouseholdService.readProfileAndSave(model, meterSerial, profileObis, isMD);
                 log.info("Household daily billing energy read completed or aborted. meter={} profile={}", meterSerial, profileObis);
                 return null;
             });
@@ -283,14 +239,10 @@ public class MetersLockService {
     }
 
     public void readEventsWithLock(String model, String meterSerial, String profileObis, boolean isMD) {
-        readEventsWithLock(model, meterSerial, profileObis, isMD, null, null);
-    }
-
-    public void readEventsWithLock(String model, String meterSerial, String profileObis, boolean isMD, java.time.LocalDateTime rangeFrom, java.time.LocalDateTime rangeTo) {
         try {
             assert lockPort != null;
             lockPort.withExclusive(meterSerial, () -> {
-                eventLogService.readProfileAndSave(model, meterSerial, profileObis, isMD, rangeFrom, rangeTo);
+                eventLogService.readProfileAndSave(model, meterSerial, profileObis, isMD);
                 log.info("Events Profile reading completed or aborted. meter={} profile={}", meterSerial, profileObis);
                 return null;
             });
@@ -306,13 +258,9 @@ public class MetersLockService {
     }
 
     public void readHouseholdRechargeTokenEventsWithLock(String model, String meterSerial, String profileObis, boolean isMD) {
-        readHouseholdRechargeTokenEventsWithLock(model, meterSerial, profileObis, isMD, null, null);
-    }
-
-    public void readHouseholdRechargeTokenEventsWithLock(String model, String meterSerial, String profileObis, boolean isMD, java.time.LocalDateTime rangeFrom, java.time.LocalDateTime rangeTo) {
         try {
             lockPort.withExclusive(meterSerial, () -> {
-                householdTokenEventService.readRechargeProfileAndSave(model, meterSerial, profileObis, isMD, rangeFrom, rangeTo);
+                householdTokenEventService.readRechargeProfileAndSave(model, meterSerial, profileObis, isMD);
                 log.info("Household recharge token event read completed. meter={} profile={}", meterSerial, profileObis);
                 return null;
             });
@@ -326,13 +274,9 @@ public class MetersLockService {
     }
 
     public void readHouseholdManagementTokenEventsWithLock(String model, String meterSerial, String profileObis, boolean isMD) {
-        readHouseholdManagementTokenEventsWithLock(model, meterSerial, profileObis, isMD, null, null);
-    }
-
-    public void readHouseholdManagementTokenEventsWithLock(String model, String meterSerial, String profileObis, boolean isMD, java.time.LocalDateTime rangeFrom, java.time.LocalDateTime rangeTo) {
         try {
             lockPort.withExclusive(meterSerial, () -> {
-                householdTokenEventService.readManagementProfileAndSave(model, meterSerial, profileObis, isMD, rangeFrom, rangeTo);
+                householdTokenEventService.readManagementProfileAndSave(model, meterSerial, profileObis, isMD);
                 log.info("Household management token event read completed. meter={} profile={}", meterSerial, profileObis);
                 return null;
             });
@@ -346,13 +290,9 @@ public class MetersLockService {
     }
 
     public void readHouseholdFraudEventsWithLock(String model, String meterSerial, String profileObis, boolean isMD) {
-        readHouseholdFraudEventsWithLock(model, meterSerial, profileObis, isMD, null, null);
-    }
-
-    public void readHouseholdFraudEventsWithLock(String model, String meterSerial, String profileObis, boolean isMD, java.time.LocalDateTime rangeFrom, java.time.LocalDateTime rangeTo) {
         try {
             lockPort.withExclusive(meterSerial, () -> {
-                householdExtendedEventService.readFraudProfileAndSave(model, meterSerial, profileObis, isMD, rangeFrom, rangeTo);
+                householdExtendedEventService.readFraudProfileAndSave(model, meterSerial, profileObis, isMD);
                 log.info("Household fraud event read completed. meter={} profile={}", meterSerial, profileObis);
                 return null;
             });
@@ -366,13 +306,9 @@ public class MetersLockService {
     }
 
     public void readHouseholdControlEventsWithLock(String model, String meterSerial, String profileObis, boolean isMD) {
-        readHouseholdControlEventsWithLock(model, meterSerial, profileObis, isMD, null, null);
-    }
-
-    public void readHouseholdControlEventsWithLock(String model, String meterSerial, String profileObis, boolean isMD, java.time.LocalDateTime rangeFrom, java.time.LocalDateTime rangeTo) {
         try {
             lockPort.withExclusive(meterSerial, () -> {
-                householdExtendedEventService.readControlProfileAndSave(model, meterSerial, profileObis, isMD, rangeFrom, rangeTo);
+                householdExtendedEventService.readControlProfileAndSave(model, meterSerial, profileObis, isMD);
                 log.info("Household control event read completed. meter={} profile={}", meterSerial, profileObis);
                 return null;
             });

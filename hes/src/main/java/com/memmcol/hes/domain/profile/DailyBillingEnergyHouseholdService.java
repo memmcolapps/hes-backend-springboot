@@ -42,10 +42,6 @@ public class DailyBillingEnergyHouseholdService {
     }
 
     public void readProfileAndSave(String model, String meterSerial, String profileObis, boolean isMD) {
-        readProfileAndSave(model, meterSerial, profileObis, isMD, null, null);
-    }
-
-    public void readProfileAndSave(String model, String meterSerial, String profileObis, boolean isMD, LocalDateTime rangeFrom, LocalDateTime rangeTo) {
         try {
             final String safeObis = (profileObis == null || profileObis.isBlank()) ? "unknown" : profileObis;
             if (profileObis == null || profileObis.isBlank()) {
@@ -53,21 +49,18 @@ public class DailyBillingEnergyHouseholdService {
                 return;
             }
 
-            LocalDateTime seedFrom = rangeFrom;
-            if (seedFrom == null) {
-                seedFrom = HouseholdDayWindowIngestionSupport.resolveSeedTimestamp(
-                        statePort,
-                        meterSerial,
-                        profileObis,
-                        meterRepository.findMeterDetailsByMeterNumber(meterSerial)
-                                .map(m -> m.getCreatedAt())
-                                .orElse(null)
-                );
-            }
+            LocalDateTime seedFrom = HouseholdDayWindowIngestionSupport.resolveSeedTimestamp(
+                    statePort,
+                    meterSerial,
+                    profileObis,
+                    meterRepository.findMeterDetailsByMeterNumber(meterSerial)
+                            .map(m -> m.getCreatedAt())
+                            .orElse(null)
+            );
 
             ProfileTimestamp cursor = new ProfileTimestamp(seedFrom);
             CapturePeriod cp = new CapturePeriod(1);
-            LocalDateTime now = rangeTo != null ? rangeTo : LocalDateTime.now();
+            LocalDateTime now = LocalDateTime.now();
             boolean metadataRefreshedFromMeter = false;
 
             int rangesProcessed = 0;
