@@ -1,6 +1,5 @@
 package com.memmcol.hes.schedulers;
 
-import com.memmcol.hes.domain.profile.MetersLockService;
 import com.memmcol.hes.dto.BulkTriggerRequest;
 import com.memmcol.hes.dto.MeterDTO;
 import com.memmcol.hes.entities.BulkJobExecution;
@@ -31,7 +30,7 @@ public class BulkJobExecutionService {
     private final MeterRepository meterRepository;
     private final BulkJobExecutionRepository bulkJobExecutionRepository;
     private final BulkJobMeterLogRepository bulkJobMeterLogRepository;
-    private final MetersLockService metersLockService;
+    private final BulkProfileRangeReader bulkProfileRangeReader;
     private final Scheduler scheduler;
 
     public Map<String, Object> executeBulkJob(String jobGroup, String jobName, BulkTriggerRequest request) {
@@ -124,7 +123,9 @@ public class BulkJobExecutionService {
                 targetSerials,
                 finalJobClass,
                 finalObisCodes,
-                finalObisHousehold
+                finalObisHousehold,
+                startDate,
+                endDate
         ));
 
         // 8. Build immediate start response
@@ -194,7 +195,9 @@ public class BulkJobExecutionService {
             List<String> targetSerials,
             String jobClass,
             String obisCodes,
-            String obisCodesHousehold
+            String obisCodesHousehold,
+            LocalDateTime startDate,
+            LocalDateTime endDate
     ) {
         Long executionId = execution.getId();
         log.info("Starting sequential bulk execution ID={} for job {}/{} across {} meters",
@@ -243,13 +246,15 @@ public class BulkJobExecutionService {
                     meterDTO.determineMD();
                 }
 
-                executeCoreJobForMeter(
+                bulkProfileRangeReader.executeRangeRead(
                         execution.getJobName(),
                         execution.getJobGroup(),
                         jobClass,
                         obisCodes,
                         obisCodesHousehold,
-                        meterDTO
+                        meterDTO,
+                        startDate,
+                        endDate
                 );
 
                 long duration = System.currentTimeMillis() - startTime;
@@ -278,59 +283,5 @@ public class BulkJobExecutionService {
         bulkJobExecutionRepository.save(execution);
         log.info("Completed sequential bulk execution ID={} for job {}/{}",
                 executionId, execution.getJobGroup(), execution.getJobName());
-    }
-
-    private void executeCoreJobForMeter(
-            String jobName,
-            String jobGroup,
-            String jobClass,
-            String obisCodes,
-            String obisCodesHousehold,
-            MeterDTO meter
-    ) {
-        String clazz = jobClass != null ? jobClass : "";
-        String name = jobName != null ? jobName : "";
-
-        String model = meter.getMeterModel();
-        String serial = meter.getMeterNumber();
-        boolean isMD = meter.isMD();
-
-        String hhObis = (obisCodesHousehold != null && !obisCodesHousehold.isBlank()) ? obisCodesHousehold : obisCodes;
-
-        if (clazz.contains("Channel1JobHouseHold") || name.contains("Channel1JobHouseHold")) {
-            metersLockService.readChannelOneHouseholdWithLock(model, serial, hhObis, isMD);
-        } else if (clazz.contains("Channel1Job") || name.contains("Channel1Job")) {
-            metersLockService.readChannelOneWithLock(model, serial, obisCodes, isMD);
-        } else if (clazz.contains("Channel2JobHouseHold") || name.contains("Channel2JobHouseHold")) {
-            metersLockService.readChannelTwoHouseholdWithLock(model, serial, hhObis, isMD);
-        } else if (clazz.contains("Channel2Job") || name.contains("Channel2Job")) {
-            metersLockService.readChannelTwoWithLock(model, serial, obisCodes, isMD);
-        } else if (clazz.contains("Channel3JobHouseHold") || name.contains("Channel3JobHouseHold")) {
-            metersLockService.readChannelThreeHouseholdWithLock(model, serial, hhObis, isMD);
-        } else if (clazz.contains("DailyBillingDataHouseHoldJob") || name.contains("DailyBillingDataHouseHoldJob")) {
-            metersLockService.readDailyBillingDataHouseholdWithLock(model, serial, hhObis, isMD);
-        } else if (clazz.contains("DailyBillingEnergyHouseHoldJob") || name.contains("DailyBillingEnergyHouseHoldJob")) {
-            metersLockService.readDailyBillingEnergyHouseholdWithLock(model, serial, hhObis, isMD);
-        } else if (clazz.contains("DailyBillingJob") || name.contains("DailyBillingJob")) {
-            metersLockService.readDailyBillWithLock(model, serial, obisCodes, isMD);
-        } else if (clazz.contains("MonthlyBillingDataHouseHoldJob") || name.contains("MonthlyBillingDataHouseHoldJob")) {
-            metersLockService.readMonthlyBillingDataHouseholdWithLock(model, serial, hhObis, isMD);
-        } else if (clazz.contains("MonthlyBillingEnergyHouseHoldJob") || name.contains("MonthlyBillingEnergyHouseHoldJob")) {
-            metersLockService.readMonthlyBillingEnergyHouseholdWithLock(model, serial, hhObis, isMD);
-        } else if (clazz.contains("MonthlyBillingJob") || name.contains("MonthlyBillingJob")) {
-            metersLockService.readMonthlyBillWithLock(model, serial, obisCodes, isMD);
-        } else if (clazz.contains("RechargeTokenEventJob") || name.contains("RechargeTokenEventJob")) {
-            metersLockService.readHouseholdRechargeTokenEventsWithLock(model, serial, hhObis, isMD);
-        } else if (clazz.contains("ManageTokenEventJob") || name.contains("ManageTokenEventJob")) {
-            metersLockService.readHouseholdManagementTokenEventsWithLock(model, serial, hhObis, isMD);
-        } else if (clazz.contains("FraudEventJob") || name.contains("FraudEventJob")) {
-            metersLockService.readHouseholdFraudEventsWithLock(model, serial, hhObis, isMD);
-        } else if (clazz.contains("ControlEventJob") || name.contains("ControlEventJob")) {
-            metersLockService.readHouseholdControlEventsWithLock(model, serial, hhObis, isMD);
-        } else if (clazz.contains("StandardEventJob") || clazz.contains("PowerGridEventJob") || name.contains("Event")) {
-            metersLockService.readEventsWithLock(model, serial, obisCodes, isMD);
-        } else {
-            metersLockService.readChannelOneWithLock(model, serial, obisCodes, isMD);
-        }
     }
 }
