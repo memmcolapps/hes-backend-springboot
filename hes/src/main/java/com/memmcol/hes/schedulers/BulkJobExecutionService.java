@@ -10,14 +10,12 @@ import com.memmcol.hes.repository.BulkJobExecutionRepository;
 import com.memmcol.hes.repository.BulkJobMeterLogRepository;
 import com.memmcol.hes.repository.MeterRepository;
 import com.memmcol.hes.repository.SchedulerRepository;
-import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.quartz.JobDataMap;
 import org.quartz.JobDetail;
 import org.quartz.JobKey;
 import org.quartz.Scheduler;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -35,47 +33,6 @@ public class BulkJobExecutionService {
     private final BulkJobMeterLogRepository bulkJobMeterLogRepository;
     private final MetersLockService metersLockService;
     private final Scheduler scheduler;
-    private final JdbcTemplate jdbcTemplate;
-
-    @PostConstruct
-    public void initDatabaseTables() {
-        try {
-            jdbcTemplate.execute("""
-                CREATE TABLE IF NOT EXISTS bulk_job_execution (
-                    id                  BIGSERIAL PRIMARY KEY,
-                    job_name            VARCHAR(255)  NOT NULL,
-                    job_group           VARCHAR(255)  NOT NULL,
-                    status              VARCHAR(30)   NOT NULL DEFAULT 'PENDING',
-                    total_meters        INT           NOT NULL DEFAULT 0,
-                    interval_type       VARCHAR(20)   NULL,
-                    start_date          TIMESTAMP     NULL,
-                    end_date            TIMESTAMP     NULL,
-                    created_at          TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    started_at          TIMESTAMP     NULL,
-                    completed_at        TIMESTAMP     NULL,
-                    error_message       TEXT          NULL
-                );
-            """);
-
-            jdbcTemplate.execute("""
-                CREATE TABLE IF NOT EXISTS bulk_job_meter_log (
-                    id                  BIGSERIAL PRIMARY KEY,
-                    job_execution_id    BIGINT        NOT NULL REFERENCES bulk_job_execution(id) ON DELETE CASCADE,
-                    meter_number        VARCHAR(100)  NOT NULL,
-                    status              VARCHAR(20)   NOT NULL DEFAULT 'PENDING',
-                    attempt_count       INT           NOT NULL DEFAULT 0,
-                    last_error          TEXT          NULL,
-                    created_at          TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    updated_at          TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    processed_at        TIMESTAMP     NULL,
-                    duration_ms         BIGINT        NULL
-                );
-            """);
-            log.info("Initialized bulk job execution database tables successfully.");
-        } catch (Exception e) {
-            log.warn("Auto table creation check completed: {}", e.getMessage());
-        }
-    }
 
     public Map<String, Object> executeBulkJob(String jobGroup, String jobName, BulkTriggerRequest request) {
         // 1. Fetch job definition from DB or Quartz
