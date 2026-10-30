@@ -80,7 +80,12 @@ public class BulkProfileRangeReader {
         String serial = meter.getMeterNumber();
         boolean isMD = meter.isMD();
 
+        // Determine profile read type
+        ProfileType type = resolveProfileType(clazz, name);
+
         String hhObis = (obisCodesHousehold != null && !obisCodesHousehold.isBlank()) ? obisCodesHousehold : obisCodes;
+        String rawObis = type.isHousehold() ? hhObis : obisCodes;
+        String activeObis = resolveEffectiveObisCode(type, rawObis);
 
         // Resolve default date range if missing
         LocalDateTime fromDate = startDate != null ? startDate : LocalDateTime.now().minusDays(1);
@@ -89,10 +94,6 @@ public class BulkProfileRangeReader {
         if (toDate.isBefore(fromDate)) {
             toDate = fromDate.plusDays(1);
         }
-
-        // Determine profile read type
-        ProfileType type = resolveProfileType(clazz, name);
-        String activeObis = (type.isHousehold() && !hhObis.isBlank()) ? hhObis : obisCodes;
 
         log.info("Executing bulk range read profileType={} meter={} model={} obis={} from={} to={}",
                 type, serial, model, activeObis, fromDate, toDate);
@@ -109,6 +110,24 @@ public class BulkProfileRangeReader {
             log.error("Failed executing bulk range read lock for meter {}: {}", serial, ex.getMessage(), ex);
             throw new RuntimeException("Bulk range read failed for meter " + serial + ": " + ex.getMessage(), ex);
         }
+    }
+
+    private String resolveEffectiveObisCode(ProfileType type, String providedObis) {
+        if (providedObis != null && !providedObis.isBlank()) {
+            return providedObis.trim();
+        }
+        return switch (type) {
+            case CHANNEL_1, CHANNEL_1_HH -> "1.0.99.1.0.255";
+            case CHANNEL_2, CHANNEL_2_HH -> "1.0.99.2.0.255";
+            case CHANNEL_3_HH -> "1.0.99.3.0.255";
+            case DAILY_BILLING, DAILY_BILLING_DATA_HH, DAILY_BILLING_ENERGY_HH -> "0.0.98.2.0.255";
+            case MONTHLY_BILLING, MONTHLY_BILLING_DATA_HH, MONTHLY_BILLING_ENERGY_HH -> "0.0.98.1.0.255";
+            case EVENT_LOG -> "0.0.99.98.0.255";
+            case RECHARGE_TOKEN_EVENT -> "0.0.99.98.3.255";
+            case MANAGEMENT_TOKEN_EVENT -> "0.0.99.98.5.255";
+            case FRAUD_EVENT -> "0.0.99.98.1.255";
+            case CONTROL_EVENT -> "0.0.99.98.2.255";
+        };
     }
 
     private void readAndPersistRangeInChunks(
@@ -279,22 +298,23 @@ public class BulkProfileRangeReader {
     }
 
     private ProfileType resolveProfileType(String clazz, String name) {
-        if (clazz.contains("Channel1JobHouseHold") || name.contains("Channel1JobHouseHold")) return ProfileType.CHANNEL_1_HH;
-        if (clazz.contains("Channel1Job") || name.contains("Channel1Job")) return ProfileType.CHANNEL_1;
-        if (clazz.contains("Channel2JobHouseHold") || name.contains("Channel2JobHouseHold")) return ProfileType.CHANNEL_2_HH;
-        if (clazz.contains("Channel2Job") || name.contains("Channel2Job")) return ProfileType.CHANNEL_2;
-        if (clazz.contains("Channel3JobHouseHold") || name.contains("Channel3JobHouseHold")) return ProfileType.CHANNEL_3_HH;
-        if (clazz.contains("DailyBillingDataHouseHoldJob") || name.contains("DailyBillingDataHouseHoldJob")) return ProfileType.DAILY_BILLING_DATA_HH;
-        if (clazz.contains("DailyBillingEnergyHouseHoldJob") || name.contains("DailyBillingEnergyHouseHoldJob")) return ProfileType.DAILY_BILLING_ENERGY_HH;
-        if (clazz.contains("DailyBillingJob") || name.contains("DailyBillingJob")) return ProfileType.DAILY_BILLING;
-        if (clazz.contains("MonthlyBillingDataHouseHoldJob") || name.contains("MonthlyBillingDataHouseHoldJob")) return ProfileType.MONTHLY_BILLING_DATA_HH;
-        if (clazz.contains("MonthlyBillingEnergyHouseHoldJob") || name.contains("MonthlyBillingEnergyHouseHoldJob")) return ProfileType.MONTHLY_BILLING_ENERGY_HH;
-        if (clazz.contains("MonthlyBillingJob") || name.contains("MonthlyBillingJob")) return ProfileType.MONTHLY_BILLING;
-        if (clazz.contains("RechargeTokenEventJob") || name.contains("RechargeTokenEventJob")) return ProfileType.RECHARGE_TOKEN_EVENT;
-        if (clazz.contains("ManageTokenEventJob") || name.contains("ManageTokenEventJob")) return ProfileType.MANAGEMENT_TOKEN_EVENT;
-        if (clazz.contains("FraudEventJob") || name.contains("FraudEventJob")) return ProfileType.FRAUD_EVENT;
-        if (clazz.contains("ControlEventJob") || name.contains("ControlEventJob")) return ProfileType.CONTROL_EVENT;
-        if (clazz.contains("StandardEventJob") || clazz.contains("PowerGridEventJob") || name.contains("Event")) return ProfileType.EVENT_LOG;
+        String combined = (clazz + " " + name).toLowerCase();
+        if (combined.contains("channel1jobhousehold") || combined.contains("channel1household") || combined.contains("channel1-hh")) return ProfileType.CHANNEL_1_HH;
+        if (combined.contains("channel1")) return ProfileType.CHANNEL_1;
+        if (combined.contains("channel2jobhousehold") || combined.contains("channel2household") || combined.contains("channel2-hh")) return ProfileType.CHANNEL_2_HH;
+        if (combined.contains("channel2")) return ProfileType.CHANNEL_2;
+        if (combined.contains("channel3jobhousehold") || combined.contains("channel3household") || combined.contains("channel3-hh")) return ProfileType.CHANNEL_3_HH;
+        if (combined.contains("dailybillingdata")) return ProfileType.DAILY_BILLING_DATA_HH;
+        if (combined.contains("dailybillingenergy")) return ProfileType.DAILY_BILLING_ENERGY_HH;
+        if (combined.contains("dailybilling") || combined.contains("daily")) return ProfileType.DAILY_BILLING;
+        if (combined.contains("monthlybillingdata")) return ProfileType.MONTHLY_BILLING_DATA_HH;
+        if (combined.contains("monthlybillingenergy")) return ProfileType.MONTHLY_BILLING_ENERGY_HH;
+        if (combined.contains("monthlybilling") || combined.contains("monthly")) return ProfileType.MONTHLY_BILLING;
+        if (combined.contains("rechargetoken")) return ProfileType.RECHARGE_TOKEN_EVENT;
+        if (combined.contains("managetoken") || combined.contains("managementtoken")) return ProfileType.MANAGEMENT_TOKEN_EVENT;
+        if (combined.contains("fraud")) return ProfileType.FRAUD_EVENT;
+        if (combined.contains("control")) return ProfileType.CONTROL_EVENT;
+        if (combined.contains("event")) return ProfileType.EVENT_LOG;
         return ProfileType.CHANNEL_1;
     }
 }
