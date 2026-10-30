@@ -36,6 +36,13 @@ public class BulkJobExecutionService {
     public Map<String, Object> executeBulkJob(String jobGroup, String jobName, BulkTriggerRequest request) {
         // 1. Fetch job definition from DB or Quartz
         Optional<SchedulerJobInfo> jobInfoOpt = schedulerRepository.findByJobNameAndJobGroup(jobName, jobGroup);
+        if (jobInfoOpt.isEmpty()) {
+            SchedulerJobInfo infoByName = schedulerRepository.findByJobName(jobName);
+            if (infoByName != null) {
+                jobInfoOpt = Optional.of(infoByName);
+            }
+        }
+
         String jobClass = jobInfoOpt.map(SchedulerJobInfo::getJobClass).orElse(null);
         String obisCodes = jobInfoOpt.map(SchedulerJobInfo::getObisCodes).orElse("");
         String obisCodesHousehold = jobInfoOpt.map(SchedulerJobInfo::getObisCodesHousehold).orElse("");
