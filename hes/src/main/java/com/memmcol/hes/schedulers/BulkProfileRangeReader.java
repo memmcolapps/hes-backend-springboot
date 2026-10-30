@@ -107,7 +107,7 @@ public class BulkProfileRangeReader {
                 return null;
             });
         } catch (Exception ex) {
-            log.error("Failed executing bulk range read lock for meter {}: {}", serial, ex.getMessage(), ex);
+            log.error("Failed executing bulk range read for meter {}: {}", serial, ex.getMessage(), ex);
             throw new RuntimeException("Bulk range read failed for meter " + serial + ": " + ex.getMessage(), ex);
         }
     }
@@ -147,6 +147,9 @@ public class BulkProfileRangeReader {
         ProfileMetadataResult metadataResult = metadataProvider.resolve(serial, obisCode, model);
         CapturePeriod cp = new CapturePeriod(Math.max(900, capturePeriodPort.resolveCapturePeriodSeconds(serial, obisCode)));
 
+        int totalRowsPersisted = 0;
+        Exception lastException = null;
+
         LocalDateTime cursor = fromDate;
         while (cursor.isBefore(toDate)) {
             LocalDateTime chunkEnd = type == ProfileType.MONTHLY_BILLING || type == ProfileType.MONTHLY_BILLING_DATA_HH || type == ProfileType.MONTHLY_BILLING_ENERGY_HH
@@ -164,6 +167,7 @@ public class BulkProfileRangeReader {
 
                 if (rows != null && !rows.isEmpty()) {
                     persistProfileRows(type, rows, serial, model, obisCode, isMD, metadataResult, cp);
+                    totalRowsPersisted += rows.size();
                     log.info("Persisted {} bulk profile rows for meter {} [{}] range {} to {}",
                             rows.size(), serial, type, cursor, chunkEnd);
                 } else {
@@ -171,11 +175,16 @@ public class BulkProfileRangeReader {
                             serial, type, cursor, chunkEnd);
                 }
             } catch (Exception ex) {
+                lastException = ex;
                 log.error("Error reading DLMS range for meter {} [{}] range {} to {}: {}",
                         serial, type, cursor, chunkEnd, ex.getMessage(), ex);
             }
 
             cursor = chunkEnd;
+        }
+
+        if (lastException != null && totalRowsPersisted == 0) {
+            throw new RuntimeException("Range read failed for meter " + serial + ": " + lastException.getMessage(), lastException);
         }
     }
 
