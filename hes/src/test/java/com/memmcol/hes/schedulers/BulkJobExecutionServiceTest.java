@@ -39,6 +39,8 @@ class BulkJobExecutionServiceTest {
     @Mock
     private BulkJobMeterLogRepository bulkJobMeterLogRepository;
     @Mock
+    private BulkProfileRangeReader bulkProfileRangeReader;
+    @Mock
     private MetersLockService metersLockService;
     @Mock
     private Scheduler scheduler;
