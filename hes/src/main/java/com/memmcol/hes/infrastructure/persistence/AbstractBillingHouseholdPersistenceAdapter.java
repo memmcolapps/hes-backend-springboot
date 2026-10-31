@@ -140,6 +140,16 @@ public abstract class AbstractBillingHouseholdPersistenceAdapter<TDto, TEntity, 
         return new UpsertCounts(inserted.get(), updated.get());
     }
 
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public UpsertCounts persistBatch(List<TDto> rows) {
+        if (rows == null || rows.isEmpty()) {
+            return new UpsertCounts(0, 0);
+        }
+
+        createPartitionsIfMissing(rows);
+        return persistReadings(rows);
+    }
+
     protected record UpsertCounts(int inserted, int updated) {}
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
