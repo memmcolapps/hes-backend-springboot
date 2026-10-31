@@ -57,6 +57,8 @@ class BulkJobExecutionServiceTest {
     void setUp() {
         controller = new QuartzJobController(quartzJobService, bulkJobExecutionService);
         batchController = new com.memmcol.hes.controller.BatchJobController(bulkJobExecutionService);
+        lenient().when(bulkProfileRangeReader.executeRangeRead(any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(new BulkProfileRangeReader.BulkMeterReadSummary(1, "TX_SAMPLE_FRAME", "RX_SAMPLE_FRAME", null));
     }
 
     @Test

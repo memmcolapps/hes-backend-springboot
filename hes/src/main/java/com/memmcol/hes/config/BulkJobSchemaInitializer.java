@@ -84,9 +84,14 @@ public class BulkJobSchemaInitializer implements BeanFactoryPostProcessor, Prior
                         created_at          TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
                         updated_at          TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
                         processed_at        TIMESTAMP     NULL,
-                        duration_ms         BIGINT        NULL
+                        duration_ms         BIGINT        NULL,
+                        tx_frames           TEXT          NULL,
+                        rx_frames           TEXT          NULL
                     );
                 """);
+
+                stmt.execute("ALTER TABLE bulk_job_meter_log ADD COLUMN IF NOT EXISTS tx_frames TEXT;");
+                stmt.execute("ALTER TABLE bulk_job_meter_log ADD COLUMN IF NOT EXISTS rx_frames TEXT;");
 
                 log.info("Pre-JPA schema check: bulk_job_execution and bulk_job_meter_log tables verified/created.");
             }

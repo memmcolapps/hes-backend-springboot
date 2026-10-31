@@ -253,7 +253,7 @@ public class BulkJobExecutionService {
                     meterDTO.determineMD();
                 }
 
-                bulkProfileRangeReader.executeRangeRead(
+                BulkProfileRangeReader.BulkMeterReadSummary summary = bulkProfileRangeReader.executeRangeRead(
                         execution.getJobName(),
                         execution.getJobGroup(),
                         jobClass,
@@ -265,10 +265,18 @@ public class BulkJobExecutionService {
                 );
 
                 long duration = System.currentTimeMillis() - startTime;
-                meterLog.setStatus("SUCCESS");
-                meterLog.setProcessedAt(LocalDateTime.now());
                 meterLog.setDurationMs(duration);
+                meterLog.setProcessedAt(LocalDateTime.now());
                 meterLog.setUpdatedAt(LocalDateTime.now());
+                meterLog.setTxFrames(summary.txFrames());
+                meterLog.setRxFrames(summary.rxFrames());
+
+                if (summary.lastError() != null && summary.totalRowsPersisted() == 0) {
+                    meterLog.setStatus("FAILED");
+                    meterLog.setLastError(summary.lastError());
+                } else {
+                    meterLog.setStatus("SUCCESS");
+                }
                 bulkJobMeterLogRepository.save(meterLog);
 
             } catch (Exception ex) {
