@@ -24,7 +24,9 @@ CREATE TABLE bulk_job_meter_log (
     created_at          TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at          TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     processed_at        TIMESTAMP     NULL,
-    duration_ms         BIGINT        NULL
+    duration_ms         BIGINT        NULL,
+    tx_frames           TEXT          NULL,
+    rx_frames           TEXT          NULL
 );
 
 CREATE INDEX idx_bulk_job_meter_log_job_id ON bulk_job_meter_log (job_execution_id);

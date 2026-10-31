@@ -8,16 +8,25 @@ import com.memmcol.hes.dto.*;
 import com.memmcol.hes.infrastructure.dlms.DlmsReaderUtils;
 import com.memmcol.hes.infrastructure.dlms.ProfileMetadataProvider;
 import com.memmcol.hes.infrastructure.persistence.*;
+import com.memmcol.hes.model.ModelProfileMetadata;
+import com.memmcol.hes.nettyUtils.SessionManagerMultiVendor;
+import com.memmcol.hes.service.DlmsUtils;
+import gurux.dlms.GXDLMSClient;
+import gurux.dlms.GXDateTime;
+import gurux.dlms.objects.GXDLMSProfileGeneric;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 
 /**
- * Dedicated component for executing bulk DLMS profile reads across a date range [startDate, endDate]
- * without touching existing Quartz scheduled job readers or state cursors.
+ * Dedicated component for executing bulk DLMS profile reads across an explicit date range [startDate, endDate]
+ * without touching or mutating existing Quartz scheduled job state cursors (meter_profile_state).
  */
 @Slf4j
 @Component
@@ -28,6 +37,7 @@ public class BulkProfileRangeReader {
     private final DlmsReaderUtils dlmsReaderUtils;
     private final ProfileMetadataProvider metadataProvider;
     private final CapturePeriodPort capturePeriodPort;
+    private final SessionManagerMultiVendor sessionManager;
 
     // Mappers
     private final ProfileChannelOneMapper channelOneMapper;
@@ -63,7 +73,14 @@ public class BulkProfileRangeReader {
     private final HouseholdFraudEventPersistenceAdapter fraudEventPersistAdapter;
     private final HouseholdControlEventPersistenceAdapter controlEventPersistAdapter;
 
-    public void executeRangeRead(
+    public record BulkMeterReadSummary(
+            int totalRowsPersisted,
+            String txFrames,
+            String rxFrames,
+            String lastError
+    ) {}
+
+    public BulkMeterReadSummary executeRangeRead(
             String jobName,
             String jobGroup,
             String jobClass,
@@ -102,13 +119,12 @@ public class BulkProfileRangeReader {
         final LocalDateTime finalToDate = toDate;
 
         try {
-            meterLockPort.withExclusive(serial, () -> {
-                readAndPersistRangeInChunks(type, model, serial, activeObis, isMD, finalFromDate, finalToDate);
-                return null;
-            });
+            return meterLockPort.withExclusive(serial, () ->
+                    readAndPersistRangeInChunks(type, model, serial, activeObis, isMD, finalFromDate, finalToDate)
+            );
         } catch (Exception ex) {
             log.error("Failed executing bulk range read for meter {}: {}", serial, ex.getMessage(), ex);
-            throw new RuntimeException("Bulk range read failed for meter " + serial + ": " + ex.getMessage(), ex);
+            return new BulkMeterReadSummary(0, "", "[ERROR] " + ex.getMessage(), ex.getMessage());
         }
     }
 
@@ -130,7 +146,7 @@ public class BulkProfileRangeReader {
         };
     }
 
-    private void readAndPersistRangeInChunks(
+    private BulkMeterReadSummary readAndPersistRangeInChunks(
             ProfileType type,
             String model,
             String serial,
@@ -141,14 +157,22 @@ public class BulkProfileRangeReader {
     ) {
         if (obisCode == null || obisCode.isBlank()) {
             log.warn("Cannot perform bulk range read: empty OBIS code for meter {}", serial);
-            return;
+            return new BulkMeterReadSummary(0, "", "[ERROR] Empty OBIS code", "Empty OBIS code");
         }
 
         ProfileMetadataResult metadataResult = metadataProvider.resolve(serial, obisCode, model);
-        CapturePeriod cp = new CapturePeriod(Math.max(900, capturePeriodPort.resolveCapturePeriodSeconds(serial, obisCode)));
 
+        List<String> allTxFrames = new ArrayList<>();
+        List<String> allRxFrames = new ArrayList<>();
         int totalRowsPersisted = 0;
         Exception lastException = null;
+
+        GXDLMSClient client = null;
+        try {
+            client = sessionManager.getOrCreateClient(serial);
+        } catch (Exception e) {
+            log.warn("Could not get DLMS client for TX frame preview for meter {}: {}", serial, e.getMessage());
+        }
 
         LocalDateTime cursor = fromDate;
         while (cursor.isBefore(toDate)) {
@@ -160,22 +184,29 @@ public class BulkProfileRangeReader {
                 chunkEnd = toDate;
             }
 
+            // Capture TX frame
+            String chunkTx = captureTxFrames(client, obisCode, metadataResult, cursor, chunkEnd);
+            allTxFrames.add("[" + cursor + " to " + chunkEnd + "] " + chunkTx);
+
             try {
                 List<ProfileRowGeneric> rows = dlmsReaderUtils.readRange(
                         model, serial, obisCode, metadataResult, cursor, chunkEnd, isMD
                 );
 
                 if (rows != null && !rows.isEmpty()) {
-                    persistProfileRows(type, rows, serial, model, obisCode, isMD, metadataResult, cp);
+                    persistProfileRowsWithoutWatermark(type, rows, serial, model, obisCode, isMD, metadataResult);
                     totalRowsPersisted += rows.size();
+                    allRxFrames.add("[" + cursor + " to " + chunkEnd + "] SUCCESS: Persisted " + rows.size() + " rows");
                     log.info("Persisted {} bulk profile rows for meter {} [{}] range {} to {}",
                             rows.size(), serial, type, cursor, chunkEnd);
                 } else {
+                    allRxFrames.add("[" + cursor + " to " + chunkEnd + "] EMPTY: 0 rows returned from meter buffer");
                     log.info("No DLMS rows returned for meter {} [{}] range {} to {}",
                             serial, type, cursor, chunkEnd);
                 }
             } catch (Exception ex) {
                 lastException = ex;
+                allRxFrames.add("[" + cursor + " to " + chunkEnd + "] ERROR: " + ex.getMessage());
                 log.error("Error reading DLMS range for meter {} [{}] range {} to {}: {}",
                         serial, type, cursor, chunkEnd, ex.getMessage(), ex);
             }
@@ -183,76 +214,123 @@ public class BulkProfileRangeReader {
             cursor = chunkEnd;
         }
 
-        if (lastException != null && totalRowsPersisted == 0) {
-            throw new RuntimeException("Range read failed for meter " + serial + ": " + lastException.getMessage(), lastException);
+        String txString = String.join("\n", allTxFrames);
+        String rxString = String.join("\n", allRxFrames);
+        String lastErrorMsg = lastException != null ? lastException.getMessage() : null;
+
+        return new BulkMeterReadSummary(totalRowsPersisted, txString, rxString, lastErrorMsg);
+    }
+
+    private String captureTxFrames(
+            GXDLMSClient client,
+            String obisCode,
+            ProfileMetadataResult metadataResult,
+            LocalDateTime from,
+            LocalDateTime to
+    ) {
+        if (client == null) {
+            return "N/A (Client unavailable)";
+        }
+        try {
+            GXDLMSProfileGeneric profile = new GXDLMSProfileGeneric();
+            profile.setLogicalName(obisCode);
+            if (metadataResult != null && metadataResult.getMetadataList() != null) {
+                DlmsUtils.populateCaptureObjects(profile, metadataResult.getMetadataList());
+            }
+
+            GXDateTime gxFrom = new GXDateTime(Date.from(from.atZone(ZoneId.systemDefault()).toInstant()));
+            GXDateTime gxTo = new GXDateTime(Date.from(to.atZone(ZoneId.systemDefault()).toInstant()));
+
+            byte[][] frames = client.readRowsByRange(profile, gxFrom, gxTo);
+            if (frames == null || frames.length == 0) {
+                return "EMPTY_TX_FRAMES";
+            }
+            List<String> hexList = new ArrayList<>();
+            for (byte[] f : frames) {
+                hexList.add(toHex(f));
+            }
+            return String.join(" | ", hexList);
+        } catch (Exception e) {
+            return "ERR_GENERATING_TX: " + e.getMessage();
         }
     }
 
-    private void persistProfileRows(
+    private String toHex(byte[] bytes) {
+        if (bytes == null || bytes.length == 0) return "";
+        StringBuilder sb = new StringBuilder();
+        for (byte b : bytes) {
+            sb.append(String.format("%02X ", b));
+        }
+        return sb.toString().trim();
+    }
+
+    /**
+     * Persists rows directly into fact tables without mutating meter_profile_state.
+     */
+    private void persistProfileRowsWithoutWatermark(
             ProfileType type,
             List<ProfileRowGeneric> rows,
             String serial,
             String model,
             String obisCode,
             boolean isMD,
-            ProfileMetadataResult metadataResult,
-            CapturePeriod cp
+            ProfileMetadataResult metadataResult
     ) throws Exception {
         switch (type) {
             case CHANNEL_1 -> {
                 List<ProfileChannelOneDTO> dtos = channelOneMapper.toDTO(rows, serial, model, isMD, metadataResult);
                 channelOnePersistAdapter.createPartitionsIfMissing(dtos);
-                channelOnePersistAdapter.saveBatchAndAdvanceCursor(serial, obisCode, dtos, cp);
+                channelOnePersistAdapter.persistReadingsByMonth(dtos);
             }
             case CHANNEL_1_HH -> {
                 List<ProfileChannelOneHouseholdDTO> dtos = channelOneHouseholdMapper.toDTO(rows, serial, model, isMD, metadataResult);
                 channelOneHouseholdPersistAdapter.createPartitionsIfMissing(dtos);
-                channelOneHouseholdPersistAdapter.saveBatchAndAdvanceCursor(serial, obisCode, dtos, cp);
+                channelOneHouseholdPersistAdapter.persistReadingsByMonth(dtos);
             }
             case CHANNEL_2 -> {
                 List<ProfileChannelTwoDTO> dtos = channelTwoMapper.toDTO(rows, serial, model, isMD, metadataResult);
                 channelTwoPersistAdapter.createPartitionsIfMissing(dtos);
-                channelTwoPersistAdapter.saveBatchAndAdvanceCursor(serial, model, obisCode, dtos, cp, metadataResult);
+                channelTwoPersistAdapter.persistReadingsByMonth(dtos);
             }
             case CHANNEL_2_HH -> {
                 List<ProfileChannelTwoHouseholdDTO> dtos = channelTwoHouseholdMapper.toDTO(rows, serial, model, isMD, metadataResult);
                 channelTwoHouseholdPersistAdapter.createPartitionsIfMissing(dtos);
-                channelTwoHouseholdPersistAdapter.saveBatchAndAdvanceCursor(serial, obisCode, dtos, cp);
+                channelTwoHouseholdPersistAdapter.persistReadingsByMonth(dtos);
             }
             case CHANNEL_3_HH -> {
                 List<ProfileChannelThreeHouseholdDTO> dtos = channelThreeHouseholdMapper.toDTO(rows, serial, model, isMD, metadataResult);
                 channelThreeHouseholdPersistAdapter.createPartitionsIfMissing(dtos);
-                channelThreeHouseholdPersistAdapter.saveBatchAndAdvanceCursor(serial, obisCode, dtos, cp);
+                channelThreeHouseholdPersistAdapter.persistReadingsByMonth(dtos);
             }
             case DAILY_BILLING -> {
                 List<DailyBillingProfileDTO> dtos = dailyBillingMapper.toDTO(rows, serial, model, isMD, metadataResult);
                 dailyBillingPersistAdapter.createPartitionsIfMissing(dtos);
-                dailyBillingPersistAdapter.saveBatchAndAdvanceCursor(serial, obisCode, dtos, cp);
+                dailyBillingPersistAdapter.persistReadingsByMonth(dtos);
             }
             case DAILY_BILLING_DATA_HH -> {
                 List<BillingDataHouseholdDTO> dtos = billingDataHouseholdMapper.toDTO(rows, serial, model, isMD, metadataResult);
                 dailyBillingDataHouseholdPersistAdapter.createPartitionsIfMissing(dtos);
-                dailyBillingDataHouseholdPersistAdapter.saveBatchAndAdvanceCursor(serial, obisCode, dtos, cp);
+                dailyBillingDataHouseholdPersistAdapter.persistReadings(dtos);
             }
             case DAILY_BILLING_ENERGY_HH -> {
                 List<BillingEnergyHouseholdDTO> dtos = billingEnergyHouseholdMapper.toDTO(rows, serial, model, isMD, metadataResult);
                 dailyBillingEnergyHouseholdPersistAdapter.createPartitionsIfMissing(dtos);
-                dailyBillingEnergyHouseholdPersistAdapter.saveBatchAndAdvanceCursor(serial, obisCode, dtos, cp);
+                dailyBillingEnergyHouseholdPersistAdapter.persistReadings(dtos);
             }
             case MONTHLY_BILLING -> {
                 List<MonthlyBillingDTO> dtos = monthlyBillingMapper.toDTO(rows, serial, model, isMD, metadataResult);
                 monthlyBillingPersistAdapter.createPartitionsIfMissing(dtos);
-                monthlyBillingPersistAdapter.saveBatchAndAdvanceCursor(serial, obisCode, dtos, cp);
+                monthlyBillingPersistAdapter.persistReadingsByMonth(dtos);
             }
             case MONTHLY_BILLING_DATA_HH -> {
                 List<BillingDataHouseholdDTO> dtos = billingDataHouseholdMapper.toDTO(rows, serial, model, isMD, metadataResult);
                 monthlyBillingDataHouseholdPersistAdapter.createPartitionsIfMissing(dtos);
-                monthlyBillingDataHouseholdPersistAdapter.saveBatchAndAdvanceCursor(serial, obisCode, dtos, cp);
+                monthlyBillingDataHouseholdPersistAdapter.persistReadings(dtos);
             }
             case MONTHLY_BILLING_ENERGY_HH -> {
                 List<BillingEnergyHouseholdDTO> dtos = billingEnergyHouseholdMapper.toDTO(rows, serial, model, isMD, metadataResult);
                 monthlyBillingEnergyHouseholdPersistAdapter.createPartitionsIfMissing(dtos);
-                monthlyBillingEnergyHouseholdPersistAdapter.saveBatchAndAdvanceCursor(serial, obisCode, dtos, cp);
+                monthlyBillingEnergyHouseholdPersistAdapter.persistReadings(dtos);
             }
             case EVENT_LOG -> {
                 List<EventLogDTO> dtos = eventLogMapper.toDTOs(rows, serial, model);

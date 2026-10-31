@@ -43,6 +43,12 @@ public class BulkJobMeterLog {
     @Column(name = "duration_ms")
     private Long durationMs;
 
+    @Column(name = "tx_frames", columnDefinition = "TEXT")
+    private String txFrames;
+
+    @Column(name = "rx_frames", columnDefinition = "TEXT")
+    private String rxFrames;
+
     @PrePersist
     void onCreate() {
         LocalDateTime now = LocalDateTime.now();
