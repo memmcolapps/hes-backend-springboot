@@ -10,14 +10,15 @@ import com.memmcol.hes.infrastructure.dlms.DlmsReaderUtils;
 import com.memmcol.hes.infrastructure.dlms.ProfileMetadataProvider;
 import com.memmcol.hes.infrastructure.persistence.ProfileChannelTwoHouseholdPersistenceAdapter;
 import com.memmcol.hes.repository.MeterRepository;
-import lombok.AllArgsConstructor;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.List;
 
-@AllArgsConstructor
+@RequiredArgsConstructor
 @Slf4j
 @Service
 public class ProfileChannelTwoHouseholdService {
@@ -29,6 +30,13 @@ public class ProfileChannelTwoHouseholdService {
     private final ProfileChannelTwoHouseholdPersistenceAdapter persistenceAdapter;
     private final ProfileChannelTwoHouseholdMapper mapper;
     private final MeterRepository meterRepository;
+
+    private int maxRangesPerRun = 7;
+
+    @Value("${hes.profile.catchup.max-ranges-per-run:7}")
+    public void setMaxRangesPerRun(int value) {
+        this.maxRangesPerRun = Math.max(1, value);
+    }
 
     public void readProfileAndSave(String model,
                                    String meterSerial,
@@ -108,7 +116,9 @@ public class ProfileChannelTwoHouseholdService {
             // =====================================================
             // REPLAY LOOP
             // =====================================================
-            while (cursor.value().isBefore(now)) {
+            int rangesProcessed = 0;
+            while (cursor.value().isBefore(now) && rangesProcessed < maxRangesPerRun) {
+                rangesProcessed++;
 
                 final LocalDateTime from = cursor.value();
                 LocalDateTime to = from.plusDays(1);
@@ -249,6 +259,11 @@ public class ProfileChannelTwoHouseholdService {
                         duration);
             }
 
+            if (cursor.value().isBefore(now)) {
+                log.info("Catch-up capped at {} range(s) this run. meter={} profile={} resumeFrom={}",
+                        maxRangesPerRun, meterSerial, profileObis, cursor.value());
+            }
+
         } catch (Exception ex) {
 
             log.error("Fatal exception reading profile2HH meter={} profile={}",
@@ -294,7 +309,9 @@ public class ProfileChannelTwoHouseholdService {
 
             LocalDateTime now = LocalDateTime.now();
 
-            while (cursor.value().isBefore(now)) {
+            int rangesProcessed = 0;
+            while (cursor.value().isBefore(now) && rangesProcessed < maxRangesPerRun) {
+                rangesProcessed++;
                 LocalDateTime from = cursor.value();
                 LocalDateTime to = from.plusDays(1);
                 if (to.isAfter(now)) to = now;
@@ -331,7 +348,8 @@ public class ProfileChannelTwoHouseholdService {
                 if (rows == null || rows.isEmpty()) {
                     log.warn("Empty read meter={} profile={} from={} to={}",
                             meterSerial, profileObis, from, to);
-                    break;
+                    cursor = new ProfileTimestamp(to);
+                    continue;
                 }
 
                 List<ProfileChannelTwoHouseholdDTO> dtos = mapper.toDTO(rows, meterSerial, model, isMD, metadataResult);
@@ -350,6 +368,11 @@ public class ProfileChannelTwoHouseholdService {
                     log.warn("cp.seconds() <= 0 : {}", cp);
                     return;
                 }
+            }
+
+            if (cursor.value().isBefore(now)) {
+                log.info("Catch-up capped at {} range(s) this run. meter={} profile={} resumeFrom={}",
+                        maxRangesPerRun, meterSerial, profileObis, cursor.value());
             }
         } catch (Exception ex) {
             log.error("Fatal exception while reading household profile, meter={}, profile={}: {}",

@@ -2,6 +2,7 @@ package com.memmcol.hes.domain.clock;
 
 import com.memmcol.hes.infrastructure.dlms.DlmsReaderUtils;
 import com.memmcol.hes.model.DlmsResponse;
+import com.memmcol.hes.model.DlmsResponse2;
 import com.memmcol.hes.nettyUtils.SessionManagerMultiVendor;
 import gurux.dlms.GXDLMSClient;
 import gurux.dlms.GXDateTime;
@@ -45,11 +46,27 @@ public class ClockWriteService {
                 dateTime.atZone(ZoneId.systemDefault()).toInstant()
         ));
 
-        DlmsResponse response = dlmsReaderUtils.writeAttribute(client, serial, clock, 2, gxDateTime);
+        DlmsResponse2 response = dlmsReaderUtils.writeAttribute(client, serial, clock, 2, gxDateTime);
 
         Map<String, Object> result = new HashMap<>();
+//        result.put("serial", serial);
+//        result.put("timestamp", LocalDateTime.now());
         result.put("serial", serial);
-        result.put("timestamp", LocalDateTime.now());
+        result.put("targetDateTime", dateTime);
+        result.put("status",
+                response.isSuccess() ? "success" : "failed");
+        result.put("message", response.getMessage());
+        result.put("dlmsStatus",
+                response.getStatus() == null
+                        ? null
+                        : response.getStatus().name());
+
+        result.put("writeStartedAt", response.getStartedAt());
+        result.put("writeCompletedAt", response.getCompletedAt());
+        result.put("durationMs", response.getDurationMs());
+
+        result.put("requestFrames", response.getRequestFrames());
+        result.put("responseFrames", response.getResponseFrames());
 
         String formatted = dateTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
         if (response.isSuccess()) {
@@ -81,7 +98,7 @@ public class ClockWriteService {
 
         log.info("🕒 Initiating clock write → meter={}, targetTime={}", serial, dateTime);
 
-        DlmsResponse response = dlmsReaderUtils.writeAttribute(client, serial, clock, 2, gxDateTime);
+        DlmsResponse2 response = dlmsReaderUtils.writeAttribute(client, serial, clock, 2, gxDateTime);
 
         if (!response.isSuccess()) {
             String message = "❌ Failed to set Meter Clock (V1) for " + serial + ": " + response.getMessage() + " (" + response.getStatus() + ")";
