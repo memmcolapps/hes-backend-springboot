@@ -7,12 +7,10 @@ import com.memmcol.hes.domain.profile.ProfileSyncResult;
 import com.memmcol.hes.domain.profile.ProfileTimestamp;
 import com.memmcol.hes.dto.ProfileChannelThreeHouseholdDTO;
 import com.memmcol.hes.entities.ProfileChannelThreeHousehold;
-import com.memmcol.hes.entities.ProfileChannelThreeHouseholdId;
 import com.memmcol.hes.entities.ProfileChannelThreeHouseholdToEntity;
 import com.memmcol.hes.infrastructure.observability.FactTablePersistenceLogging;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
-import jakarta.persistence.TypedQuery;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.hibernate.Session;
@@ -20,7 +18,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.sql.PreparedStatement;
 import java.sql.Statement;
+import java.sql.Types;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
@@ -50,6 +50,9 @@ public class ProfileChannelThreeHouseholdPersistenceAdapter {
 
         months.forEach(month -> {
             String partitionName = "profile_channel_three_hh_" + month;
+            if (PartitionCreationMemo.isConfirmed(partitionName)) {
+                return;
+            }
             String startDate = month + "01";
             String endDate = YearMonth.parse(month, DateTimeFormatter.ofPattern("yyyyMM"))
                     .plusMonths(1)
@@ -65,9 +68,11 @@ public class ProfileChannelThreeHouseholdPersistenceAdapter {
             session.doWork(connection -> {
                 try (Statement stmt = connection.createStatement()) {
                     stmt.execute(sql);
+                    PartitionCreationMemo.confirm(partitionName);
                     log.info("Partition {} created.", partitionName);
                 } catch (Exception e) {
                     if (e.getMessage() != null && e.getMessage().contains("exists")) {
+                        PartitionCreationMemo.confirm(partitionName);
                         log.debug("Partition {} already exists, skipping.", partitionName);
                     } else {
                         log.error("Error creating partition {}: {}", partitionName, e.getMessage());
@@ -75,22 +80,6 @@ public class ProfileChannelThreeHouseholdPersistenceAdapter {
                 }
             });
         });
-    }
-
-    public List<LocalDateTime> findExistingTimestamps(String serial, List<LocalDateTime> timestamps) {
-        if (timestamps == null || timestamps.isEmpty()) {
-            return List.of();
-        }
-        TypedQuery<LocalDateTime> query = em.createQuery(
-                "SELECT r.entryTimestamp " +
-                        "FROM ProfileChannelThreeHousehold r " +
-                        "WHERE r.meterSerial = :serial " +
-                        "AND r.entryTimestamp IN :timestamps",
-                LocalDateTime.class
-        );
-        query.setParameter("serial", serial);
-        query.setParameter("timestamps", timestamps);
-        return query.getResultList();
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -114,8 +103,7 @@ public class ProfileChannelThreeHouseholdPersistenceAdapter {
 
             String meterModel = FactTablePersistenceLogging.firstModel(readings, ProfileChannelThreeHouseholdDTO::getModelNumber);
             int total = readings.size();
-            List<ProfileChannelThreeHouseholdDTO> filteredRows = deduplicate(meterSerial, readings);
-            int inserted = persistReadingsByMonth(filteredRows);
+            int inserted = persistReadingsByMonth(readings);
             int duplicate = total - inserted;
 
             LocalDateTime incomingMax = readings.stream()
@@ -146,41 +134,70 @@ public class ProfileChannelThreeHouseholdPersistenceAdapter {
         }
     }
 
-    private List<ProfileChannelThreeHouseholdDTO> deduplicate(String meterSerial, List<ProfileChannelThreeHouseholdDTO> readings) {
-        List<LocalDateTime> incomingTimestamps = readings.stream()
-                .map(ProfileChannelThreeHouseholdDTO::getEntryTimestamp)
-                .collect(Collectors.toList());
-        List<LocalDateTime> existingTimestamps = findExistingTimestamps(meterSerial, incomingTimestamps);
-        return readings.stream()
-                .filter(dto -> dto.getEntryTimestamp() != null && !existingTimestamps.contains(dto.getEntryTimestamp()))
-                .collect(Collectors.toList());
-    }
-
     public int persistReadingsByMonth(List<ProfileChannelThreeHouseholdDTO> filteredRows) {
+        if (filteredRows == null || filteredRows.isEmpty()) {
+            return 0;
+        }
+
         Session session = em.unwrap(Session.class);
         final AtomicInteger saved = new AtomicInteger();
 
-        filteredRows.stream()
-                .filter(dto -> dto.getEntryTimestamp() != null)
-                .forEach(dto -> {
-                    ProfileChannelThreeHousehold entity = ProfileChannelThreeHouseholdToEntity.toEntity(dto);
-                    ProfileChannelThreeHouseholdId id = new ProfileChannelThreeHouseholdId(entity.getMeterSerial(), entity.getEntryTimestamp());
-                    ProfileChannelThreeHousehold existing = session.get(ProfileChannelThreeHousehold.class, id);
+        session.doWork(connection -> {
+            String sql = """
+                    INSERT INTO profile_channel_three_hh (
+                        meter_serial, model_number, entry_timestamp,
+                        active_power_l1, active_power_l2, active_power_l3,
+                        power_factor_l1, power_factor_l2, power_factor_l3,
+                        grid_frequency
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT DO NOTHING
+                    """;
 
-                    if (existing == null) {
-                        session.persist(entity);
-                    } else {
-                        session.merge(entity);
+            try (PreparedStatement ps = connection.prepareStatement(sql)) {
+                int pending = 0;
+
+                for (ProfileChannelThreeHouseholdDTO dto : filteredRows) {
+                    if (dto.getEntryTimestamp() == null) {
+                        continue;
                     }
+                    ProfileChannelThreeHousehold e = ProfileChannelThreeHouseholdToEntity.toEntity(dto);
+                    int i = 1;
+                    ps.setString(i++, e.getMeterSerial());
+                    ps.setString(i++, e.getModelNumber());
+                    ps.setObject(i++, e.getEntryTimestamp());
+                    ps.setObject(i++, e.getActivePowerL1(), Types.DOUBLE);
+                    ps.setObject(i++, e.getActivePowerL2(), Types.DOUBLE);
+                    ps.setObject(i++, e.getActivePowerL3(), Types.DOUBLE);
+                    ps.setObject(i++, e.getPowerFactorL1(), Types.DOUBLE);
+                    ps.setObject(i++, e.getPowerFactorL2(), Types.DOUBLE);
+                    ps.setObject(i++, e.getPowerFactorL3(), Types.DOUBLE);
+                    ps.setObject(i++, e.getGridFrequency(), Types.DOUBLE);
+                    ps.addBatch();
 
-                    if (saved.incrementAndGet() % FLUSH_BATCH == 0) {
-                        session.flush();
-                        session.clear();
+                    if (++pending % FLUSH_BATCH == 0) {
+                        saved.addAndGet(sumBatch(ps.executeBatch()));
+                        ps.clearBatch();
                     }
-                });
+                }
 
-        session.flush();
-        session.clear();
+                if (pending % FLUSH_BATCH != 0) {
+                    saved.addAndGet(sumBatch(ps.executeBatch()));
+                }
+            }
+        });
+
         return saved.get();
+    }
+
+    private static int sumBatch(int[] counts) {
+        int sum = 0;
+        for (int c : counts) {
+            if (c > 0) {
+                sum += c;
+            } else if (c == Statement.SUCCESS_NO_INFO) {
+                sum += 1;
+            }
+        }
+        return sum;
     }
 }
