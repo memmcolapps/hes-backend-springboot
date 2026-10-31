@@ -314,8 +314,9 @@ public class BulkProfileRangeReader {
             }
             case DAILY_BILLING_ENERGY_HH -> {
                 List<BillingEnergyHouseholdDTO> dtos = billingEnergyHouseholdMapper.toDTO(rows, serial, model, isMD, metadataResult);
-                dailyBillingEnergyHouseholdPersistAdapter.createPartitionsIfMissing(dtos);
-                dailyBillingEnergyHouseholdPersistAdapter.persistReadings(dtos);
+//                dailyBillingEnergyHouseholdPersistAdapter.createPartitionsIfMissing(dtos);
+//                dailyBillingEnergyHouseholdPersistAdapter.persistReadings(dtos);
+                dailyBillingEnergyHouseholdPersistAdapter.persistBatch(dtos);
             }
             case MONTHLY_BILLING -> {
                 List<MonthlyBillingDTO> dtos = monthlyBillingMapper.toDTO(rows, serial, model, isMD, metadataResult);
