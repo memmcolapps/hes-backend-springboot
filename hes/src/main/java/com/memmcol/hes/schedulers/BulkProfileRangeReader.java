@@ -195,10 +195,27 @@ public class BulkProfileRangeReader {
                         serial, type, fromDate, toDate);
             }
         } catch (Exception ex) {
-            rxString = "[" + fromDate + " to " + toDate + "] ERROR: " + ex.getMessage();
             lastErrorMsg = ex.getMessage();
-            log.error("Error reading DLMS range for meter {} [{}] range {} to {}: {}",
+            log.error("Error reading DLMS range for meter {} [{}] range {} to {}: {}. Attempting partial recovery...",
                     serial, type, fromDate, toDate, ex.getMessage(), ex);
+
+            // Attempt to recover and persist partially received profile rows accumulated before failure/timeout
+            try {
+                List<ProfileRowGeneric> salvagedRows = dlmsReaderUtils.recoverPartial(serial, obisCode, model, metadataResult);
+                if (salvagedRows != null && !salvagedRows.isEmpty()) {
+                    persistProfileRowsWithoutWatermark(type, salvagedRows, serial, model, obisCode, isMD, metadataResult);
+                    totalRowsPersisted = salvagedRows.size();
+                    rxString = "[" + fromDate + " to " + toDate + "] PARTIAL_RECOVERY: Persisted " + salvagedRows.size()
+                            + " rows before error (" + ex.getMessage() + ")";
+                    log.info("Successfully recovered and persisted {} partial rows for meter {} [{}] range {} to {}",
+                            salvagedRows.size(), serial, type, fromDate, toDate);
+                } else {
+                    rxString = "[" + fromDate + " to " + toDate + "] ERROR: " + ex.getMessage() + " (0 partial rows salvaged)";
+                }
+            } catch (Exception recEx) {
+                log.error("Failed to recover partial rows for meter {}: {}", serial, recEx.getMessage(), recEx);
+                rxString = "[" + fromDate + " to " + toDate + "] ERROR: " + ex.getMessage() + " (Partial recovery error: " + recEx.getMessage() + ")";
+            }
         }
 
         return new BulkMeterReadSummary(totalRowsPersisted, txString, rxString, lastErrorMsg);
