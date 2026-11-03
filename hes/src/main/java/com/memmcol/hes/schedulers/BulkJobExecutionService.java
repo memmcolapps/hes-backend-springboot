@@ -183,7 +183,10 @@ public class BulkJobExecutionService {
         response.put("status", execution.getStatus());
         response.put("intervalType", execution.getIntervalType());
         response.put("totalMeters", execution.getTotalMeters());
-        response.put("successful", bulkJobMeterLogRepository.countByJobExecutionIdAndStatus(executionId, "SUCCESS"));
+        long successCount = bulkJobMeterLogRepository.countByJobExecutionIdAndStatus(executionId, "SUCCESS");
+        long partialCount = bulkJobMeterLogRepository.countByJobExecutionIdAndStatus(executionId, "PARTIAL_SUCCESS");
+        response.put("successful", successCount);
+        response.put("partialSuccess", partialCount);
         response.put("failed", bulkJobMeterLogRepository.countByJobExecutionIdAndStatus(executionId, "FAILED"));
         response.put("pending", bulkJobMeterLogRepository.countByJobExecutionIdAndStatus(executionId, "PENDING"));
         response.put("processing", bulkJobMeterLogRepository.countByJobExecutionIdAndStatus(executionId, "PROCESSING"));
@@ -274,6 +277,9 @@ public class BulkJobExecutionService {
                 if (summary.lastError() != null && summary.totalRowsPersisted() == 0) {
                     meterLog.setStatus("FAILED");
                     meterLog.setLastError(summary.lastError());
+                } else if (summary.lastError() != null && summary.totalRowsPersisted() > 0) {
+                    meterLog.setStatus("PARTIAL_SUCCESS");
+                    meterLog.setLastError("Partial rows persisted (" + summary.totalRowsPersisted() + "): " + summary.lastError());
                 } else {
                     meterLog.setStatus("SUCCESS");
                 }
