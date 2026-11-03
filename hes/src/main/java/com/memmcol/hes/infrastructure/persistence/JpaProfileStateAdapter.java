@@ -14,6 +14,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.Objects;
 
 /**
@@ -35,6 +36,21 @@ public class JpaProfileStateAdapter implements ProfileStatePort {
     @Transactional(readOnly = true)
     public ProfileState loadState(String meterSerial, String profileObis) {
 
+        String cacheKey = CACHE_PREFIX + meterSerial + "::" + profileObis;
+        Cache cache = cacheManager.getCache(CACHE_NAME);
+
+        if (cache != null) {
+            LocalDateTime cachedTs = cache.get(cacheKey, LocalDateTime.class);
+            if (cachedTs != null) {
+                return new ProfileState(
+                        meterSerial,
+                        profileObis,
+                        new ProfileTimestamp(cachedTs),
+                        null
+                );
+            }
+        }
+
         MeterProfileState e = em.createQuery("""
                     select s from MeterProfileState s
                      where s.meterSerial=:m and s.profileObis=:p
@@ -48,6 +64,10 @@ public class JpaProfileStateAdapter implements ProfileStatePort {
                 .orElse(null);
 
         if (e == null) return null;
+
+        if (e.getLastTimestamp() != null && cache != null) {
+            cache.put(cacheKey, e.getLastTimestamp());
+        }
 
         return new ProfileState(
                 e.getMeterSerial(),

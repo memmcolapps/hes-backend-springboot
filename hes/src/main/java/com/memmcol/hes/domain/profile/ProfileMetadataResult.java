@@ -41,7 +41,7 @@ public class ProfileMetadataResult {
         return metadataList.stream()
                 .filter(m -> m.getCaptureObis().equals(obisCode))
                 .findFirst()
-                .map(m -> new ProfileMappingInfo(m.getCaptureIndex(), m.getColumnName()))
+                .map(m -> new ProfileMappingInfo(m.getCaptureIndex() != null ? m.getCaptureIndex() : 0, m.getColumnName()))
                 .orElse(null);
     }
 

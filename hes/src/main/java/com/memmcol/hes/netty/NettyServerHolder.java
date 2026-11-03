@@ -32,11 +32,14 @@ public class NettyServerHolder {
         ServerBootstrap bootstrap = new ServerBootstrap();
         bootstrap.group(bossGroup, workerGroup)
                 .channel(NioServerSocketChannel.class)
+                .option(ChannelOption.SO_BACKLOG, 1024)
                 //Set socket options for connection reliability:
                 .childOption(ChannelOption.SO_KEEPALIVE, true)
                 .childOption(ChannelOption.TCP_NODELAY, true)
-                .childOption(ChannelOption.SO_RCVBUF, 1024 * 1024)
-                .childOption(ChannelOption.SO_SNDBUF, 1024 * 1024)
+                .childOption(ChannelOption.SO_RCVBUF, 128 * 1024)
+                .childOption(ChannelOption.SO_SNDBUF, 128 * 1024)
+                .childOption(ChannelOption.WRITE_BUFFER_WATER_MARK,
+                        new WriteBufferWaterMark(32 * 1024, 128 * 1024))
                 .childHandler(initializer);
 
         ChannelFuture future = bootstrap.bind(port).sync();

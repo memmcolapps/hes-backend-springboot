@@ -45,7 +45,7 @@ public class NightlyMasterOrchestrator extends QuartzJobBean {
     @Value("${hes.nightly.orchestrator.enabled:true}")
     private boolean enabled;
 
-    @Value("${hes.nightly.classA.enabled:true}")
+    @Value("${hes.nightly.classA.enabled:false}")
     private boolean classAEnabled;
 
     @Value("${hes.nightly.classB.enabled:true}")

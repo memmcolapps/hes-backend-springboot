@@ -53,6 +53,9 @@ public class DailyBillingPersistenceAdapter {
         // 2. Pre-create missing partitions
         months.forEach(month -> {
             String partitionName = "daily_billing_profile_" + month;
+            if (PartitionCreationMemo.isConfirmed(partitionName)) {
+                return;
+            }
             String startDate = month + "01";
             String endDate = YearMonth.parse(month, DateTimeFormatter.ofPattern("yyyyMM"))
                     .plusMonths(1)
@@ -68,9 +71,11 @@ public class DailyBillingPersistenceAdapter {
             session.doWork(connection -> {
                 try (Statement stmt = connection.createStatement()) {
                     stmt.execute(sql);
+                    PartitionCreationMemo.confirm(partitionName);
                     log.info("🆕 Partition {} created.", partitionName);
                 } catch (Exception e) {
                     if (e.getMessage().contains("exists")) {
+                        PartitionCreationMemo.confirm(partitionName);
                         log.debug("Partition {} already exists, skipping.", partitionName);
                     } else {
                         log.error("Error creating partition {}: {}", partitionName, e.getMessage());

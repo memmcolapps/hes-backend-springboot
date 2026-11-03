@@ -21,8 +21,8 @@ public class CacheSchedulers {
     private final DashboardAsyncService asyncService;
     private final CacheManager cacheManager;
 
-    // Run every 10 minutes
-    @Scheduled(fixedRate = 10 * 60 * 1000)  // 10 min
+    // Run every 10 minutes (fixedDelay avoids overlapping runs when queries are slow)
+    @Scheduled(fixedDelay = 10 * 60 * 1000)  // 10 min
     public void warmDashboardCache() {
         try {
             log.info("🔥 Warming up dashboard caches (summary, logs, rate, report)…");
@@ -41,8 +41,8 @@ public class CacheSchedulers {
 
     @PostConstruct
     public void warmOnStartup() {
-        log.info("🚀 Initial dashboard cache warmup at startup...");
-        warmDashboardCache();
+        log.info("🚀 Initial dashboard cache warmup scheduled (async, non-blocking startup)");
+        CompletableFuture.runAsync(this::warmDashboardCache);
     }
 
     /**

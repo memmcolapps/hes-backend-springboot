@@ -10,14 +10,15 @@ import com.memmcol.hes.infrastructure.dlms.DlmsReaderUtils;
 import com.memmcol.hes.infrastructure.dlms.ProfileMetadataProvider;
 import com.memmcol.hes.infrastructure.persistence.MonthlyBillingEnergyHouseholdPersistenceAdapter;
 import com.memmcol.hes.repository.MeterRepository;
-import lombok.AllArgsConstructor;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.List;
 
-@AllArgsConstructor
+@RequiredArgsConstructor
 @Slf4j
 @Service
 public class MonthlyBillingEnergyHouseholdService {
@@ -30,6 +31,13 @@ public class MonthlyBillingEnergyHouseholdService {
     private final MeterRepository meterRepository;
     private final BillingDeterminantsProperties billingProperties;
     private final BillingCycleGracePeriodPolicy gracePeriodPolicy;
+
+    private int maxRangesPerRun = 7;
+
+    @Value("${hes.profile.catchup.max-ranges-per-run:7}")
+    public void setMaxRangesPerRun(int value) {
+        this.maxRangesPerRun = Math.max(1, value);
+    }
 
     public void readProfileAndSave(String model, String meterSerial, String profileObis, boolean isMD) {
         try {
@@ -53,7 +61,9 @@ public class MonthlyBillingEnergyHouseholdService {
             LocalDateTime now = LocalDateTime.now();
             int readWindowDays = billingProperties.getReadWindowDays();
 
-            while (cursor.value().isBefore(now)) {
+            int rangesProcessed = 0;
+            while (cursor.value().isBefore(now) && rangesProcessed < maxRangesPerRun) {
+                rangesProcessed++;
                 LocalDateTime from = cursor.value();
                 LocalDateTime to = BillingDeterminantsIngestionSupport.computeWindowEnd(from, now, readWindowDays);
 
@@ -112,6 +122,11 @@ public class MonthlyBillingEnergyHouseholdService {
                     log.warn("cp.seconds() <= 0 : {}", cp);
                     return;
                 }
+            }
+
+            if (cursor.value().isBefore(now)) {
+                log.info("Catch-up capped at {} range(s) this run. meter={} profile={} resumeFrom={}",
+                        maxRangesPerRun, meterSerial, profileObis, cursor.value());
             }
 
         } catch (Exception ex) {

@@ -9,14 +9,15 @@ import com.memmcol.hes.infrastructure.dlms.DlmsReaderUtils;
 import com.memmcol.hes.infrastructure.dlms.ProfileMetadataProvider;
 import com.memmcol.hes.infrastructure.persistence.DailyBillingDataHouseholdPersistenceAdapter;
 import com.memmcol.hes.repository.MeterRepository;
-import lombok.AllArgsConstructor;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.List;
 
-@AllArgsConstructor
+@RequiredArgsConstructor
 @Slf4j
 @Service
 public class DailyBillingDataHouseholdService {
@@ -27,6 +28,13 @@ public class DailyBillingDataHouseholdService {
     private final BillingDataHouseholdMapper mapper;
     private final DailyBillingDataHouseholdPersistenceAdapter persistenceAdapter;
     private final MeterRepository meterRepository;
+
+    private int maxRangesPerRun = 7;
+
+    @Value("${hes.profile.catchup.max-ranges-per-run:7}")
+    public void setMaxRangesPerRun(int value) {
+        this.maxRangesPerRun = Math.max(1, value);
+    }
 
     public void readProfileAndSave(String model, String meterSerial, String profileObis, boolean isMD) {
         try {
@@ -49,7 +57,9 @@ public class DailyBillingDataHouseholdService {
             CapturePeriod cp = new CapturePeriod(1);
             LocalDateTime now = LocalDateTime.now();
 
-            while (cursor.value().isBefore(now)) {
+            int rangesProcessed = 0;
+            while (cursor.value().isBefore(now) && rangesProcessed < maxRangesPerRun) {
+                rangesProcessed++;
                 LocalDateTime from = cursor.value();
                 LocalDateTime to = from.plusDays(1);
                 if (to.isAfter(now)) to = now;
@@ -102,6 +112,11 @@ public class DailyBillingDataHouseholdService {
                     log.warn("cp.seconds() <= 0 : {}", cp);
                     return;
                 }
+            }
+
+            if (cursor.value().isBefore(now)) {
+                log.info("Catch-up capped at {} range(s) this run. meter={} profile={} resumeFrom={}",
+                        maxRangesPerRun, meterSerial, profileObis, cursor.value());
             }
         } catch (Exception ex) {
             String safeObis = (profileObis == null || profileObis.isBlank()) ? "unknown" : profileObis;

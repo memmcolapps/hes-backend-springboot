@@ -1,6 +1,8 @@
 package com.memmcol.hes.controller;
 
+import com.memmcol.hes.dto.BulkTriggerRequest;
 import com.memmcol.hes.model.SchedulerJobInfo;
+import com.memmcol.hes.schedulers.BulkJobExecutionService;
 import com.memmcol.hes.schedulers.QuartzJobService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -17,6 +19,7 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class QuartzJobController {
     private final QuartzJobService quartzJobService;
+    private final BulkJobExecutionService bulkJobExecutionService;
 
     // 4. Update job interval using CRON (expects JSON payload)
     public record UpdateCronRequest(
@@ -114,13 +117,41 @@ public class QuartzJobController {
                 : ResponseEntity.badRequest().body("❌ Failed to resume job.");
     }
 
+    @PostMapping("/bulk-read/{jobGroup}/{jobName}")
+    public ResponseEntity<?> triggerBulkRead(
+            @PathVariable String jobName,
+            @PathVariable String jobGroup,
+            @RequestBody BulkTriggerRequest request) {
+        try {
+            Map<String, Object> result = bulkJobExecutionService.executeBulkJob(jobGroup, jobName, request);
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            log.error("❌ Error executing bulk job for {}/{}", jobGroup, jobName, e);
+            return ResponseEntity.badRequest().body("❌ Failed to execute bulk job: " + e.getMessage());
+        }
+    }
+
     @PostMapping("/trigger/{jobGroup}/{jobName}")
     public ResponseEntity<?> triggerNow(
             @PathVariable String jobName,
-            @PathVariable String jobGroup) {
+            @PathVariable String jobGroup,
+            @RequestBody(required = false) BulkTriggerRequest request) {
+        if (request != null && ((request.getMeterSerials() != null && !request.getMeterSerials().isEmpty()) || request.getDateRange() != null)) {
+            return triggerBulkRead(jobName, jobGroup, request);
+        }
         boolean triggered = quartzJobService.triggerNow(jobName, jobGroup);
         return triggered ? ResponseEntity.ok("⚡ Job triggered now.")
                 : ResponseEntity.badRequest().body("❌ Failed to trigger job.");
+    }
+
+    @GetMapping("/bulk/status/{executionId}")
+    public ResponseEntity<?> getBulkStatus(@PathVariable Long executionId) {
+        try {
+            return ResponseEntity.ok(bulkJobExecutionService.getBulkExecutionStatus(executionId));
+        } catch (Exception e) {
+            log.error("❌ Error fetching bulk execution status for ID {}", executionId, e);
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
     }
 
     // ---------------- Update job intervals ----------------

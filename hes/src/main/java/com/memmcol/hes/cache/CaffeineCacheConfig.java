@@ -5,6 +5,7 @@ import com.github.benmanes.caffeine.cache.Caffeine;
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.EnableCaching;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.caffeine.CaffeineCache;
 import org.springframework.cache.caffeine.CaffeineCacheManager;
 import org.springframework.context.annotation.Bean;
@@ -20,7 +21,8 @@ import java.util.concurrent.TimeUnit;
 public class CaffeineCacheConfig {
 //    ✅ 2. Create CacheConfig with per-cache TTL and max size
     @Bean
-    public CacheManager cacheManager() {
+    public CacheManager cacheManager(
+            @Value("${hes.cache.profile-state.max-size:50000}") long profileStateMaxSize) {
         // Define cache specs per cache name
         Map<String, Caffeine<Object, Object>> specs = new HashMap<>();
 
@@ -45,12 +47,12 @@ public class CaffeineCacheConfig {
                 .recordStats());
 
         specs.put("lastProfileTimestamp", Caffeine.newBuilder()  // ✅ NEW
-                .maximumSize(500)
+                .maximumSize(profileStateMaxSize)
                 .expireAfterWrite(12, TimeUnit.HOURS)
                 .recordStats());
 
         specs.put("profileCapturePeriod", Caffeine.newBuilder()
-                .maximumSize(500)
+                .maximumSize(profileStateMaxSize)
                 .expireAfterWrite(12, TimeUnit.HOURS)
                 .recordStats());
 

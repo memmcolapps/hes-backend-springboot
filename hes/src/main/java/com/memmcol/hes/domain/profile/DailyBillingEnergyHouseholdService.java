@@ -10,18 +10,20 @@ import com.memmcol.hes.infrastructure.dlms.DlmsReaderUtils;
 import com.memmcol.hes.infrastructure.dlms.ProfileMetadataProvider;
 import com.memmcol.hes.infrastructure.persistence.DailyBillingEnergyHouseholdPersistenceAdapter;
 import com.memmcol.hes.repository.MeterRepository;
-import lombok.AllArgsConstructor;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import static com.memmcol.hes.nettyUtils.RequestResponseService.logTx;
 
 /**
  * Daily billing energy (household) ingestion — structurally aligned with
  * {@link DailyBillingDataHouseholdService}, which is the known-good reference pipeline.
  */
-@AllArgsConstructor
+@RequiredArgsConstructor
 @Slf4j
 @Service
 public class DailyBillingEnergyHouseholdService {
@@ -33,7 +35,15 @@ public class DailyBillingEnergyHouseholdService {
     private final DailyBillingEnergyHouseholdPersistenceAdapter persistenceAdapter;
     private final MeterRepository meterRepository;
 
+    private int maxRangesPerRun = 7;
+
+    @Value("${hes.profile.catchup.max-ranges-per-run:7}")
+    public void setMaxRangesPerRun(int value) {
+        this.maxRangesPerRun = Math.max(1, value);
+    }
+
     public void readProfileAndSave(String model, String meterSerial, String profileObis, boolean isMD) {
+        logTx(meterSerial, String.format("Start reading profile OBIS %s", profileObis));
         try {
             final String safeObis = (profileObis == null || profileObis.isBlank()) ? "unknown" : profileObis;
             if (profileObis == null || profileObis.isBlank()) {
@@ -55,7 +65,9 @@ public class DailyBillingEnergyHouseholdService {
             LocalDateTime now = LocalDateTime.now();
             boolean metadataRefreshedFromMeter = false;
 
-            while (cursor.value().isBefore(now)) {
+            int rangesProcessed = 0;
+            while (cursor.value().isBefore(now) && rangesProcessed < maxRangesPerRun) {
+                rangesProcessed++;
                 LocalDateTime from = cursor.value();
                 LocalDateTime to = from.plusDays(1);
                 if (to.isAfter(now)) {
@@ -120,7 +132,8 @@ public class DailyBillingEnergyHouseholdService {
                 ProfileSyncResult syncResult = persistenceAdapter.saveBatchAndAdvanceCursor(
                         meterSerial, profileObis, dtos, cp);
                 metricsPort.recordBatch(meterSerial, profileObis, syncResult.getInsertedCount(), 0);
-
+                logTx(meterSerial, syncResult.toString());
+                
                 ProfileTimestamp resume = HouseholdDayWindowIngestionSupport.nextCursorAfterBatch(syncResult);
                 if (resume == null) {
                     log.warn("No meter-derived advanceTo after persist meter={} profile={}", meterSerial, profileObis);
@@ -133,9 +146,16 @@ public class DailyBillingEnergyHouseholdService {
                     return;
                 }
             }
+
+            if (cursor.value().isBefore(now)) {
+                log.info("Catch-up capped at {} range(s) this run. meter={} profile={} resumeFrom={}",
+                        maxRangesPerRun, meterSerial, profileObis, cursor.value());
+            }
         } catch (Exception ex) {
             String safeObis = (profileObis == null || profileObis.isBlank()) ? "unknown" : profileObis;
             metricsPort.recordFailure(meterSerial, safeObis, "unhandled_exception");
+        }finally {
+            logTx(meterSerial, String.format("Complete reading of profile OBIS %s", profileObis));
         }
     }
 

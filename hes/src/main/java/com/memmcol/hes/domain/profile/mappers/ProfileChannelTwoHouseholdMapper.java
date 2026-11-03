@@ -5,6 +5,7 @@ import com.memmcol.hes.domain.profile.MeterRatios;
 import com.memmcol.hes.domain.profile.ObisObjectType;
 import com.memmcol.hes.domain.profile.ProfileMetadataResult;
 import com.memmcol.hes.domain.profile.ProfileRowGeneric;
+import com.memmcol.hes.domain.profile.strategy.MeterProfileStrategyFactory;
 import com.memmcol.hes.dto.ProfileChannelTwoHouseholdDTO;
 import com.memmcol.hes.infrastructure.dlms.DlmsTimestampDecoder;
 import com.memmcol.hes.service.MeterRatioService;
@@ -27,6 +28,7 @@ import java.util.stream.Collectors;
 public class ProfileChannelTwoHouseholdMapper implements GenericDtoMappers<ProfileChannelTwoHouseholdDTO> {
     private final MeterRatioService ratioService;
     private final DlmsTimestampDecoder dlmsTimestampDecoder;
+    private final MeterProfileStrategyFactory strategyFactory;
 
     @Override
     public List<ProfileChannelTwoHouseholdDTO> toDTO(List<ProfileRowGeneric> rawRows,
@@ -113,6 +115,9 @@ public class ProfileChannelTwoHouseholdMapper implements GenericDtoMappers<Profi
         }
 
         dto.setReceivedAt(LocalDateTime.now());
+        if (strategyFactory != null) {
+            strategyFactory.getStrategy(meterSerial).normalize(dto);
+        }
         return dto;
     }
 

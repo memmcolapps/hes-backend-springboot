@@ -6,8 +6,6 @@ import org.springframework.stereotype.Repository;
 
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.Collection;
 import java.util.List;
 
 @Repository
@@ -82,31 +80,17 @@ public class MetersConnectionEventBatchRepository {
      * prevents old ONLINE rows surviving indefinitely after an application restart.
      */
     public int markStaleOnlineMetersOffline(LocalDateTime staleBefore,
-                                            LocalDateTime offlineTime,
-                                            Collection<String> recentlySeenMeters) {
-        StringBuilder sql = new StringBuilder("""
+                                            LocalDateTime offlineTime) {
+        String sql = """
                 UPDATE meters_connection_event
                 SET connection_type = 'OFFLINE',
                     offline_time = ?,
                     updated_at = ?
                 WHERE connection_type = 'ONLINE'
                   AND COALESCE(updated_at, online_time) < ?
-                """);
+                """;
 
         Timestamp ts = Timestamp.valueOf(offlineTime);
-        List<Object> args = new ArrayList<>();
-        args.add(ts);
-        args.add(ts);
-        args.add(Timestamp.valueOf(staleBefore));
-
-        if (recentlySeenMeters != null && !recentlySeenMeters.isEmpty()) {
-            sql.append(" AND meter_no NOT IN (");
-            sql.append("?,".repeat(recentlySeenMeters.size()));
-            sql.setLength(sql.length() - 1);
-            sql.append(")");
-            args.addAll(recentlySeenMeters);
-        }
-
-        return jdbcTemplate.update(sql.toString(), args.toArray());
+        return jdbcTemplate.update(sql, ts, ts, Timestamp.valueOf(staleBefore));
     }
 }

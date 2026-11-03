@@ -7,7 +7,6 @@ import com.memmcol.hes.entities.*;
 import com.memmcol.hes.infrastructure.observability.FactTablePersistenceLogging;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
-import jakarta.persistence.TypedQuery;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.hibernate.Session;
@@ -15,7 +14,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.sql.PreparedStatement;
 import java.sql.Statement;
+import java.sql.Types;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
@@ -48,6 +49,9 @@ public class ProfileChannelTwoPersistenceAdapter {
         // 2. Pre-create missing partitions
         months.forEach(month -> {
             String partitionName = "profile_channel_two_" + month;
+            if (PartitionCreationMemo.isConfirmed(partitionName)) {
+                return;
+            }
             String startDate = month + "01";
             String endDate = YearMonth.parse(month, DateTimeFormatter.ofPattern("yyyyMM"))
                     .plusMonths(1)
@@ -63,9 +67,11 @@ public class ProfileChannelTwoPersistenceAdapter {
             session.doWork(connection -> {
                 try (Statement stmt = connection.createStatement()) {
                     stmt.execute(sql);
+                    PartitionCreationMemo.confirm(partitionName);
                     log.info("🆕 Partition {} created.", partitionName);
                 } catch (Exception e) {
                     if (e.getMessage().contains("exists")) {
+                        PartitionCreationMemo.confirm(partitionName);
                         log.debug("Partition {} already exists, skipping.", partitionName);
                     } else {
                         log.error("Error creating partition {}: {}", partitionName, e.getMessage());
@@ -87,26 +93,6 @@ public class ProfileChannelTwoPersistenceAdapter {
                 .getResultList();
         return list.isEmpty() ? null : new ProfileTimestamp(list.get(0));
     }
-
-    /**
-     * Find already existing timestamps for a given meter serial
-     */
-    public List<LocalDateTime> findExistingTimestamps(String serial, List<LocalDateTime> timestamps) {
-        if (timestamps == null || timestamps.isEmpty()) {
-            return List.of();
-        }
-        TypedQuery<LocalDateTime> query = em.createQuery(
-                "SELECT r.entryTimestamp " +
-                        "FROM ProfileChannelTwo r " +
-                        "WHERE r.meterSerial = :serial " +
-                        "AND r.entryTimestamp IN :timestamps",
-                LocalDateTime.class
-        );
-        query.setParameter("serial", serial);
-        query.setParameter("timestamps", timestamps);
-        return query.getResultList();
-    }
-
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public ProfileSyncResult saveBatchAndAdvanceCursor(String meterSerial,
@@ -135,8 +121,7 @@ public class ProfileChannelTwoPersistenceAdapter {
             }
 
             int total = readings.size();
-            List<ProfileChannelTwoDTO> filteredRows = deduplicate(meterSerial, readings);
-            int inserted = persistReadingsByMonth(filteredRows);
+            int inserted = persistReadingsByMonth(readings);
             int duplicate = total - inserted;
 
             LocalDateTime incomingMax = readings.stream()
@@ -168,75 +153,81 @@ public class ProfileChannelTwoPersistenceAdapter {
         }
     }
 
-    /**
-     * Deduplicate by checking which timestamps already exist in DB
-     */
-    private List<ProfileChannelTwoDTO> deduplicate(String meterSerial, List<ProfileChannelTwoDTO> readings) {
-        if (readings == null || readings.isEmpty()) {
-            log.info("⚠ No readings provided for deduplication.");
-            return List.of();
-        }
-
-        // Extract timestamps from incoming readings
-        List<LocalDateTime> incomingTimestamps = readings.stream()
-                .map(ProfileChannelTwoDTO::getEntryTimestamp)
-                .collect(Collectors.toList());
-
-        // Query DB for existing timestamps
-        List<LocalDateTime> existingTimestamps = findExistingTimestamps(meterSerial, incomingTimestamps);
-
-        // Filter only new readings
-        List<ProfileChannelTwoDTO> filteredRows = readings.stream()
-                .filter(dto -> !existingTimestamps.contains(dto.getEntryTimestamp()))
-                .collect(Collectors.toList());
-
-        if (filteredRows.isEmpty()) {
-            log.info("✅ No new readings to save — all timestamps already exist.");
-            return List.of();
-        }
-
-        log.info("📌 {} new readings will be saved for meterSerial {}", filteredRows.size(), meterSerial);
-        return filteredRows;
-    }
-
-    /**
-     * 2️⃣ Rewrite persistReadings with partition pre-creation
-     * Since you want to:
-     * •	Extract all months from the incoming readings
-     * •	Pre-create missing partitions once before persisting
-     */
     public int persistReadingsByMonth(List<ProfileChannelTwoDTO> filteredRows) {
+        if (filteredRows == null || filteredRows.isEmpty()) {
+            return 0;
+        }
+
         Session session = em.unwrap(Session.class);
-
-        log.info("💾 Persisting readings to DB....");
         final AtomicInteger saved = new AtomicInteger();
-        filteredRows.forEach(dto -> {
-            ProfileChannelTwo entity = ProfileChannelTwoToEntity.toEntity(dto);
 
-            // Check if record exists
-            ProfileChannelTwoId id = new ProfileChannelTwoId(
-                    entity.getMeterSerial(),
-                    entity.getEntryTimestamp()
-            );
+        session.doWork(connection -> {
+            String sql = """
+                    INSERT INTO profile_channel_two (
+                        meter_serial, entry_timestamp, model_number,
+                        meter_health_indicator,
+                        active_energy_import,
+                        active_energy_import_rate1, active_energy_import_rate2,
+                        active_energy_import_rate3, active_energy_import_rate4,
+                        active_energy_combined_total, active_energy_export,
+                        reactive_energy_import, reactive_energy_export,
+                        apparent_energy_import, apparent_energy_export,
+                        received_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT DO NOTHING
+                    """;
 
-            ProfileChannelTwo existing = session.get(ProfileChannelTwo.class, id);
+            try (PreparedStatement ps = connection.prepareStatement(sql)) {
+                int pending = 0;
 
-            if (existing == null) {
-                session.persist(entity); // Insert new
-            } else {
-                session.merge(entity);   // Update existing
-            }
+                for (ProfileChannelTwoDTO dto : filteredRows) {
+                    ProfileChannelTwo e = ProfileChannelTwoToEntity.toEntity(dto);
+                    if (e.getEntryTimestamp() == null) {
+                        continue;
+                    }
+                    int i = 1;
+                    ps.setString(i++, e.getMeterSerial());
+                    ps.setObject(i++, e.getEntryTimestamp());
+                    ps.setString(i++, e.getModelNumber());
+                    ps.setObject(i++, e.getMeterHealthIndicator(), Types.INTEGER);
+                    ps.setObject(i++, e.getActiveEnergyImport(), Types.DOUBLE);
+                    ps.setObject(i++, e.getActiveEnergyImportRate1(), Types.DOUBLE);
+                    ps.setObject(i++, e.getActiveEnergyImportRate2(), Types.DOUBLE);
+                    ps.setObject(i++, e.getActiveEnergyImportRate3(), Types.DOUBLE);
+                    ps.setObject(i++, e.getActiveEnergyImportRate4(), Types.DOUBLE);
+                    ps.setObject(i++, e.getActiveEnergyCombinedTotal(), Types.DOUBLE);
+                    ps.setObject(i++, e.getActiveEnergyExport(), Types.DOUBLE);
+                    ps.setObject(i++, e.getReactiveEnergyImport(), Types.DOUBLE);
+                    ps.setObject(i++, e.getReactiveEnergyExport(), Types.DOUBLE);
+                    ps.setObject(i++, e.getApparentEnergyImport(), Types.DOUBLE);
+                    ps.setObject(i++, e.getApparentEnergyExport(), Types.DOUBLE);
+                    ps.setObject(i++, e.getReceivedAt(), Types.TIMESTAMP);
+                    ps.addBatch();
 
-            if (saved.incrementAndGet() % FLUSH_BATCH == 0) {
-                session.flush();
-                session.clear();
+                    if (++pending % FLUSH_BATCH == 0) {
+                        saved.addAndGet(sumBatch(ps.executeBatch()));
+                        ps.clearBatch();
+                    }
+                }
+
+                if (pending % FLUSH_BATCH != 0) {
+                    saved.addAndGet(sumBatch(ps.executeBatch()));
+                }
             }
         });
 
-        session.flush();
-        session.clear();
-
-        log.info("💾 Saved {} readings to DB.", saved.get());
         return saved.get();
+    }
+
+    private static int sumBatch(int[] counts) {
+        int sum = 0;
+        for (int c : counts) {
+            if (c > 0) {
+                sum += c;
+            } else if (c == Statement.SUCCESS_NO_INFO) {
+                sum += 1;
+            }
+        }
+        return sum;
     }
 }

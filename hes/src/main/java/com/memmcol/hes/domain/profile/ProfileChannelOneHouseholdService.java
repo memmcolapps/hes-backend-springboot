@@ -11,14 +11,15 @@ import com.memmcol.hes.infrastructure.dlms.DlmsReaderUtils;
 import com.memmcol.hes.infrastructure.dlms.ProfileMetadataProvider;
 import com.memmcol.hes.infrastructure.persistence.ProfileChannelOneHouseholdPersistAdapter;
 import com.memmcol.hes.repository.MeterRepository;
-import lombok.AllArgsConstructor;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.List;
 
-@AllArgsConstructor
+@RequiredArgsConstructor
 @Slf4j
 @Service
 public class ProfileChannelOneHouseholdService {
@@ -30,6 +31,13 @@ public class ProfileChannelOneHouseholdService {
     private final ProfileStatePort statePort;
     private final ProfileMetadataProvider metadataProvider;
     private final MeterRepository meterRepository;
+
+    private int maxRangesPerRun = 7;
+
+    @Value("${hes.profile.catchup.max-ranges-per-run:7}")
+    public void setMaxRangesPerRun(int value) {
+        this.maxRangesPerRun = Math.max(1, value);
+    }
 
     public void readProfileAndSave(String model,
                                    String meterSerial,
@@ -74,7 +82,9 @@ public class ProfileChannelOneHouseholdService {
 
             final LocalDateTime now = LocalDateTime.now();
 
-            while (cursor.value().isBefore(now)) {
+            int rangesProcessed = 0;
+            while (cursor.value().isBefore(now) && rangesProcessed < maxRangesPerRun) {
+                rangesProcessed++;
                 final LocalDateTime from = cursor.value();
                 LocalDateTime to = from.plusDays(1);
                 if (to.isAfter(now)) to = now;
@@ -107,11 +117,12 @@ public class ProfileChannelOneHouseholdService {
                     if (recoveryAttempted) {
                         log.warn("Recovery failed with empty response meter={} profile={} from={} to={}",
                                 meterSerial, profileObis, from, to);
-                    } else {
-                        log.info("Empty profile response meter={} profile={} from={} to={}",
-                                meterSerial, profileObis, from, to);
+                        break;
                     }
-                    break;
+                    log.warn("Empty profile response meter={} profile={} from={} to={}",
+                            meterSerial, profileObis, from, to);
+                    cursor = new ProfileTimestamp(to);
+                    continue;
                 }
 
                 List<ProfileChannelOneHouseholdDTO> dtos = mapper.toDTO(rawRows, meterSerial, model, isMD, metadataResult);
@@ -142,6 +153,11 @@ public class ProfileChannelOneHouseholdService {
                 cursor = resume;
                 log.info("Profile1HH replay advanced meter={} profile={} from={} to={} nextCursor={} inserted={} duplicates={}",
                         meterSerial, profileObis, from, to, cursor.value(), syncResult.getInsertedCount(), syncResult.getDuplicateCount());
+            }
+
+            if (cursor.value().isBefore(now)) {
+                log.info("Catch-up capped at {} range(s) this run. meter={} profile={} resumeFrom={}",
+                        maxRangesPerRun, meterSerial, profileObis, cursor.value());
             }
         } catch (Exception ex) {
             log.error("Fatal exception while reading household profile1HH meter={} profile={} cause={}",

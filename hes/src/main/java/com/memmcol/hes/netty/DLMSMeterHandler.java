@@ -5,6 +5,8 @@ import com.memmcol.hes.infrastructure.dlms.DlmsReaderUtils;
 import com.memmcol.hes.nettyUtils.DlmsRequestContext;
 import com.memmcol.hes.nettyUtils.EventNotificationHandler;
 import com.memmcol.hes.nettyUtils.MeterHeartbeatManager;
+import com.memmcol.hes.nettyUtils.SessionManager;
+import com.memmcol.hes.nettyUtils.SessionManagerMultiVendor;
 import com.memmcol.hes.service.*;
 import io.netty.channel.*;
 import io.netty.handler.timeout.ReadTimeoutException;
@@ -34,6 +36,8 @@ public class DLMSMeterHandler extends SimpleChannelInboundHandler<byte[]> {
     private final ScheduledExecutorService dlmsScheduledExecutor;
     private final EventNotificationHandler handler;
     private final MeterHeartbeatService heartbeatService;
+    private final SessionManagerMultiVendor sessionManagerMultiVendor;
+    private final SessionManager sessionManager;
 
     @Override
     public void channelActive(ChannelHandlerContext ctx) {
@@ -48,6 +52,8 @@ public class DLMSMeterHandler extends SimpleChannelInboundHandler<byte[]> {
             // heartbeat/communication timeout, not by an individual TCP close.
             log.info("ℹ️ Channel {} for meter {} disconnected; offline status will be decided by communication timeout",
                     ctx.channel().remoteAddress(), serial);
+            sessionManagerMultiVendor.removeSession(serial);
+            sessionManager.removeSession(serial);
         } else {
             log.info("❌ Disconnected unknown channel (no meter serial bound) {}", ctx.channel().remoteAddress());
         }
@@ -112,11 +118,11 @@ public class DLMSMeterHandler extends SimpleChannelInboundHandler<byte[]> {
         }
 
         // --- Step 3: Handle Association Lost frame (for a demo meter under investigation) ---
-        if (isAssociationLost(msg) && serial.startsWith("62225")) {
-            log.info("RX: {} : Association Lost with meter! - {}", serial, formatHex(msg));
-            readAssociationStatus(serial);
-            return;
-        }
+        // if (isAssociationLost(msg) && serial.startsWith("62225")) {
+        //     log.info("RX: {} : Association Lost with meter! - {}", serial, formatHex(msg));
+        //     readAssociationStatus(serial);
+        //     return;
+        // }
 
         // --- Step 4: Light RX logging ---
         if (serial != null) {
@@ -260,11 +266,11 @@ public class DLMSMeterHandler extends SimpleChannelInboundHandler<byte[]> {
 
         //Reading Association status (to maintain DLMS association) and Save to DB
         //Both for LOGIN and HEARTBEAT FRAME
-        if (msgType == 0x0A || msgType == 0x0C) {
-//            heartbeatManager.handleStatus(meterId, "ONLINE");
-//            heartbeatService.processFrame(meterId, "ONLINE");
-            readAssociationStatus(meterId);
-        }
+//         if (msgType == 0x0A || msgType == 0x0C) {
+// //            heartbeatManager.handleStatus(meterId, "ONLINE");
+// //            heartbeatService.processFrame(meterId, "ONLINE");
+//             readAssociationStatus(meterId);
+//         }
     }
 
     private void readAssociationStatus(String meterId) {
