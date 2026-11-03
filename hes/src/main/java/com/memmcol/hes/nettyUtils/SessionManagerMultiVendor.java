@@ -141,7 +141,7 @@ public class SessionManagerMultiVendor {
 
     private void addSessionLocked(String serial, Channel channel) throws Exception {
         if (channel == null) {
-            log.info("No channel provided for session with meter {}", serial);
+            log.debug("No channel provided for session with meter {}", serial);
         }
 
         MeterSession existing = sessionMap.get(serial);
@@ -169,7 +169,7 @@ public class SessionManagerMultiVendor {
                 log.warn("⚠️ AARE parse failed for {}: {}", serial, e.getMessage());
             }
 
-            log.info("✅ DLMS Association established for {} (Model: {})", serial, modelId);
+            log.debug("✅ DLMS Association established for {} (Model: {})", serial, modelId);
             MeterSession meterSession = new MeterSession(serial, channel, dlmsClient, txRxService);
             meterSession.setAssociated(true);
             sessionMap.put(serial, meterSession);
@@ -236,14 +236,14 @@ public class SessionManagerMultiVendor {
         sessionMap.entrySet().removeIf(entry -> {
             MeterSession session = entry.getValue();
             if (session.isExpired(SESSION_TIMEOUT)) {
-                log.info("⏳ Removed expired session meter={}", entry.getKey());
+                log.debug("⏳ Removed expired session meter={}", entry.getKey());
                 return true;
             }
             return false;
         });
         int removed = before - sessionMap.size();
         if (removed > 0) {
-            log.info("🧹 Removed {} expired session(s), {} active", removed, sessionMap.size());
+            log.debug("🧹 Removed {} expired session(s), {} active", removed, sessionMap.size());
         }
     }
 

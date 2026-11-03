@@ -25,8 +25,8 @@ import java.util.Date;
 import java.util.List;
 
 /**
- * Dedicated component for executing bulk DLMS profile reads across an explicit date range [startDate, endDate]
- * without touching or mutating existing Quartz scheduled job state cursors (meter_profile_state).
+ * Dedicated component for executing bulk DLMS profile reads across an entire date range [startDate, endDate]
+ * in a single readRange call, without touching or mutating existing Quartz scheduled job state cursors.
  */
 @Slf4j
 @Component
@@ -112,7 +112,7 @@ public class BulkProfileRangeReader {
             toDate = fromDate.plusDays(1);
         }
 
-        log.info("Executing bulk range read profileType={} meter={} model={} obis={} from={} to={}",
+        log.info("Executing bulk single range read profileType={} meter={} model={} obis={} from={} to={}",
                 type, serial, model, activeObis, fromDate, toDate);
 
         final LocalDateTime finalFromDate = fromDate;
@@ -120,7 +120,7 @@ public class BulkProfileRangeReader {
 
         try {
             return meterLockPort.withExclusive(serial, () ->
-                    readAndPersistRangeInChunks(type, model, serial, activeObis, isMD, finalFromDate, finalToDate)
+                    readAndPersistRange(type, model, serial, activeObis, isMD, finalFromDate, finalToDate)
             );
         } catch (Exception ex) {
             log.error("Failed executing bulk range read for meter {}: {}", serial, ex.getMessage(), ex);
@@ -146,7 +146,10 @@ public class BulkProfileRangeReader {
         };
     }
 
-    private BulkMeterReadSummary readAndPersistRangeInChunks(
+    /**
+     * Reads the entire date range [fromDate, toDate] in a single DLMS readRange call.
+     */
+    private BulkMeterReadSummary readAndPersistRange(
             ProfileType type,
             String model,
             String serial,
@@ -162,11 +165,6 @@ public class BulkProfileRangeReader {
 
         ProfileMetadataResult metadataResult = metadataProvider.resolve(serial, obisCode, model);
 
-        List<String> allTxFrames = new ArrayList<>();
-        List<String> allRxFrames = new ArrayList<>();
-        int totalRowsPersisted = 0;
-        Exception lastException = null;
-
         GXDLMSClient client = null;
         try {
             client = sessionManager.getOrCreateClient(serial);
@@ -174,49 +172,51 @@ public class BulkProfileRangeReader {
             log.warn("Could not get DLMS client for TX frame preview for meter {}: {}", serial, e.getMessage());
         }
 
-        LocalDateTime cursor = fromDate;
-        while (cursor.isBefore(toDate)) {
-            LocalDateTime chunkEnd = type == ProfileType.MONTHLY_BILLING || type == ProfileType.MONTHLY_BILLING_DATA_HH || type == ProfileType.MONTHLY_BILLING_ENERGY_HH
-                    ? cursor.plusMonths(1)
-                    : cursor.plusDays(1);
+        // Capture single TX frame for the entire range [fromDate to toDate]
+        String txString = "[" + fromDate + " to " + toDate + "] " + captureTxFrames(client, obisCode, metadataResult, fromDate, toDate);
+        String rxString;
+        int totalRowsPersisted = 0;
+        String lastErrorMsg = null;
 
-            if (chunkEnd.isAfter(toDate)) {
-                chunkEnd = toDate;
+        try {
+            List<ProfileRowGeneric> rows = dlmsReaderUtils.readRange(
+                    model, serial, obisCode, metadataResult, fromDate, toDate, isMD
+            );
+
+            if (rows != null && !rows.isEmpty()) {
+                persistProfileRowsWithoutWatermark(type, rows, serial, model, obisCode, isMD, metadataResult);
+                totalRowsPersisted = rows.size();
+                rxString = "[" + fromDate + " to " + toDate + "] SUCCESS: Persisted " + rows.size() + " rows";
+                log.info("Persisted {} bulk profile rows for meter {} [{}] range {} to {}",
+                        rows.size(), serial, type, fromDate, toDate);
+            } else {
+                rxString = "[" + fromDate + " to " + toDate + "] EMPTY: 0 rows returned from meter buffer";
+                log.info("No DLMS rows returned for meter {} [{}] range {} to {}",
+                        serial, type, fromDate, toDate);
             }
+        } catch (Exception ex) {
+            lastErrorMsg = ex.getMessage();
+            log.error("Error reading DLMS range for meter {} [{}] range {} to {}: {}. Attempting partial recovery...",
+                    serial, type, fromDate, toDate, ex.getMessage(), ex);
 
-            // Capture TX frame
-            String chunkTx = captureTxFrames(client, obisCode, metadataResult, cursor, chunkEnd);
-            allTxFrames.add("[" + cursor + " to " + chunkEnd + "] " + chunkTx);
-
+            // Attempt to recover and persist partially received profile rows accumulated before failure/timeout
             try {
-                List<ProfileRowGeneric> rows = dlmsReaderUtils.readRange(
-                        model, serial, obisCode, metadataResult, cursor, chunkEnd, isMD
-                );
-
-                if (rows != null && !rows.isEmpty()) {
-                    persistProfileRowsWithoutWatermark(type, rows, serial, model, obisCode, isMD, metadataResult);
-                    totalRowsPersisted += rows.size();
-                    allRxFrames.add("[" + cursor + " to " + chunkEnd + "] SUCCESS: Persisted " + rows.size() + " rows");
-                    log.info("Persisted {} bulk profile rows for meter {} [{}] range {} to {}",
-                            rows.size(), serial, type, cursor, chunkEnd);
+                List<ProfileRowGeneric> salvagedRows = dlmsReaderUtils.recoverPartial(serial, obisCode, model, metadataResult);
+                if (salvagedRows != null && !salvagedRows.isEmpty()) {
+                    persistProfileRowsWithoutWatermark(type, salvagedRows, serial, model, obisCode, isMD, metadataResult);
+                    totalRowsPersisted = salvagedRows.size();
+                    rxString = "[" + fromDate + " to " + toDate + "] PARTIAL_RECOVERY: Persisted " + salvagedRows.size()
+                            + " rows before error (" + ex.getMessage() + ")";
+                    log.info("Successfully recovered and persisted {} partial rows for meter {} [{}] range {} to {}",
+                            salvagedRows.size(), serial, type, fromDate, toDate);
                 } else {
-                    allRxFrames.add("[" + cursor + " to " + chunkEnd + "] EMPTY: 0 rows returned from meter buffer");
-                    log.info("No DLMS rows returned for meter {} [{}] range {} to {}",
-                            serial, type, cursor, chunkEnd);
+                    rxString = "[" + fromDate + " to " + toDate + "] ERROR: " + ex.getMessage() + " (0 partial rows salvaged)";
                 }
-            } catch (Exception ex) {
-                lastException = ex;
-                allRxFrames.add("[" + cursor + " to " + chunkEnd + "] ERROR: " + ex.getMessage());
-                log.error("Error reading DLMS range for meter {} [{}] range {} to {}: {}",
-                        serial, type, cursor, chunkEnd, ex.getMessage(), ex);
+            } catch (Exception recEx) {
+                log.error("Failed to recover partial rows for meter {}: {}", serial, recEx.getMessage(), recEx);
+                rxString = "[" + fromDate + " to " + toDate + "] ERROR: " + ex.getMessage() + " (Partial recovery error: " + recEx.getMessage() + ")";
             }
-
-            cursor = chunkEnd;
         }
-
-        String txString = String.join("\n", allTxFrames);
-        String rxString = String.join("\n", allRxFrames);
-        String lastErrorMsg = lastException != null ? lastException.getMessage() : null;
 
         return new BulkMeterReadSummary(totalRowsPersisted, txString, rxString, lastErrorMsg);
     }

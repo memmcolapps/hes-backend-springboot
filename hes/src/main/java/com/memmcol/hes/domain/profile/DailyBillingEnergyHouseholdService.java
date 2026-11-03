@@ -17,6 +17,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import static com.memmcol.hes.nettyUtils.RequestResponseService.logTx;
 
 /**
  * Daily billing energy (household) ingestion — structurally aligned with
@@ -42,6 +43,7 @@ public class DailyBillingEnergyHouseholdService {
     }
 
     public void readProfileAndSave(String model, String meterSerial, String profileObis, boolean isMD) {
+        logTx(meterSerial, String.format("Start reading profile OBIS %s", profileObis));
         try {
             final String safeObis = (profileObis == null || profileObis.isBlank()) ? "unknown" : profileObis;
             if (profileObis == null || profileObis.isBlank()) {
@@ -130,7 +132,8 @@ public class DailyBillingEnergyHouseholdService {
                 ProfileSyncResult syncResult = persistenceAdapter.saveBatchAndAdvanceCursor(
                         meterSerial, profileObis, dtos, cp);
                 metricsPort.recordBatch(meterSerial, profileObis, syncResult.getInsertedCount(), 0);
-
+                logTx(meterSerial, syncResult.toString());
+                
                 ProfileTimestamp resume = HouseholdDayWindowIngestionSupport.nextCursorAfterBatch(syncResult);
                 if (resume == null) {
                     log.warn("No meter-derived advanceTo after persist meter={} profile={}", meterSerial, profileObis);
@@ -151,6 +154,8 @@ public class DailyBillingEnergyHouseholdService {
         } catch (Exception ex) {
             String safeObis = (profileObis == null || profileObis.isBlank()) ? "unknown" : profileObis;
             metricsPort.recordFailure(meterSerial, safeObis, "unhandled_exception");
+        }finally {
+            logTx(meterSerial, String.format("Complete reading of profile OBIS %s", profileObis));
         }
     }
 

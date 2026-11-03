@@ -44,6 +44,6 @@ public class ExecutorAutoscaler {
 
         executor.setCorePoolSize(newSize);
 
-        log.info("⚖️ Adjusted meterReadExecutor pool size to {}", newSize);
+        log.debug("⚖️ Adjusted meterReadExecutor pool size to {}", newSize);
     }
 }

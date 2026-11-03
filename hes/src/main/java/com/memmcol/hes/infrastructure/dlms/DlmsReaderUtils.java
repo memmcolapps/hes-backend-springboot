@@ -50,6 +50,8 @@ public class DlmsReaderUtils {
 
     private record DlmsRangeWindow(LocalDateTime from, LocalDateTime to) {}
 
+    DateTimeFormatter dtf = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+    
     /**
      * Resolves the DLMS read window. When {@code requestedFrom} is supplied by the ingestion loop,
      * it takes precedence over {@code meter_profile_state} so in-memory cursor catch-up is not reset
@@ -634,6 +636,9 @@ public class DlmsReaderUtils {
             log.info("Building DLMS range request model={} meter={} obis={} from={} to={}",
                     model, meterSerial, profileObis, actualFrom, actualTo);
 
+             logTx(meterSerial, String.format("Building DLMS range request model=%s meter=%s obis=%s from=%s to=%s",
+                    model, meterSerial, profileObis, actualFrom.format(dtf), actualTo.format(dtf)));
+
             List<ModelProfileMetadata> metadataList = metadataResult.getMetadataList();
             DlmsUtils.populateCaptureObjects(profile, metadataList);
 
@@ -674,6 +679,8 @@ public class DlmsReaderUtils {
 
             long ms = System.currentTimeMillis() - t0;
             log.info("Range read complete meter={} obis={} rows={} elapsedMs={}", meterSerial, profileObis, rows.size(), ms);
+            logTx(meterSerial, String.format("Range read complete meter=%s obis=%s rows=%d elapsedMs=%d",
+                    meterSerial, profileObis, rows.size(), ms));
             return rows;
 
         } catch (Exception e) {
