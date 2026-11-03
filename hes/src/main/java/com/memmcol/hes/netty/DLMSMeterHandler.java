@@ -118,11 +118,11 @@ public class DLMSMeterHandler extends SimpleChannelInboundHandler<byte[]> {
         }
 
         // --- Step 3: Handle Association Lost frame (for a demo meter under investigation) ---
-        if (isAssociationLost(msg) && serial.startsWith("62225")) {
-            log.info("RX: {} : Association Lost with meter! - {}", serial, formatHex(msg));
-            readAssociationStatus(serial);
-            return;
-        }
+        // if (isAssociationLost(msg) && serial.startsWith("62225")) {
+        //     log.info("RX: {} : Association Lost with meter! - {}", serial, formatHex(msg));
+        //     readAssociationStatus(serial);
+        //     return;
+        // }
 
         // --- Step 4: Light RX logging ---
         if (serial != null) {
@@ -266,11 +266,11 @@ public class DLMSMeterHandler extends SimpleChannelInboundHandler<byte[]> {
 
         //Reading Association status (to maintain DLMS association) and Save to DB
         //Both for LOGIN and HEARTBEAT FRAME
-        if (msgType == 0x0A || msgType == 0x0C) {
-//            heartbeatManager.handleStatus(meterId, "ONLINE");
-//            heartbeatService.processFrame(meterId, "ONLINE");
-            readAssociationStatus(meterId);
-        }
+//         if (msgType == 0x0A || msgType == 0x0C) {
+// //            heartbeatManager.handleStatus(meterId, "ONLINE");
+// //            heartbeatService.processFrame(meterId, "ONLINE");
+//             readAssociationStatus(meterId);
+//         }
     }
 
     private void readAssociationStatus(String meterId) {
