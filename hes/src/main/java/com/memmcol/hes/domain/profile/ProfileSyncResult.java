@@ -11,6 +11,7 @@ import java.time.LocalDateTime;
 @Builder
 @AllArgsConstructor
 @NoArgsConstructor
+@ToString(includeFieldNames = true)    
 public class ProfileSyncResult {
     private int totalIncoming;
     private int insertedCount;
