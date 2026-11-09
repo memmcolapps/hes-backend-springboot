@@ -231,6 +231,11 @@ public class BulkJobExecutionService {
             logMap.put(meterLog.getMeterNumber(), meterLog);
         }
 
+        List<String> passedMeters = new ArrayList<>();
+        List<String> failedMeters = new ArrayList<>();
+        List<String> timedOutMeters = new ArrayList<>();
+        int missingDbCount = 0;
+
         for (String meterSerial : targetSerials) {
             BulkJobMeterLog meterLog = logMap.get(meterSerial);
             if (meterLog == null) {
@@ -250,6 +255,7 @@ public class BulkJobExecutionService {
             try {
                 MeterDTO meterDTO = meterDetailsMap.get(meterSerial);
                 if (meterDTO == null) {
+                    missingDbCount++;
                     meterDTO = new MeterDTO();
                     meterDTO.setMeterNumber(meterSerial);
                     meterDTO.setMeterModel("GENERIC");
@@ -274,14 +280,27 @@ public class BulkJobExecutionService {
                 meterLog.setTxFrames(summary.txFrames());
                 meterLog.setRxFrames(summary.rxFrames());
 
+                boolean isTimeout = summary.lastError() != null &&
+                        (summary.lastError().toLowerCase().contains("timeout") || summary.lastError().toLowerCase().contains("timed out"));
+
                 if (summary.lastError() != null && summary.totalRowsPersisted() == 0) {
                     meterLog.setStatus("FAILED");
                     meterLog.setLastError(summary.lastError());
+                    if (isTimeout) {
+                        timedOutMeters.add(meterSerial);
+                    } else {
+                        failedMeters.add(meterSerial);
+                    }
                 } else if (summary.lastError() != null && summary.totalRowsPersisted() > 0) {
                     meterLog.setStatus("PARTIAL_SUCCESS");
-                    meterLog.setLastError("Partial rows persisted (" + summary.totalRowsPersisted() + "): " + summary.lastError());
+                    String syncSummary = summary.syncResult() != null ? summary.syncResult().toString() : "";
+                    meterLog.setLastError("Partial rows persisted (" + summary.totalRowsPersisted() + "): " + summary.lastError() + " | " + syncSummary);
+                    passedMeters.add(meterSerial);
                 } else {
                     meterLog.setStatus("SUCCESS");
+                    String resultInfo = summary.syncResult() != null ? summary.syncResult().toString() : "Rows persisted: " + summary.totalRowsPersisted();
+                    meterLog.setLastError(resultInfo);
+                    passedMeters.add(meterSerial);
                 }
                 bulkJobMeterLogRepository.save(meterLog);
 
@@ -291,18 +310,47 @@ public class BulkJobExecutionService {
                         meterSerial, execution.getJobGroup(), execution.getJobName(), ex);
 
                 meterLog.setStatus("FAILED");
-                meterLog.setLastError(ex.getMessage() != null ? ex.getMessage() : ex.getClass().getName());
+                String errorMsg = ex.getMessage() != null ? ex.getMessage() : ex.getClass().getName();
+                meterLog.setLastError(errorMsg);
                 meterLog.setProcessedAt(LocalDateTime.now());
                 meterLog.setDurationMs(duration);
                 meterLog.setUpdatedAt(LocalDateTime.now());
                 bulkJobMeterLogRepository.save(meterLog);
+
+                if (errorMsg.toLowerCase().contains("timeout") || errorMsg.toLowerCase().contains("timed out")) {
+                    timedOutMeters.add(meterSerial);
+                } else {
+                    failedMeters.add(meterSerial);
+                }
             }
         }
 
-        execution.setStatus("COMPLETED");
+        int successCount = passedMeters.size();
+        int failedCount = failedMeters.size();
+        int timeoutCount = timedOutMeters.size();
+        int totalActive = targetSerials.size();
+        String activeObis = (obisCodesHousehold != null && !obisCodesHousehold.isBlank()) ? obisCodesHousehold : obisCodes;
+
+        StringBuilder summaryBuilder = new StringBuilder();
+        summaryBuilder.append(String.format("ProfileExecutionService - %s batch complete. range=1-%d, success=%d, failed=%d, timeout=%d, missing=%d\n",
+                execution.getJobName(), totalActive, successCount, failedCount, timeoutCount, missingDbCount));
+        summaryBuilder.append(String.format("ProfileExecutionService - %s read complete. success=%d, failed=%d, timeout=%d, missing=%d, total=%d\n",
+                execution.getJobName(), successCount, failedCount, timeoutCount, missingDbCount, totalActive));
+        summaryBuilder.append(String.format("ProfileExecutionService - hes.profile.batch summary profileName=%s obis=%s metersSucceeded=%d metersFailed=%d metersTimedOut=%d metersMissingDb=%d totalActiveSerials=%d\n",
+                execution.getJobName(), activeObis, successCount, failedCount, timeoutCount, missingDbCount, totalActive));
+        summaryBuilder.append("Passed meters: ").append(passedMeters).append("\n");
+        summaryBuilder.append("Failed meters: ").append(failedMeters).append("\n");
+        summaryBuilder.append("Timed out meters: ").append(timedOutMeters);
+
+        execution.setErrorMessage(summaryBuilder.toString());
+        if (failedCount > 0 || timeoutCount > 0) {
+            execution.setStatus("COMPLETED WITH ERRORS");
+        } else {
+            execution.setStatus("COMPLETED");
+        }
         execution.setCompletedAt(LocalDateTime.now());
         bulkJobExecutionRepository.save(execution);
-        log.info("Completed sequential bulk execution ID={} for job {}/{}",
-                executionId, execution.getJobGroup(), execution.getJobName());
+        log.info("Completed sequential bulk execution ID={} for job {}/{} with status: {}",
+                executionId, execution.getJobGroup(), execution.getJobName(), execution.getStatus());
     }
 }
