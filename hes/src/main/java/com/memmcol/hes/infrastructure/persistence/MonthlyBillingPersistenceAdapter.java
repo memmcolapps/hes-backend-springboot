@@ -176,7 +176,7 @@ public class MonthlyBillingPersistenceAdapter {
         return new UpsertCounts(inserted.get(), updated.get());
     }
 
-    private record UpsertCounts(int inserted, int updated) {}
+    public record UpsertCounts(int inserted, int updated) {}
 
     /**
      * Creates monthly partition tables for any missing months found in the DTO list.

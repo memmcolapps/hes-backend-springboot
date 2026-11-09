@@ -150,7 +150,7 @@ public abstract class AbstractBillingHouseholdPersistenceAdapter<TDto, TEntity, 
         return persistReadings(rows);
     }
 
-    protected record UpsertCounts(int inserted, int updated) {}
+    public record UpsertCounts(int inserted, int updated) {}
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public ProfileSyncResult saveBatchAndAdvanceCursor(String meterSerial,
