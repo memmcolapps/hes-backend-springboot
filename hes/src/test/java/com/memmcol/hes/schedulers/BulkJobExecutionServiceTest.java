@@ -58,7 +58,16 @@ class BulkJobExecutionServiceTest {
         controller = new QuartzJobController(quartzJobService, bulkJobExecutionService);
         batchController = new com.memmcol.hes.controller.BatchJobController(bulkJobExecutionService);
         lenient().when(bulkProfileRangeReader.executeRangeRead(any(), any(), any(), any(), any(), any(), any(), any()))
-                .thenReturn(new BulkProfileRangeReader.BulkMeterReadSummary(1, "TX_SAMPLE_FRAME", "RX_SAMPLE_FRAME", null));
+                .thenReturn(new BulkProfileRangeReader.BulkMeterReadSummary(1, "Requested single range read", "SUCCESS: Persisted 1 rows", null,
+                        com.memmcol.hes.domain.profile.ProfileSyncResult.builder()
+                                .totalIncoming(1)
+                                .insertedCount(1)
+                                .duplicateCount(0)
+                                .previousLast(LocalDateTime.of(2026, 11, 3, 0, 0))
+                                .incomingMax(LocalDateTime.of(2026, 11, 3, 0, 0))
+                                .advanceTo(LocalDateTime.of(2026, 11, 3, 0, 0))
+                                .advanced(false)
+                                .build()));
     }
 
     @Test
@@ -280,5 +289,110 @@ class BulkJobExecutionServiceTest {
         assertEquals(101L, map.get("jobExecutionId"));
 
         verifyNoInteractions(quartzJobService);
+    }
+
+    @Test
+    void executeBulkJob_SuccessfulRun_LogsProfileSyncResultInLastError() throws Exception {
+        SchedulerJobInfo jobInfo = new SchedulerJobInfo();
+        jobInfo.setJobName("Channel1Job");
+        jobInfo.setJobGroup("profile");
+        jobInfo.setJobClass("com.memmcol.hes.jobs.Channel1Job");
+
+        when(schedulerRepository.findByJobNameAndJobGroup("Channel1Job", "profile"))
+                .thenReturn(Optional.of(jobInfo));
+
+        BulkJobExecution execution = new BulkJobExecution();
+        execution.setId(500L);
+        execution.setJobName("Channel1Job");
+        execution.setJobGroup("profile");
+        execution.setStatus("RUNNING");
+
+        when(bulkJobExecutionRepository.saveAndFlush(any(BulkJobExecution.class)))
+                .thenReturn(execution);
+
+        com.memmcol.hes.domain.profile.ProfileSyncResult syncResult = com.memmcol.hes.domain.profile.ProfileSyncResult.builder()
+                .totalIncoming(1)
+                .insertedCount(0)
+                .duplicateCount(1)
+                .previousLast(LocalDateTime.of(2026, 11, 3, 0, 0))
+                .incomingMax(LocalDateTime.of(2026, 11, 3, 0, 0))
+                .advanceTo(LocalDateTime.of(2026, 11, 3, 0, 0))
+                .advanced(false)
+                .build();
+
+        when(bulkProfileRangeReader.executeRangeRead(any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(new BulkProfileRangeReader.BulkMeterReadSummary(1, "Requested read", "SUCCESS", null, syncResult));
+
+        BulkTriggerRequest request = BulkTriggerRequest.builder()
+                .meterSerials(List.of("625250000001"))
+                .build();
+
+        bulkJobExecutionService.executeBulkJob("profile", "Channel1Job", request);
+
+        // Allow async worker to complete
+        Thread.sleep(500);
+
+        org.mockito.ArgumentCaptor<BulkJobMeterLog> logCaptor = org.mockito.ArgumentCaptor.forClass(BulkJobMeterLog.class);
+        verify(bulkJobMeterLogRepository, atLeastOnce()).save(logCaptor.capture());
+
+        List<BulkJobMeterLog> savedLogs = logCaptor.getAllValues();
+        BulkJobMeterLog lastSavedLog = savedLogs.get(savedLogs.size() - 1);
+        assertEquals("SUCCESS", lastSavedLog.getStatus());
+        assertTrue(lastSavedLog.getLastError().contains("totalIncoming=1"));
+        assertTrue(lastSavedLog.getLastError().contains("duplicateCount=1"));
+        assertTrue(lastSavedLog.getLastError().contains("2026-11-03T00:00"));
+
+        org.mockito.ArgumentCaptor<BulkJobExecution> execCaptor = org.mockito.ArgumentCaptor.forClass(BulkJobExecution.class);
+        verify(bulkJobExecutionRepository, atLeastOnce()).save(execCaptor.capture());
+        BulkJobExecution finalExec = execCaptor.getAllValues().get(execCaptor.getAllValues().size() - 1);
+        assertEquals("COMPLETED", finalExec.getStatus());
+        assertTrue(finalExec.getErrorMessage().contains("ProfileExecutionService - Channel1Job read complete"));
+        assertTrue(finalExec.getErrorMessage().contains("success=1, failed=0, timeout=0"));
+    }
+
+    @Test
+    void executeBulkJob_WithErrorsAndTimeout_SetsCompletedWithErrors() throws Exception {
+        SchedulerJobInfo jobInfo = new SchedulerJobInfo();
+        jobInfo.setJobName("Channel1Job");
+        jobInfo.setJobGroup("profile");
+        jobInfo.setJobClass("com.memmcol.hes.jobs.Channel1Job");
+
+        when(schedulerRepository.findByJobNameAndJobGroup("Channel1Job", "profile"))
+                .thenReturn(Optional.of(jobInfo));
+
+        BulkJobExecution execution = new BulkJobExecution();
+        execution.setId(600L);
+        execution.setJobName("Channel1Job");
+        execution.setJobGroup("profile");
+        execution.setStatus("RUNNING");
+
+        when(bulkJobExecutionRepository.saveAndFlush(any(BulkJobExecution.class)))
+                .thenReturn(execution);
+
+        when(bulkProfileRangeReader.executeRangeRead(any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(new BulkProfileRangeReader.BulkMeterReadSummary(0, "Requested read", "FAILED", "SocketTimeoutException: Read timed out", null));
+
+        BulkTriggerRequest request = BulkTriggerRequest.builder()
+                .meterSerials(List.of("625250000001"))
+                .build();
+
+        bulkJobExecutionService.executeBulkJob("profile", "Channel1Job", request);
+
+        // Allow async worker to complete
+        Thread.sleep(500);
+
+        org.mockito.ArgumentCaptor<BulkJobMeterLog> logCaptor = org.mockito.ArgumentCaptor.forClass(BulkJobMeterLog.class);
+        verify(bulkJobMeterLogRepository, atLeastOnce()).save(logCaptor.capture());
+
+        BulkJobMeterLog lastSavedLog = logCaptor.getAllValues().get(logCaptor.getAllValues().size() - 1);
+        assertEquals("FAILED", lastSavedLog.getStatus());
+        assertTrue(lastSavedLog.getLastError().contains("SocketTimeoutException"));
+
+        org.mockito.ArgumentCaptor<BulkJobExecution> execCaptor = org.mockito.ArgumentCaptor.forClass(BulkJobExecution.class);
+        verify(bulkJobExecutionRepository, atLeastOnce()).save(execCaptor.capture());
+        BulkJobExecution finalExec = execCaptor.getAllValues().get(execCaptor.getAllValues().size() - 1);
+        assertEquals("COMPLETED WITH ERRORS", finalExec.getStatus());
+        assertTrue(finalExec.getErrorMessage().contains("timeout=1"));
+        assertTrue(finalExec.getErrorMessage().contains("Timed out meters: [625250000001]"));
     }
 }
