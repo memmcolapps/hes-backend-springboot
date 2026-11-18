@@ -594,6 +594,11 @@ public class RealtimeReadSseService {
         if (readingCompleted) {
 
             try {
+                log.info(
+                        "BILLING OBIS DEBUG meter={}, collectedObis={}",
+                        meter.getMeterSerial(),
+                        readingsByObis.keySet()
+                );
                 // Persist billing energy separately from the realtime reading process.
                 boolean saved = billingEnergyPersistenceService.saveIfComplete(
                         meter.getMeterSerial(),
@@ -815,7 +820,13 @@ public class RealtimeReadSseService {
             Map<String, Object> reading
     ) {
 
+
         Object obisString = reading.get("obisString");
+
+        log.info(
+                "COLLECTED OBIS: {}",
+                obisString
+        );
 
         if (obisString != null) {
 
