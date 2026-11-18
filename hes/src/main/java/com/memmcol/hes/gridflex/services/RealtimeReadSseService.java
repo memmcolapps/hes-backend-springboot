@@ -5,6 +5,7 @@ import com.memmcol.hes.gridflex.dtos.MeterDto;
 import com.memmcol.hes.gridflex.dtos.ObisDto;
 import com.memmcol.hes.gridflex.dtos.RealtimeReadRequest;
 import com.memmcol.hes.repository.MeterRepository;
+import com.memmcol.hes.service.RealtimeBillingEnergyPersistenceService;
 import com.memmcol.hesTraining.services.MeterReadingService;
 import gurux.dlms.GXDLMSExceptionResponse;
 import lombok.extern.slf4j.Slf4j;
@@ -47,6 +48,7 @@ public class RealtimeReadSseService {
     private final String fallbackNonMdModel;
     private final boolean fallbackToSingleObis;
     private final int obisChunkSize;
+    private final RealtimeBillingEnergyPersistenceService billingEnergyPersistenceService;
 
     public RealtimeReadSseService(MeterReadingService trainingService,
                                   MeterRepository meterRepository,
@@ -58,7 +60,8 @@ public class RealtimeReadSseService {
                                   @Value("${hes.realtime-read.fallback-md-model:MDModelX}") String fallbackMdModel,
                                   @Value("${hes.realtime-read.fallback-non-md-model:NonMDModelX}") String fallbackNonMdModel,
                                   @Value("${hes.realtime-read.fallback-to-single-obis:false}") boolean fallbackToSingleObis,
-                                  @Value("${hes.realtime-read.obis-chunk-size:1}") int obisChunkSize) {
+                                  @Value("${hes.realtime-read.obis-chunk-size:1}") int obisChunkSize,
+                                  RealtimeBillingEnergyPersistenceService billingEnergyPersistenceService) {
         this.trainingService = trainingService;
         this.meterRepository = meterRepository;
         this.streamExecutor = streamExecutor;
@@ -70,6 +73,7 @@ public class RealtimeReadSseService {
         this.fallbackNonMdModel = fallbackNonMdModel;
         this.fallbackToSingleObis = fallbackToSingleObis;
         this.obisChunkSize = Math.max(1, obisChunkSize);
+        this.billingEnergyPersistenceService = billingEnergyPersistenceService;
     }
 
     public SseEmitter streamRealtimeRead(RealtimeReadRequest request) {
@@ -240,29 +244,183 @@ public class RealtimeReadSseService {
         }
     }
 
-    private RealtimeReadSummary readMeterObisValues(MeterDto meter,
-                                                    List<ObisDto> obisList,
-                                                    SseEmitter emitter,
-                                                    AtomicBoolean acceptingEvents,
-                                                    AtomicInteger totalSuccess,
-                                                    AtomicInteger totalFailed) throws IOException {
+//    private RealtimeReadSummary readMeterObisValues(MeterDto meter,
+//                                                    List<ObisDto> obisList,
+//                                                    SseEmitter emitter,
+//                                                    AtomicBoolean acceptingEvents,
+//                                                    AtomicInteger totalSuccess,
+//                                                    AtomicInteger totalFailed) throws IOException {
+//        long meterStarted = System.nanoTime();
+//        log.info("⚙️ Realtime read meter={}, obisCount={}, chunkSize={}",
+//                meter.getMeterSerial(), obisList.size(), obisChunkSize);
+//
+//        int success = 0;
+//        int failed = 0;
+//        for (int from = 0; from < obisList.size(); from += obisChunkSize) {
+//            if (Thread.currentThread().isInterrupted() || !acceptingEvents.get()) {
+//                break;
+//            }
+//
+//            int to = Math.min(from + obisChunkSize, obisList.size());
+//            List<ObisDto> chunk = obisList.subList(from, to);
+//
+//            if (chunk.size() == 1) {
+//                ObisDto obis = chunk.getFirst();
+//                Map<String, Object> reading = readSingleObis(meter, obis);
+//                reading.put("chunkSize", chunk.size());
+//
+//                if (Integer.valueOf(0).equals(reading.get("statuscode"))) {
+//                    success++;
+//                    totalSuccess.incrementAndGet();
+//                } else {
+//                    failed++;
+//                    totalFailed.incrementAndGet();
+//                }
+//
+//                if (acceptingEvents.get()) {
+//                    send(emitter, "reading", reading);
+//                }
+//
+//                log.info("✅ Realtime read meter={} single-obis={}/{} elapsedMs={}",
+//                        meter.getMeterSerial(), to, obisList.size(),
+//                        TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - meterStarted));
+//                continue;
+//            }
+//
+//            try {
+//                List<Map<String, Object>> batchReadings = readMeterObisValuesBatch(meter, chunk, meterStarted);
+//                for (Map<String, Object> reading : batchReadings) {
+//                    if (Thread.currentThread().isInterrupted() || !acceptingEvents.get()) {
+//                        break;
+//                    }
+//
+//                    if (Integer.valueOf(0).equals(reading.get("statuscode"))) {
+//                        success++;
+//                        totalSuccess.incrementAndGet();
+//                    } else {
+//                        failed++;
+//                        totalFailed.incrementAndGet();
+//                    }
+//
+//                    send(emitter, "reading", reading);
+//                }
+//
+//                log.info("✅ Realtime read meter={} chunk={}/{} emitted={} elapsedMs={}",
+//                        meter.getMeterSerial(), to, obisList.size(), batchReadings.size(),
+//                        TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - meterStarted));
+//            } catch (Exception batchException) {
+//                log.warn("⚠️ Batched realtime read failed for meter={} chunk={}-{}: {}",
+//                        meter.getMeterSerial(), from + 1, to, batchException.getMessage());
+//                // Only fall back to per-OBIS reads when the meter rejected the entire
+//                // GET-with-list at the DLMS layer. Other failures (network, association,
+//                // formatting) won't be cured by N more reads on the same meter, so emit
+//                // -1 immediately and let the user retry.
+//                boolean wholeListRejection = isWholeListRejection(batchException);
+//                if (!fallbackToSingleObis || !wholeListRejection) {
+//                    String message = "Batched realtime read failed: " + batchException.getMessage();
+//                    for (ObisDto obis : chunk) {
+//                        if (Thread.currentThread().isInterrupted() || !acceptingEvents.get()) {
+//                            break;
+//                        }
+//
+//                        Map<String, Object> reading = basePayload(meter, obis.getObisString());
+//                        reading.put("desc", mapObisCode(obis.getObisString()));
+//                        reading.put("statuscode", -1);
+//                        reading.put("value", null);
+//                        reading.put("statusmessage", message);
+//                        reading.put("elapsedMs", TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - meterStarted));
+//                        reading.put("batch", true);
+//                        reading.put("chunkSize", chunk.size());
+//                        failed++;
+//                        totalFailed.incrementAndGet();
+//                        send(emitter, "reading", reading);
+//                    }
+//                    continue;
+//                }
+//
+//                log.warn("⚠️ Falling back to single OBIS reads for meter={} chunk={}-{}",
+//                        meter.getMeterSerial(), from + 1, to);
+//                for (ObisDto obis : chunk) {
+//                    if (Thread.currentThread().isInterrupted() || !acceptingEvents.get()) {
+//                        break;
+//                    }
+//
+//                    Map<String, Object> reading = readSingleObis(meter, obis);
+//                    if (Integer.valueOf(0).equals(reading.get("statuscode"))) {
+//                        success++;
+//                        totalSuccess.incrementAndGet();
+//                    } else {
+//                        failed++;
+//                        totalFailed.incrementAndGet();
+//                    }
+//
+//                    if (acceptingEvents.get()) {
+//                        send(emitter, "reading", reading);
+//                    }
+//                }
+//            }
+//        }
+//
+//        long elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - meterStarted);
+//        log.info("✅ Chunked realtime read meter={} finished success={} failed={} elapsedMs={}",
+//                meter.getMeterSerial(), success, failed, elapsedMs);
+//        return new RealtimeReadSummary(success, failed);
+//    }
+
+    private RealtimeReadSummary readMeterObisValues(
+            MeterDto meter,
+            List<ObisDto> obisList,
+            SseEmitter emitter,
+            AtomicBoolean acceptingEvents,
+            AtomicInteger totalSuccess,
+            AtomicInteger totalFailed
+    ) throws IOException {
+
         long meterStarted = System.nanoTime();
-        log.info("⚙️ Realtime read meter={}, obisCount={}, chunkSize={}",
-                meter.getMeterSerial(), obisList.size(), obisChunkSize);
+
+        log.info(
+                "⚙️ Realtime read meter={}, obisCount={}, chunkSize={}",
+                meter.getMeterSerial(),
+                obisList.size(),
+                obisChunkSize
+        );
 
         int success = 0;
         int failed = 0;
+
+        /*
+         * Keep every OBIS response for this meter in one map.
+         *
+         * This is important because obisChunkSize may be 1.
+         * We must not try to save the billing record after each chunk.
+         * We wait until all requested OBIS readings for this meter
+         * have been processed.
+         */
+        Map<String, Map<String, Object>> readingsByObis = new LinkedHashMap<>();
+
         for (int from = 0; from < obisList.size(); from += obisChunkSize) {
+
+            // Stop processing if the request has timed out or this task was cancelled.
             if (Thread.currentThread().isInterrupted() || !acceptingEvents.get()) {
                 break;
             }
 
             int to = Math.min(from + obisChunkSize, obisList.size());
+
             List<ObisDto> chunk = obisList.subList(from, to);
 
+            /*
+             * SINGLE OBIS READING
+             */
             if (chunk.size() == 1) {
+
                 ObisDto obis = chunk.getFirst();
+
                 Map<String, Object> reading = readSingleObis(meter, obis);
+
+                // Collect both successful and failed readings.
+                collectReading(readingsByObis, reading);
+
                 reading.put("chunkSize", chunk.size());
 
                 if (Integer.valueOf(0).equals(reading.get("statuscode"))) {
@@ -277,18 +435,33 @@ public class RealtimeReadSseService {
                     send(emitter, "reading", reading);
                 }
 
-                log.info("✅ Realtime read meter={} single-obis={}/{} elapsedMs={}",
-                        meter.getMeterSerial(), to, obisList.size(),
-                        TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - meterStarted));
+                log.info(
+                        "✅ Realtime read meter={} single-obis={}/{} elapsedMs={}",
+                        meter.getMeterSerial(),
+                        to,
+                        obisList.size(),
+                        TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - meterStarted)
+                );
+
                 continue;
             }
 
+            /*
+             * BATCH OBIS READING
+             */
             try {
-                List<Map<String, Object>> batchReadings = readMeterObisValuesBatch(meter, chunk, meterStarted);
+
+                List<Map<String, Object>> batchReadings =
+                        readMeterObisValuesBatch(meter, chunk, meterStarted);
+
                 for (Map<String, Object> reading : batchReadings) {
+
                     if (Thread.currentThread().isInterrupted() || !acceptingEvents.get()) {
                         break;
                     }
+
+                    // Collect each response before emitting it to the frontend.
+                    collectReading(readingsByObis, reading);
 
                     if (Integer.valueOf(0).equals(reading.get("statuscode"))) {
                         success++;
@@ -301,47 +474,90 @@ public class RealtimeReadSseService {
                     send(emitter, "reading", reading);
                 }
 
-                log.info("✅ Realtime read meter={} chunk={}/{} emitted={} elapsedMs={}",
-                        meter.getMeterSerial(), to, obisList.size(), batchReadings.size(),
-                        TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - meterStarted));
+                log.info(
+                        "✅ Realtime read meter={} chunk={}/{} emitted={} elapsedMs={}",
+                        meter.getMeterSerial(),
+                        to,
+                        obisList.size(),
+                        batchReadings.size(),
+                        TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - meterStarted)
+                );
+
             } catch (Exception batchException) {
-                log.warn("⚠️ Batched realtime read failed for meter={} chunk={}-{}: {}",
-                        meter.getMeterSerial(), from + 1, to, batchException.getMessage());
-                // Only fall back to per-OBIS reads when the meter rejected the entire
-                // GET-with-list at the DLMS layer. Other failures (network, association,
-                // formatting) won't be cured by N more reads on the same meter, so emit
-                // -1 immediately and let the user retry.
+
+                log.warn(
+                        "⚠️ Batched realtime read failed for meter={} chunk={}-{}: {}",
+                        meter.getMeterSerial(),
+                        from + 1,
+                        to,
+                        batchException.getMessage()
+                );
+
+                /*
+                 * Only fall back to individual OBIS reads when the meter
+                 * rejected the entire multiple-object request.
+                 */
                 boolean wholeListRejection = isWholeListRejection(batchException);
+
                 if (!fallbackToSingleObis || !wholeListRejection) {
-                    String message = "Batched realtime read failed: " + batchException.getMessage();
+
+                    String message =
+                            "Batched realtime read failed: " + batchException.getMessage();
+
                     for (ObisDto obis : chunk) {
+
                         if (Thread.currentThread().isInterrupted() || !acceptingEvents.get()) {
                             break;
                         }
 
-                        Map<String, Object> reading = basePayload(meter, obis.getObisString());
+                        Map<String, Object> reading =
+                                basePayload(meter, obis.getObisString());
+
                         reading.put("desc", mapObisCode(obis.getObisString()));
                         reading.put("statuscode", -1);
                         reading.put("value", null);
                         reading.put("statusmessage", message);
-                        reading.put("elapsedMs", TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - meterStarted));
+                        reading.put(
+                                "elapsedMs",
+                                TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - meterStarted)
+                        );
                         reading.put("batch", true);
                         reading.put("chunkSize", chunk.size());
+
                         failed++;
                         totalFailed.incrementAndGet();
+
+                        // Important: collect failed batch responses as well.
+                        // The persistence service will reject a failed mandatory reading.
+                        collectReading(readingsByObis, reading);
+
                         send(emitter, "reading", reading);
                     }
+
                     continue;
                 }
 
-                log.warn("⚠️ Falling back to single OBIS reads for meter={} chunk={}-{}",
-                        meter.getMeterSerial(), from + 1, to);
+                log.warn(
+                        "⚠️ Falling back to single OBIS reads for meter={} chunk={}-{}",
+                        meter.getMeterSerial(),
+                        from + 1,
+                        to
+                );
+
+                /*
+                 * FALLBACK TO SINGLE OBIS READS
+                 */
                 for (ObisDto obis : chunk) {
+
                     if (Thread.currentThread().isInterrupted() || !acceptingEvents.get()) {
                         break;
                     }
 
                     Map<String, Object> reading = readSingleObis(meter, obis);
+
+                    // Collect fallback responses too.
+                    collectReading(readingsByObis, reading);
+
                     if (Integer.valueOf(0).equals(reading.get("statuscode"))) {
                         success++;
                         totalSuccess.incrementAndGet();
@@ -357,9 +573,82 @@ public class RealtimeReadSseService {
             }
         }
 
-        long elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - meterStarted);
-        log.info("✅ Chunked realtime read meter={} finished success={} failed={} elapsedMs={}",
-                meter.getMeterSerial(), success, failed, elapsedMs);
+        /*
+         * BILLING ENERGY PERSISTENCE
+         *
+         * We save only when:
+         * 1. This meter's complete OBIS reading loop has finished.
+         * 2. The request has not been interrupted or timed out.
+         * 3. We have collected a response for every requested OBIS code.
+         *
+         * The persistence service performs a second validation to ensure
+         * that all mandatory billing readings succeeded and have valid values.
+         *
+         * A failed optional OBIS reading does not prevent billing persistence.
+         */
+        boolean readingCompleted =
+                !Thread.currentThread().isInterrupted()
+                        && acceptingEvents.get()
+                        && readingsByObis.size() == obisList.size();
+
+        if (readingCompleted) {
+
+            try {
+                // Persist billing energy separately from the realtime reading process.
+                boolean saved = billingEnergyPersistenceService.saveIfComplete(
+                        meter.getMeterSerial(),
+                        meter.getMeterModel(),
+                        meter.isMD(),
+                        readingsByObis
+                );
+
+                if (saved) {
+                    log.info(
+                            "✅ Billing energy persistence completed for meter={}",
+                            meter.getMeterSerial()
+                    );
+                } else {
+                    log.warn(
+                            "⚠️ Billing energy record was not saved for meter={}. " +
+                                    "One or more mandatory readings may be missing or invalid.",
+                            meter.getMeterSerial()
+                    );
+                }
+
+            } catch (Exception ex) {
+                // A billing database failure must never interrupt realtime reading.
+                log.error(
+                        "❌ Billing energy persistence failed for meter={}. " +
+                                "Realtime reading will continue.",
+                        meter.getMeterSerial(),
+                        ex
+                );
+            }
+
+        } else {
+
+            log.warn(
+                    "⚠️ Skipping billing energy persistence for meter={}. " +
+                            "Reading incomplete: collected={}, expected={}, interrupted={}",
+                    meter.getMeterSerial(),
+                    readingsByObis.size(),
+                    obisList.size(),
+                    Thread.currentThread().isInterrupted()
+            );
+        }
+
+        long elapsedMs = TimeUnit.NANOSECONDS.toMillis(
+                System.nanoTime() - meterStarted
+        );
+
+        log.info(
+                "✅ Chunked realtime read meter={} finished success={} failed={} elapsedMs={}",
+                meter.getMeterSerial(),
+                success,
+                failed,
+                elapsedMs
+        );
+
         return new RealtimeReadSummary(success, failed);
     }
 
@@ -404,8 +693,14 @@ public class RealtimeReadSseService {
                 responseData.put("value", null);
                 responseData.put("statusmessage", String.valueOf(response.getOrDefault("error", "Batched OBIS read failed")));
             } else {
+                // Explicitly mark successful batch responses.
+                // The persistence service checks this field before accepting a reading.
+                responseData.put("statuscode", 0);
+
                 responseData.put("value", extractValue(response));
                 responseData.put("statusmessage", "SUCCESS");
+                // responseData.put("value", extractValue(response));
+                // responseData.put("statusmessage", "SUCCESS");
             }
             responseData.put("elapsedMs", elapsedMs);
             responseData.put("batch", true);
@@ -504,6 +799,50 @@ public class RealtimeReadSseService {
     }
 
     private record RealtimeReadSummary(int success, int failed) {
+    }
+
+    /**
+     * Stores a meter's OBIS response using the OBIS string as its key.
+     *
+     * A copy is stored so that later modifications to the SSE response map
+     * do not change the accumulated reading.
+     *
+     * Both successful and failed responses are collected. The billing
+     * persistence service decides whether the mandatory readings are valid.
+     */
+    private void collectReading(
+            Map<String, Map<String, Object>> readingsByObis,
+            Map<String, Object> reading
+    ) {
+
+        Object obisString = reading.get("obisString");
+
+        if (obisString != null) {
+
+            readingsByObis.put(
+                    obisString.toString(),
+                    new LinkedHashMap<>(reading)
+            );
+        }
+    }
+
+    /**
+     * Keeps a copy of an OBIS reading for billing persistence.
+     *
+     * This does not modify the original reading or the SSE response.
+     */
+    private void collectBillingReading(
+            Map<String, Map<String, Object>> billingReadings,
+            Map<String, Object> reading
+    ) {
+        Object obisString = reading.get("obisString");
+
+        if (obisString != null) {
+            billingReadings.put(
+                    obisString.toString(),
+                    new LinkedHashMap<>(reading)
+            );
+        }
     }
 
     private String mapObisCode(String obisCode) {
