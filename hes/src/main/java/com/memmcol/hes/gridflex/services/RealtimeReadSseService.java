@@ -751,8 +751,14 @@ public class RealtimeReadSseService {
 
         for (String obisString : requiredObis) {
 
-            // Already collected from the original realtime request.
-            if (billingReadings.containsKey(obisString)) {
+//            // Already collected from the original realtime request.
+//            if (billingReadings.containsKey(obisString)) {
+//                continue;
+//            }
+            Map<String, Object> existingReading =
+                    billingReadings.get(obisString);
+
+            if (isValidBillingReading(existingReading)) {
                 continue;
             }
 
@@ -783,6 +789,15 @@ public class RealtimeReadSseService {
             // Reuse the existing synchronous meter-reading method.
             Map<String, Object> reading = readSingleObis(meter, obis);
 
+            log.info(
+                    "BILLING OBIS RESULT: meter={}, obis={}, status={}, value={}, message={}",
+                    meter.getMeterSerial(),
+                    obisString,
+                    reading.get("statuscode"),
+                    reading.get("value"),
+                    reading.get("statusmessage")
+            );
+
             // Ensure the response is associated with the requested OBIS key.
             reading.putIfAbsent("obisString", obisString);
 
@@ -795,6 +810,23 @@ public class RealtimeReadSseService {
         return !Thread.currentThread().isInterrupted()
                 && acceptingEvents.get();
     }
+
+
+    private boolean isValidBillingReading(Map<String, Object> reading) {
+
+        if (reading == null) {
+            return false;
+        }
+
+        Object statusCode = reading.get("statuscode");
+        Object value = reading.get("value");
+
+        return statusCode != null
+                && "0".equals(statusCode.toString())
+                && value != null
+                && !value.toString().isBlank();
+    }
+
 
 
     private boolean isWholeListRejection(Throwable ex) {
