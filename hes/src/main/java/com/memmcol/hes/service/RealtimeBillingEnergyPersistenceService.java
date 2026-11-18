@@ -19,7 +19,7 @@ public class RealtimeBillingEnergyPersistenceService {
     private final DailyBillingEnergyHouseholdRepository repository;
 
     private static final String METER_CLOCK =
-            "8;0.0:1.0.0.255;2;0";
+            "8;0.0.1.0.0.255;2;0";
 
     private static final String ACTIVE_ENERGY_IMPORT =
             "3;1.0.1.8.0.255;2;0";
