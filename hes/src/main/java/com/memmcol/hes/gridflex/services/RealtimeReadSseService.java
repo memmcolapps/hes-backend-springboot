@@ -1112,59 +1112,59 @@ public class RealtimeReadSseService {
                 return "Maximum Demand Register  - Apparent energy export (-A) occurrence time of private grid";
 
             //instantaneous
-            case "3;1.0:32.7.0.255;2;0":
+            case "3;1.0.32.7.0.255;2;0":
                 return "Voltage in phase L1";
-            case "3;1.0:52.7.0.255;2;0":
+            case "3;1.0.52.7.0.255;2;0":
                 return "Voltage in phase L2";
-            case "3;1.0:72.7.0.255;2;0":
+            case "3;1.0.72.7.0.255;2;0":
                 return "Voltage in phase L3";
-            case "3;1.0:31.7.0.255;2;0":
+            case "3;1.0.31.7.0.255;2;0":
                 return "Current in phase L1";
-            case "3;1.0:51.7.0.255;2;0":
+            case "3;1.0.51.7.0.255;2;0":
                 return "Current in phase L2";
-            case "3;1.0:71.7.0.255;2;0":
+            case "3;1.0.71.7.0.255;2;0":
                 return "Current in phase L3";
 
-            case "3;1.0:91.7.0.255;2;0":
+            case "3;1.0.91.7.0.255;2;0":
                 return "Neutral Current";
-            case "3;1.0:14.7.0.255;2;0":
+            case "3;1.0.14.7.0.255;2;0":
                 return "Frequency";
-            case "3;1.0:1.7.0.255;2;0":
+            case "3;1.0.1.7.0.255;2;0":
                 return "Total active power";
-            case "3;1.0:21.7.0.255;2;0":
+            case "3;1.0.21.7.0.255;2;0":
                 return "Active power in phase L1";
-            case "3;1.0:41.7.0.255;2;0":
+            case "3;1.0.41.7.0.255;2;0":
                 return "Active power in phase L2";
-            case "3;1.0:61.7.0.255;2;0":
+            case "3;1.0.61.7.0.255;2;0":
                 return "Active power in phase L3";
 
-            case "3;1.0:3.7.0.255;2;0":
+            case "3;1.0.3.7.0.255;2;0":
                 return "Total reactive power";
-            case "3;1.0:23.7.0.255;2;0":
+            case "3;1.0.23.7.0.255;2;0":
                 return "Reactive power in phase L1";
-            case "3;1.0:43.7.0.255;2;0":
+            case "3;1.0.43.7.0.255;2;0":
                 return "Reactive power in phase L2";
-            case "3;1.0:63.7.0.255;2;0":
+            case "3;1.0.63.7.0.255;2;0":
                 return "Reactive power in phase L3";
-            case "3;1.0:9.7.0.255;2;0":
+            case "3;1.0.9.7.0.255;2;0":
                 return "Total apparent power";
-            case "3;1.0:29.7.0.255;2;0":
+            case "3;1.0.29.7.0.255;2;0":
                 return "Apparent power in phase L1";
-            case "3;1.0:49.7.0.255;2;0":
+            case "3;1.0.49.7.0.255;2;0":
                 return "Apparent power in phase L2";
-            case "3;1.0:69.7.0.255;2;0":
+            case "3;1.0.69.7.0.255;2;0":
                 return "Apparent power in phase L3";
-            case "3;1.0:13.7.0.255;2;0":
+            case "3;1.0.13.7.0.255;2;0":
                 return "Total power factor";
-            case "3;1.0:33.7.0.255;2;0":
+            case "3;1.0.33.7.0.255;2;0":
                 return "Power factor in phase L1";
-            case "3;1.0:53.7.0.255;2;0":
+            case "3;1.0.53.7.0.255;2;0":
                 return "Power factor in phase L2";
-            case "3;1.0:73.7.0.255;2;0":
+            case "3;1.0.73.7.0.255;2;0":
                 return "Power factor in phase L3";
 
             // Clock
-            case "8;0.0:1.0.0.255;2;0":
+            case "8;0.0.1.0.0.255;2;0":
                 return "Date and time";
 
 //            // Disconnect control
@@ -1178,26 +1178,26 @@ public class RealtimeReadSseService {
 //                return "Connect the relay";
 
             //Momas requirement
-            case "3;1.0:140.129.0.255;2;0":
+            case "3;1.0.140.129.0.255;2;0":
                 return "Public Grid Credit";
-            case "3;1.1:140.129.0.255;2;0":
+            case "3;1.1.140.129.0.255;2;0":
                 return "Private Grid Credit";
-            case "1;0.0:97.97.0.255;2;0":
+            case "1;0.0.97.97.0.255;2;0":
                 return "Tariff index";
-            case "1;1.0:120.129.0.255;2;0":
+            case "1;1.0.120.129.0.255;2;0":
                 return "Public Grid SGC Code";
-            case "1;1.1:120.129.0.255;2;0":
+            case "1;1.1.120.129.0.255;2;0":
                 return "Private Grid SGC Code";
-            case "3;1.0:140.129.2.255;2;0":
+            case "3;1.0.140.129.2.255;2;0":
                 return "Public Grid Cumulative power purchase credit [kWh]";
-            case "3;1.1:140.129.2.255;2;0":
+            case "3;1.1.140.129.2.255;2;0":
                 return "Private Grid Cumulative power purchase credit [kWh]";
-            case "3;1.0:1.9.0.255;2;0":
+            case "3;1.0.1.9.0.255;2;0":
                 return "Current month consumed credit [kWh]";
 
-            case "1;1.0:134.129.2.255;2;0":
+            case "1;1.0.134.129.2.255;2;0":
                 return " Maximum vend limit [kWh]";
-            case "1;1.0:129.129.2.255;2;0":
+            case "1;1.0.129.129.2.255;2;0":
                 return "Write TOKEN Code";
 
             default:
