@@ -68,9 +68,13 @@ public class RealtimeBillingEnergyPersistenceService {
 
             // Check whether this meter already has a record for this meter-clock timestamp.
             // If it exists, preserve the existing record and skip this new record.
-            if (repository.existsByMeterSerialAndEntryTimestamp(
+            LocalDateTime startOfDay = entryTimestamp.toLocalDate().atStartOfDay();
+            LocalDateTime startOfNextDay = startOfDay.plusDays(1);
+
+            if (repository.existsByMeterSerialAndEntryDate(
                     meterSerial,
-                    entryTimestamp
+                    startOfDay,
+                    startOfNextDay
             )) {
                 log.info(
                         "Billing energy record already exists for meter={} at {}. Skipping duplicate.",
