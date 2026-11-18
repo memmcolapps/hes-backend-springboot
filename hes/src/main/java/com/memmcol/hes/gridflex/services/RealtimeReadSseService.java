@@ -734,7 +734,7 @@ public class RealtimeReadSseService {
             AtomicBoolean acceptingEvents
     ) {
         List<String> requiredObis = new ArrayList<>(List.of(
-                "8;0.0:1.0.0.255;2;0",
+                "8;0.0.1.0.0.255;2;0",
                 "3;1.0.1.8.0.255;2;0",
                 "3;1.0.1.8.1.255;2;0",
                 "3;1.0.1.8.2.255;2;0"
