@@ -13,6 +13,7 @@ import com.memmcol.hes.infrastructure.persistence.HouseholdFraudEventPersistence
 import com.memmcol.hes.repository.MeterRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -37,6 +38,13 @@ public class HouseholdExtendedEventService {
     private final HouseholdControlEventMapper controlMapper;
     private final MeterRepository meterRepository;
     private final EventLogService eventLogService;
+
+    private int maxRangesPerRun = 7;
+
+    @Value("${hes.profile.catchup.max-ranges-per-run:7}")
+    public void setMaxRangesPerRun(int value) {
+        this.maxRangesPerRun = Math.max(1, value);
+    }
 
     public void readFraudProfileAndSave(String model, String meterSerial, String profileObis, boolean isMD) {
         readProfileAndSave(model, meterSerial, profileObis, isMD, EventKind.FRAUD);
@@ -74,7 +82,9 @@ public class HouseholdExtendedEventService {
             CapturePeriod cp = new CapturePeriod(1);
             LocalDateTime now = LocalDateTime.now();
 
-            while (cursor.value().isBefore(now)) {
+            int rangesProcessed = 0;
+            while (cursor.value().isBefore(now) && rangesProcessed < maxRangesPerRun) {
+                rangesProcessed++;
                 LocalDateTime from = cursor.value();
                 LocalDateTime to = from.plusDays(1);
                 if (to.isAfter(now)) {
@@ -143,6 +153,11 @@ public class HouseholdExtendedEventService {
                     log.warn("cp.seconds() <= 0 : {}", cp);
                     return;
                 }
+            }
+
+            if (cursor.value().isBefore(now)) {
+                log.info("Catch-up capped at {} range(s) this run. meter={} profile={} resumeFrom={}",
+                        maxRangesPerRun, meterSerial, profileObis, cursor.value());
             }
         } catch (Exception ex) {
             log.error("Fatal exception while reading household extended event profile, meter={}, profile={}: {}",

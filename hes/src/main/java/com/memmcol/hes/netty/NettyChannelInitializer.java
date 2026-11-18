@@ -4,6 +4,8 @@ import com.memmcol.hes.gridflex.sse.MeterHeartbeatService;
 import com.memmcol.hes.infrastructure.dlms.DlmsReaderUtils;
 import com.memmcol.hes.nettyUtils.EventNotificationHandler;
 import com.memmcol.hes.nettyUtils.MeterHeartbeatManager;
+import com.memmcol.hes.nettyUtils.SessionManager;
+import com.memmcol.hes.nettyUtils.SessionManagerMultiVendor;
 import com.memmcol.hes.service.DlmsService;
 import com.memmcol.hes.service.MeterStatusService;
 import io.netty.channel.ChannelInitializer;
@@ -28,6 +30,8 @@ public class NettyChannelInitializer extends ChannelInitializer<SocketChannel> {
     private final ScheduledExecutorService dlmsScheduledExecutor;
     private final EventNotificationHandler handler;
     private final MeterHeartbeatService heartbeatService;
+    private final SessionManagerMultiVendor sessionManagerMultiVendor;
+    private final SessionManager sessionManager;
 
     @Autowired
     public NettyChannelInitializer(DlmsReaderUtils dlmsReaderUtils,
@@ -35,7 +39,9 @@ public class NettyChannelInitializer extends ChannelInitializer<SocketChannel> {
 //                                   MeterHeartbeatManager heartbeatManager,
                                    @Qualifier("dlmsScheduledExecutor") ScheduledExecutorService dlmsScheduledExecutor,
                                    EventNotificationHandler handler,
-                                   MeterHeartbeatService heartbeatService
+                                   MeterHeartbeatService heartbeatService,
+                                   SessionManagerMultiVendor sessionManagerMultiVendor,
+                                   SessionManager sessionManager
     ) {
 //        this.meterStatusService = meterStatusService;
         this.dlmsReaderUtils = dlmsReaderUtils;
@@ -43,6 +49,8 @@ public class NettyChannelInitializer extends ChannelInitializer<SocketChannel> {
         this.dlmsScheduledExecutor = dlmsScheduledExecutor;
         this.handler = handler;
         this.heartbeatService = heartbeatService;
+        this.sessionManagerMultiVendor = sessionManagerMultiVendor;
+        this.sessionManager = sessionManager;
     }
 
     @Override
@@ -57,7 +65,8 @@ public class NettyChannelInitializer extends ChannelInitializer<SocketChannel> {
         pipeline.addLast("dlmsEncoder", new DLMSFrameEncoder());
 
         // Business logic
-        pipeline.addLast("dlmsHandler", new DLMSMeterHandler(dlmsReaderUtils, dlmsScheduledExecutor, handler, heartbeatService));
+        pipeline.addLast("dlmsHandler", new DLMSMeterHandler(dlmsReaderUtils, dlmsScheduledExecutor, handler, heartbeatService,
+                sessionManagerMultiVendor, sessionManager));
     }
 
 }

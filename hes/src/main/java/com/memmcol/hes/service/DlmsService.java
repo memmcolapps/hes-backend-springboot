@@ -3,6 +3,7 @@ package com.memmcol.hes.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.memmcol.hes.domain.clock.BulkClockSyncService;
 import com.memmcol.hes.domain.clock.ClockWriteService;
 import com.memmcol.hes.domain.limiters.LimiterHelper;
 import com.memmcol.hes.domain.network.NetworkWriteService;
@@ -10,12 +11,12 @@ import com.memmcol.hes.domain.profile.WriteCTPT;
 import com.memmcol.hes.domain.relay.ControlModeService;
 import com.memmcol.hes.domain.relay.ControlRelayService;
 import com.memmcol.hes.domain.token.TokenService;
+import com.memmcol.hes.entities.ClockSyncMeter;
 import com.memmcol.hes.exception.AssociationLostException;
 import com.memmcol.hes.infrastructure.dlms.DlmsReaderUtils;
 import com.memmcol.hes.dto.DlmsReadResponse;
 import com.memmcol.hes.model.*;
 import com.memmcol.hes.nettyUtils.RequestResponseService;
-import com.memmcol.hes.nettyUtils.SessionManager;
 import com.memmcol.hes.nettyUtils.SessionManagerMultiVendor;
 import com.memmcol.hes.repository.DlmsObisObjectRepository;
 import com.memmcol.hes.repository.ProfileChannel2Repository;
@@ -31,6 +32,8 @@ import gurux.dlms.objects.*;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
@@ -78,6 +81,7 @@ public class DlmsService {
     private final TokenService tokenService;
     private final ControlRelayService controlRelayService;
     private final ControlModeService controlModeService;
+//    private final BulkClockSyncService clockSyncService;
 
     public DlmsService(SessionManagerMultiVendor sessionManager,
                        DlmsObisObjectRepository repository,
@@ -97,7 +101,9 @@ public class DlmsService {
                        NetworkWriteService networkWriteService,
                        TokenService tokenService,
                        ControlRelayService controlRelayService,
-                       ControlModeService controlModeService) {
+                       ControlModeService controlModeService
+//                       BulkClockSyncService clockSyncService
+    ) {
         this.sessionManager = sessionManager;
         this.repository = repository;
         this.metadataCache = metadataCache;
@@ -119,6 +125,7 @@ public class DlmsService {
         this.tokenService = tokenService;
         this.controlRelayService = controlRelayService;
         this.controlModeService = controlModeService;
+//        this.clockSyncService = clockSyncService;
     }
 
     public static final DateTimeFormatter GLOBAL_TS_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
@@ -1915,5 +1922,17 @@ public Map<String, Object> setToken(String serial, String token) throws Exceptio
             currentTs = endTs;
         }
     }
+
+//    public Map<String, Object> startSynchronization(List<String> meterNumbers) {
+//        return clockSyncService.startSynchronization(meterNumbers);
+//    }
+//
+//    public Map<String, Object> getJobStatus(Long jobId) {
+//        return clockSyncService.getJobStatus(jobId);
+//    }
+//
+//    public Page<ClockSyncMeter> getMeterLogs(Long jobId, String status, Pageable pageable) {
+//        return clockSyncService.getMeterLogs(jobId, status, pageable);
+//    }
 
 }

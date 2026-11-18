@@ -84,6 +84,9 @@ public abstract class AbstractBillingHouseholdPersistenceAdapter<TDto, TEntity, 
 
         months.forEach(month -> {
             String partitionName = partitionPrefix() + "_" + month;
+            if (PartitionCreationMemo.isConfirmed(partitionName)) {
+                return;
+            }
             String startDate = month + "01";
             String endDate = YearMonth.parse(month, DateTimeFormatter.ofPattern("yyyyMM"))
                     .plusMonths(1)
@@ -98,8 +101,12 @@ public abstract class AbstractBillingHouseholdPersistenceAdapter<TDto, TEntity, 
             session.doWork(connection -> {
                 try (Statement stmt = connection.createStatement()) {
                     stmt.execute(sql);
+                    PartitionCreationMemo.confirm(partitionName);
                     log.info("🆕 Partition {} created.", partitionName);
                 } catch (Exception e) {
+                    if (e.getMessage() != null && e.getMessage().contains("exists")) {
+                        PartitionCreationMemo.confirm(partitionName);
+                    }
                     log.error("Error creating partition {}: {}", partitionName, e.getMessage());
                 }
             });
@@ -133,7 +140,17 @@ public abstract class AbstractBillingHouseholdPersistenceAdapter<TDto, TEntity, 
         return new UpsertCounts(inserted.get(), updated.get());
     }
 
-    protected record UpsertCounts(int inserted, int updated) {}
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public UpsertCounts persistBatch(List<TDto> rows) {
+        if (rows == null || rows.isEmpty()) {
+            return new UpsertCounts(0, 0);
+        }
+
+        createPartitionsIfMissing(rows);
+        return persistReadings(rows);
+    }
+
+    public record UpsertCounts(int inserted, int updated) {}
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public ProfileSyncResult saveBatchAndAdvanceCursor(String meterSerial,

@@ -1,9 +1,6 @@
 package com.memmcol.hes.domain.profile;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import lombok.*;
 
 import java.time.LocalDateTime;
 
@@ -11,6 +8,7 @@ import java.time.LocalDateTime;
 @Builder
 @AllArgsConstructor
 @NoArgsConstructor
+@ToString(includeFieldNames = true)    
 public class ProfileSyncResult {
     private int totalIncoming;
     private int insertedCount;

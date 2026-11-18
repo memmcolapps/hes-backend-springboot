@@ -3,6 +3,7 @@ package com.memmcol.hes.jobs.services;
 import com.memmcol.hes.application.port.out.EventObisResolutionPort;
 import com.memmcol.hes.domain.events.EventScheduleProfile;
 import com.memmcol.hes.domain.events.ResolvedTieredEventObis;
+import com.memmcol.hes.domain.profile.MeterHealthGate;
 import com.memmcol.hes.domain.profile.MetersLockService;
 import com.memmcol.hes.domain.profile.ProfileMeterEligibility;
 import com.memmcol.hes.dto.MeterDTO;
@@ -23,6 +24,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletionService;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorCompletionService;
@@ -41,7 +43,7 @@ public class ProfileExecutionService {
     private final MeterRepository meterRepository;
     @Qualifier("meterReadAdaptiveExecutor")
     private final ExecutorService meterReadExecutor; // must be a Spring bean
-    private final Duration perMeterTimeout = Duration.ofMinutes(10);
+    private final Duration perMeterTimeout;
     private final int meterBatchSize;
     private final ZoneId executionWindowZone;
     private final LocalTime executionWindowStart;
@@ -49,12 +51,15 @@ public class ProfileExecutionService {
     private final boolean executionWindowEnabled;
     private final Set<String> householdMeterModels;
     private final EventObisResolutionPort eventObisResolutionPort;
+    private final MeterHealthGate meterHealthGate;
 
     public ProfileExecutionService(MetersLockService metersLockService,
                                    MeterRepository meterRepository,
                                    @Qualifier("meterReadAdaptiveExecutor") ExecutorService meterReadExecutor,
                                    EventObisResolutionPort eventObisResolutionPort,
+                                   MeterHealthGate meterHealthGate,
                                    @Value("${hes.profile.execution.batch-size:${hes.meter.executor.size:50}}") int meterBatchSize,
+                                   @Value("${hes.profile.execution.per-meter-timeout-seconds:120}") int perMeterTimeoutSeconds,
                                    @Value("${hes.profile.execution.window.zone:Africa/Lagos}") String executionWindowZone,
                                    @Value("${hes.profile.execution.window.start:00:00}") String executionWindowStart,
                                    @Value("${hes.profile.execution.window.end:23:59}") String executionWindowEnd,
@@ -64,7 +69,9 @@ public class ProfileExecutionService {
         this.meterRepository = meterRepository;
         this.meterReadExecutor = meterReadExecutor;
         this.eventObisResolutionPort = eventObisResolutionPort;
+        this.meterHealthGate = meterHealthGate;
         this.meterBatchSize = Math.max(1, meterBatchSize);
+        this.perMeterTimeout = Duration.ofSeconds(Math.max(10, perMeterTimeoutSeconds));
         this.executionWindowZone = ZoneId.of(executionWindowZone);
         this.executionWindowStart = LocalTime.parse(executionWindowStart);
         this.executionWindowEnd = LocalTime.parse(executionWindowEnd);
@@ -146,9 +153,10 @@ public class ProfileExecutionService {
         int success = 0;
         int failed = 0;
         int timedOut = 0;
+        int quarantined = 0;
 
-        log.info("{} read starting. activeMeters={}, batchSize={}",
-                profileName, activeMeters.size(), meterBatchSize);
+        log.info("{} read starting. activeMeters={}, batchSize={}, quarantined={}",
+                profileName, activeMeters.size(), meterBatchSize, meterHealthGate.quarantineCount());
 
         for (int from = 0; from < activeMeters.size(); from += meterBatchSize) {
             if (!isWithinExecutionWindow()) {
@@ -177,13 +185,23 @@ public class ProfileExecutionService {
                         profileName, missingSerials.size(), from + 1, to);
             }
 
-            List<MeterDTO> metersToRead = serialBatch.stream()
+            List<MeterDTO> eligible = serialBatch.stream()
                     .map(meterDetailsBySerial::get)
                     .filter(dto -> dto != null)
                     .filter(dto -> allowedModels == null || allowedModels.isEmpty() || allowedModels.contains(dto.getMeterModel()))
                     .filter(dto -> excludedModels == null || excludedModels.isEmpty() || !excludedModels.contains(dto.getMeterModel()))
                     .filter(dto -> meterFilter == null || meterFilter.test(dto))
                     .toList();
+
+            List<MeterDTO> metersToRead = eligible.stream()
+                    .filter(dto -> !meterHealthGate.isQuarantined(dto.getMeterNumber()))
+                    .toList();
+
+            int quarantinedSkipped = eligible.size() - metersToRead.size();
+            quarantined += quarantinedSkipped;
+            if (quarantinedSkipped > 0) {
+                log.info("{} batch {}-{}: skipped {} quarantined meter(s)", profileName, from + 1, to, quarantinedSkipped);
+            }
 
             BatchResult batchResult = executeBatch(profileName, metersToRead, obisCode, reader);
             success += batchResult.success();
@@ -195,8 +213,8 @@ public class ProfileExecutionService {
                     batchResult.timedOut(), missingSerials.size());
         }
 
-        log.info("{} read complete. success={}, failed={}, timeout={}, missing={}, total={}",
-                profileName, success, failed, timedOut, missing, activeMeters.size());
+        log.info("{} read complete. success={}, failed={}, timeout={}, missing={}, quarantinedSkipped={}, total={}",
+                profileName, success, failed, timedOut, missing, quarantined, activeMeters.size());
         log.info(
                 "hes.profile.batch summary profileName={} obis={} metersSucceeded={} metersFailed={} metersTimedOut={} metersMissingDb={} totalActiveSerials={} note=Per_meter_fact_table_persistence_is_logged_separately_with_prefix_Fact_DB_persistence_and_hes.factdb_outcome",
                 profileName, obisCode, success, failed, timedOut, missing, activeMeters.size());
@@ -251,43 +269,55 @@ public class ProfileExecutionService {
                                    List<Future<MeterReadResult>> submitted) {
         int success = 0;
         int failed = 0;
+        int timedOut = 0;
         int completed = 0;
-        long deadlineNanos = System.nanoTime() + perMeterTimeout.toNanos();
+
+        long perMeterNanos = perMeterTimeout.toNanos();
+        long[] submitNanos = new long[submitted.size()];
+        Arrays.fill(submitNanos, System.nanoTime());
 
         while (completed < submitted.size()) {
+            long nowNanos = System.nanoTime();
+
+            for (int i = 0; i < submitted.size(); i++) {
+                Future<MeterReadResult> future = submitted.get(i);
+                if (!future.isDone() && (nowNanos - submitNanos[i]) > perMeterNanos) {
+                    if (future.cancel(true)) {
+                        log.warn("{} meter read exceeded per-meter timeout of {}s and was cancelled",
+                                profileName, perMeterTimeout.toSeconds());
+                    }
+                }
+            }
+
+            Future<MeterReadResult> future;
             try {
-                long remainingNanos = deadlineNanos - System.nanoTime();
-                if (remainingNanos <= 0) {
-                    break;
-                }
+                future = completionService.poll(500, TimeUnit.MILLISECONDS);
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+                break;
+            }
 
-                Future<MeterReadResult> future = completionService.poll(remainingNanos, TimeUnit.NANOSECONDS);
-                if (future == null) {
-                    break;
-                }
+            if (future == null) {
+                continue;
+            }
 
-                completed++;
+            completed++;
+            try {
                 MeterReadResult result = future.get();
                 if (result.success()) {
                     success++;
                 } else {
                     failed++;
                 }
-            } catch (InterruptedException ex) {
-                Thread.currentThread().interrupt();
-                break;
+            } catch (CancellationException ex) {
+                timedOut++;
             } catch (ExecutionException ex) {
                 failed++;
                 log.warn("{} read error: {}", profileName, ex.getMessage());
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+                break;
             }
-        }
-
-        int timedOut = submitted.size() - completed;
-        if (timedOut > 0) {
-            submitted.stream()
-                    .filter(future -> !future.isDone())
-                    .forEach(future -> future.cancel(true));
-            log.warn("{} batch timed out. cancelled {} pending meter read(s)", profileName, timedOut);
         }
 
         return new BatchResult(success, failed, timedOut);

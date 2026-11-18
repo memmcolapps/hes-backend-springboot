@@ -1,5 +1,6 @@
 package com.memmcol.hes.nettyUtils;
 
+import com.memmcol.hes.application.port.out.MeterLockPort;
 import com.memmcol.hes.application.port.out.TxRxService;
 import com.memmcol.hes.service.MeterConnections;
 import com.memmcol.hes.service.MeterSession;
@@ -15,8 +16,8 @@ import gurux.dlms.secure.GXCiphering;
 import gurux.dlms.secure.GXDLMSSecureClient;
 import io.netty.channel.Channel;
 import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
@@ -37,12 +38,15 @@ public class SessionManagerMultiVendor {
     private final Map<String, MeterSession> sessionMap = new ConcurrentHashMap<>();
     private final Duration SESSION_TIMEOUT = Duration.ofMinutes(3);
     private final TxRxService txRxService;
+    private final MeterLockPort lockPort;
+    private ScheduledExecutorService cleaner;
 
     // --- Optional: external configuration mapping ---
     private final Map<String, DlmsConfig> meterConfigMap = new HashMap<>();
 
-    public SessionManagerMultiVendor(TxRxService txRxService) {
+    public SessionManagerMultiVendor(TxRxService txRxService, MeterLockPort lockPort) {
         this.txRxService = txRxService;
+        this.lockPort = lockPort;
         loadDefaultConfigs();
     }
 
@@ -61,7 +65,7 @@ public class SessionManagerMultiVendor {
         if (serial.startsWith("62222")) return "MOMAS";
         if (serial.startsWith("62124")) return "LONGDIAN";
         if (serial.startsWith("62224")) return "LONGDIAN";
-        if (serial.startsWith("62525")) return "MOMAS";
+        if (serial.startsWith("62525")) return "LONGDIAN";
         if (serial.startsWith("62526")) return "LONGDIAN";
         return "MOMAS";
     }
@@ -127,9 +131,16 @@ public class SessionManagerMultiVendor {
        /**
      * Adds or reuses a session for a given meter.
      */
-    public synchronized void addSession(String serial, Channel channel) throws Exception {
+    public void addSession(String serial, Channel channel) throws Exception {
+        lockPort.withExclusive(serial, () -> {
+            addSessionLocked(serial, channel);
+            return null;
+        });
+    }
+
+    private void addSessionLocked(String serial, Channel channel) throws Exception {
         if (channel == null) {
-            log.info("No channel provided for session with meter {}", serial);
+            log.debug("No channel provided for session with meter {}", serial);
         }
 
         MeterSession existing = sessionMap.get(serial);
@@ -157,7 +168,7 @@ public class SessionManagerMultiVendor {
                 log.warn("⚠️ AARE parse failed for {}: {}", serial, e.getMessage());
             }
 
-            log.info("✅ DLMS Association established for {} (Model: {})", serial, modelId);
+            log.debug("✅ DLMS Association established for {} (Model: {})", serial, modelId);
             MeterSession meterSession = new MeterSession(serial, channel, dlmsClient, txRxService);
             meterSession.setAssociated(true);
             sessionMap.put(serial, meterSession);
@@ -198,40 +209,47 @@ public class SessionManagerMultiVendor {
     }
 
     public void cleanInflightRequests() {
-        ScheduledExecutorService cleaner = Executors.newSingleThreadScheduledExecutor();
+        cleaner = Executors.newSingleThreadScheduledExecutor();
         cleaner.scheduleAtFixedRate(() -> {
-            long now = System.currentTimeMillis();
-            inflightRequests.entrySet().removeIf(entry -> {
-                DlmsRequestContext ctx = entry.getValue();
-                if (now > ctx.getExpiryTime()) {
-                    log.warn("🧹 Cleaning expired request: CID={}, Meters={}",
-                            entry.getKey(), ctx.getMeterId());
-                    TRACKER.remove(entry.getKey());
-                    return true;
-                }
-                return false;
-            });
+            try {
+                long now = System.currentTimeMillis();
+                inflightRequests.entrySet().removeIf(entry -> {
+                    DlmsRequestContext ctx = entry.getValue();
+                    if (now > ctx.getExpiryTime()) {
+                        log.warn("🧹 Cleaning expired request: CID={}, Meters={}",
+                                entry.getKey(), ctx.getMeterId());
+                        TRACKER.remove(entry.getKey());
+                        return true;
+                    }
+                    return false;
+                });
+                cleanupExpiredSessions();
+            } catch (Exception e) {
+                log.error("Session/request cleanup failed", e);
+            }
         }, 30, 30, TimeUnit.SECONDS);
     }
 
-//    @Scheduled(fixedDelay = 30000)
-    public void cleanupExpiredEntries() {
-        log.debug("🔍 Cleaning expired sessions and inflight TXs...");
-//
-//        int before = sessionMap.size();
-//        sessionMap.entrySet().removeIf(entry -> {
-//            MeterSession session = entry.getValue();
-//            if (session.isExpired(SESSION_TIMEOUT)) {
-//                try {
-//                    session.sendDisconnectRequest(session);
-//                    log.warn("⏳ Disconnected expired meter {}", entry.getKey());
-//                } catch (Exception e) {
-//                    log.error("❌ Failed to disconnect {}: {}", entry.getKey(), e.getMessage());
-//                }
-//                return true;
-//            }
-//            return false;
-//        });
-//        log.debug("🧹 Removed {} expired sessions", before - sessionMap.size());
+    private void cleanupExpiredSessions() {
+        int before = sessionMap.size();
+        sessionMap.entrySet().removeIf(entry -> {
+            MeterSession session = entry.getValue();
+            if (session.isExpired(SESSION_TIMEOUT)) {
+                log.debug("⏳ Removed expired session meter={}", entry.getKey());
+                return true;
+            }
+            return false;
+        });
+        int removed = before - sessionMap.size();
+        if (removed > 0) {
+            log.debug("🧹 Removed {} expired session(s), {} active", removed, sessionMap.size());
+        }
+    }
+
+    @PreDestroy
+    public void shutdown() {
+        if (cleaner != null) {
+            cleaner.shutdownNow();
+        }
     }
 }
