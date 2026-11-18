@@ -591,6 +591,15 @@ public class RealtimeReadSseService {
                         && acceptingEvents.get()
                         && readingsByObis.size() == obisList.size();
 
+        // ADD THE DEBUG LOG HERE
+        log.info(
+                "BILLING OBIS DEBUG: meter={}, expected={}, collected={}, obisCodes={}",
+                meter.getMeterSerial(),
+                obisList.size(),
+                readingsByObis.size(),
+                readingsByObis.keySet()
+        );
+
         if (readingCompleted) {
 
             try {
