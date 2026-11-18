@@ -602,42 +602,103 @@ public class RealtimeReadSseService {
 
         if (readingCompleted) {
 
-            try {
-                log.info(
-                        "BILLING OBIS DEBUG meter={}, collectedObis={}",
-                        meter.getMeterSerial(),
-                        readingsByObis.keySet()
-                );
-                // Persist billing energy separately from the realtime reading process.
-                boolean saved = billingEnergyPersistenceService.saveIfComplete(
-                        meter.getMeterSerial(),
-                        meter.getMeterModel(),
-                        meter.isMD(),
-                        readingsByObis
-                );
 
-                if (saved) {
-                    log.info(
-                            "✅ Billing energy persistence completed for meter={}",
+            try {
+                // Keep billing readings separate from realtime readings.
+                Map<String, Map<String, Object>> billingReadings =
+                        new LinkedHashMap<>(readingsByObis);
+
+                // Collect any mandatory billing readings not supplied
+                // by the original realtime request.
+                boolean billingReadingsComplete =
+                        collectMissingBillingReadings(
+                                meter,
+                                billingReadings,
+                                acceptingEvents
+                        );
+
+                if (!billingReadingsComplete) {
+                    log.warn(
+                            "Skipping billing persistence for meter={}. " +
+                                    "Billing reading collection was interrupted.",
                             meter.getMeterSerial()
                     );
                 } else {
-                    log.warn(
-                            "⚠️ Billing energy record was not saved for meter={}. " +
-                                    "One or more mandatory readings may be missing or invalid.",
-                            meter.getMeterSerial()
+
+                    log.info(
+                            "BILLING FINAL READINGS: meter={}, count={}, obisCodes={}",
+                            meter.getMeterSerial(),
+                            billingReadings.size(),
+                            billingReadings.keySet()
                     );
+
+                    boolean saved = billingEnergyPersistenceService.saveIfComplete(
+                            meter.getMeterSerial(),
+                            meter.getMeterModel(),
+                            meter.isMD(),
+                            billingReadings
+                    );
+
+                    if (saved) {
+                        log.info(
+                                "Billing energy persistence completed for meter={}",
+                                meter.getMeterSerial()
+                        );
+                    } else {
+                        log.warn(
+                                "Billing energy record was not saved for meter={}. " +
+                                        "One or more mandatory readings may be missing or invalid.",
+                                meter.getMeterSerial()
+                        );
+                    }
                 }
 
             } catch (Exception ex) {
-                // A billing database failure must never interrupt realtime reading.
                 log.error(
-                        "❌ Billing energy persistence failed for meter={}. " +
+                        "Billing energy persistence failed for meter={}. " +
                                 "Realtime reading will continue.",
                         meter.getMeterSerial(),
                         ex
                 );
             }
+
+
+//            try {
+//                log.info(
+//                        "BILLING OBIS DEBUG meter={}, collectedObis={}",
+//                        meter.getMeterSerial(),
+//                        readingsByObis.keySet()
+//                );
+//                // Persist billing energy separately from the realtime reading process.
+//                boolean saved = billingEnergyPersistenceService.saveIfComplete(
+//                        meter.getMeterSerial(),
+//                        meter.getMeterModel(),
+//                        meter.isMD(),
+//                        readingsByObis
+//                );
+//
+//                if (saved) {
+//                    log.info(
+//                            "✅ Billing energy persistence completed for meter={}",
+//                            meter.getMeterSerial()
+//                    );
+//                } else {
+//                    log.warn(
+//                            "⚠️ Billing energy record was not saved for meter={}. " +
+//                                    "One or more mandatory readings may be missing or invalid.",
+//                            meter.getMeterSerial()
+//                    );
+//                }
+//
+//            } catch (Exception ex) {
+//                // A billing database failure must never interrupt realtime reading.
+//                log.error(
+//                        "❌ Billing energy persistence failed for meter={}. " +
+//                                "Realtime reading will continue.",
+//                        meter.getMeterSerial(),
+//                        ex
+//                );
+//            }
 
         } else {
 
@@ -665,6 +726,76 @@ public class RealtimeReadSseService {
 
         return new RealtimeReadSummary(success, failed);
     }
+
+
+    private boolean collectMissingBillingReadings(
+            MeterDto meter,
+            Map<String, Map<String, Object>> billingReadings,
+            AtomicBoolean acceptingEvents
+    ) {
+        List<String> requiredObis = new ArrayList<>(List.of(
+                "8;0.0:1.0.0.255;2;0",
+                "3;1.0.1.8.0.255;2;0",
+                "3;1.0.1.8.1.255;2;0",
+                "3;1.0.1.8.2.255;2;0"
+        ));
+
+        // Export readings are mandatory only for MD meters.
+        if (meter.isMD()) {
+            requiredObis.addAll(List.of(
+                    "3;1.0.2.8.0.255;2;0",
+                    "3;1.0.2.8.1.255;2;0",
+                    "3;1.0.2.8.2.255;2;0"
+            ));
+        }
+
+        for (String obisString : requiredObis) {
+
+            // Already collected from the original realtime request.
+            if (billingReadings.containsKey(obisString)) {
+                continue;
+            }
+
+            // Do not continue if the reading task has been cancelled.
+            if (Thread.currentThread().isInterrupted()
+                    || !acceptingEvents.get()) {
+                log.warn(
+                        "Billing reading collection interrupted for meter={}",
+                        meter.getMeterSerial()
+                );
+                return false;
+            }
+
+            log.info(
+                    "Reading missing billing OBIS={} for meter={}",
+                    obisString,
+                    meter.getMeterSerial()
+            );
+
+            ObisDto obis = new ObisDto(
+                    obisString,
+                    "DefaultGroup",
+                    "Billing energy reading",
+                    1.0,
+                    "kWh"
+            );
+
+            // Reuse the existing synchronous meter-reading method.
+            Map<String, Object> reading = readSingleObis(meter, obis);
+
+            // Ensure the response is associated with the requested OBIS key.
+            reading.putIfAbsent("obisString", obisString);
+
+            billingReadings.put(
+                    obisString,
+                    new LinkedHashMap<>(reading)
+            );
+        }
+
+        return !Thread.currentThread().isInterrupted()
+                && acceptingEvents.get();
+    }
+
 
     private boolean isWholeListRejection(Throwable ex) {
         for (Throwable t = ex; t != null; t = t.getCause()) {
@@ -803,6 +934,7 @@ public class RealtimeReadSseService {
         }
     }
 
+
     private void cancelPending(List<? extends Future<?>> futures) {
         futures.stream()
                 .filter(future -> !future.isDone())
@@ -840,25 +972,6 @@ public class RealtimeReadSseService {
         if (obisString != null) {
 
             readingsByObis.put(
-                    obisString.toString(),
-                    new LinkedHashMap<>(reading)
-            );
-        }
-    }
-
-    /**
-     * Keeps a copy of an OBIS reading for billing persistence.
-     *
-     * This does not modify the original reading or the SSE response.
-     */
-    private void collectBillingReading(
-            Map<String, Map<String, Object>> billingReadings,
-            Map<String, Object> reading
-    ) {
-        Object obisString = reading.get("obisString");
-
-        if (obisString != null) {
-            billingReadings.put(
                     obisString.toString(),
                     new LinkedHashMap<>(reading)
             );
